@@ -2,10 +2,12 @@
 #include <string.h>
 
 #include <rspq.h>
-#include <ugfx.h>
+
+// TODO: don't use gfx.h here (write another dummy overlay to test switching)
+#include <gfx.h>
 
 #include "../src/rspq/rspq_internal.h"
-#include "../src/ugfx/ugfx_internal.h"
+#include "../src/gfx/gfx_internal.h"
 
 #define ASSERT_GP_BACKWARD           0xF001   // Also defined in rsp_test.S
 
@@ -297,19 +299,19 @@ void test_rspq_load_overlay(TestContext *ctx)
 {
     TEST_RSPQ_PROLOG();
     
-    ugfx_init();
-    DEFER(ugfx_close());
+    gfx_init();
+    DEFER(gfx_close());
 
     rdp_set_env_color(0);
 
     TEST_RSPQ_EPILOG(0, rspq_timeout);
     
-    extern uint8_t rsp_ugfx_text_start[];
-    extern uint8_t rsp_ugfx_text_end[0];
+    extern uint8_t rsp_gfx_text_start[];
+    extern uint8_t rsp_gfx_text_end[0];
 
-    uint32_t size = rsp_ugfx_text_end - rsp_ugfx_text_start;
+    uint32_t size = rsp_gfx_text_end - rsp_gfx_text_start;
 
-    ASSERT_EQUAL_MEM((uint8_t*)SP_IMEM, rsp_ugfx_text_start, size, "ugfx overlay was not loaded into IMEM!");
+    ASSERT_EQUAL_MEM((uint8_t*)SP_IMEM, rsp_gfx_text_start, size, "gfx overlay was not loaded into IMEM!");
 }
 
 void test_rspq_switch_overlay(TestContext *ctx)
@@ -318,24 +320,24 @@ void test_rspq_switch_overlay(TestContext *ctx)
     
     test_ovl_init();
 
-    ugfx_init();
-    DEFER(ugfx_close());
+    gfx_init();
+    DEFER(gfx_close());
 
     rdp_set_env_color(0);
     rspq_test_16(0);
 
     TEST_RSPQ_EPILOG(0, rspq_timeout);
 
-    extern rsp_ucode_t rsp_ugfx;
+    extern rsp_ucode_t rsp_gfx;
     extern void* rspq_overlay_get_state(rsp_ucode_t *overlay_ucode);
 
-    ugfx_state_t *ugfx_state = UncachedAddr(rspq_overlay_get_state(&rsp_ugfx));
+    gfx_state_t *gfx_state = UncachedAddr(rspq_overlay_get_state(&rsp_gfx));
 
     uint64_t expected_commands[] = {
         0x3BULL << 56
     };
 
-    ASSERT_EQUAL_MEM(ugfx_state->rdp_buffer, (uint8_t*)expected_commands, sizeof(expected_commands), "State was not saved!");
+    ASSERT_EQUAL_MEM(gfx_state->rdp_buffer, (uint8_t*)expected_commands, sizeof(expected_commands), "State was not saved!");
 }
 
 void test_rspq_multiple_flush(TestContext *ctx)

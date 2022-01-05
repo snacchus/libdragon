@@ -37,12 +37,12 @@ libdragon.a: $(BUILD_DIR)/n64sys.o $(BUILD_DIR)/interrupt.o \
 			 $(BUILD_DIR)/audio/libxm/context.o $(BUILD_DIR)/audio/libxm/load.o \
 			 $(BUILD_DIR)/audio/ym64.o $(BUILD_DIR)/audio/ay8910.o \
 			 $(BUILD_DIR)/rspq/rspq.o $(BUILD_DIR)/rspq/rsp_queue.o \
-			 $(BUILD_DIR)/ugfx/ugfx.o $(BUILD_DIR)/ugfx/rsp_ugfx.o
+			 $(BUILD_DIR)/gfx/gfx.o $(BUILD_DIR)/gfx/rsp_gfx.o
 	@echo "    [AR] $@"
 	$(AR) -rcs -o $@ $^
 
 $(BUILD_DIR)/audio/rsp_mixer.o: IS_OVERLAY=1
-$(BUILD_DIR)/ugfx/rsp_ugfx.o: IS_OVERLAY=1
+$(BUILD_DIR)/gfx/rsp_gfx.o: IS_OVERLAY=1
 
 $(BUILD_DIR)/rspq/rspq_symbols.h: $(SOURCE_DIR)/rspq/rspq_symbols.h.template $(BUILD_DIR)/rspq/rsp_queue.o
 	sed -e "s/:OVL_DATA_ADDR:/$(shell $(N64_NM) $(BUILD_DIR)/rspq/rsp_queue.elf | awk '/_ovl_data_start/ {print $$1}')/g" $< > $@
@@ -118,7 +118,7 @@ install: install-mk libdragon
 	install -Cv -m 0644 include/ym64.h $(INSTALLDIR)/mips64-elf/include/ym64.h
 	install -Cv -m 0644 include/ay8910.h $(INSTALLDIR)/mips64-elf/include/ay8910.h
 	install -Cv -m 0644 include/rspq.h $(INSTALLDIR)/mips64-elf/include/rspq.h
-	install -Cv -m 0644 include/ugfx.h $(INSTALLDIR)/mips64-elf/include/ugfx.h
+	install -Cv -m 0644 include/gfx.h $(INSTALLDIR)/mips64-elf/include/gfx.h
 	install -Cv -m 0644 include/rdp_commands.h $(INSTALLDIR)/mips64-elf/include/rdp_commands.h
 	install -Cv -m 0644 include/rsp_queue.inc $(INSTALLDIR)/mips64-elf/include/rsp_queue.inc
 

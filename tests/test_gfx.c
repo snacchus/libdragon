@@ -1,10 +1,10 @@
 
 #include <malloc.h>
-#include "../src/ugfx/ugfx_internal.h"
+#include "../src/gfx/gfx_internal.h"
 
 static volatile int dp_intr_raised;
 
-const unsigned long ugfx_timeout = 100;
+const unsigned long gfx_timeout = 100;
 
 void dp_interrupt_handler()
 {
@@ -23,7 +23,7 @@ void wait_for_dp_interrupt(unsigned long timeout)
     }
 }
 
-void test_ugfx_rdp_interrupt(TestContext *ctx)
+void test_gfx_rdp_interrupt(TestContext *ctx)
 {
     dp_intr_raised = 0;
     register_DP_handler(dp_interrupt_handler);
@@ -33,17 +33,17 @@ void test_ugfx_rdp_interrupt(TestContext *ctx)
 
     rspq_init();
     DEFER(rspq_close());
-    ugfx_init();
-    DEFER(ugfx_close());
+    gfx_init();
+    DEFER(gfx_close());
 
     rdp_sync_full();
 
-    wait_for_dp_interrupt(ugfx_timeout);
+    wait_for_dp_interrupt(gfx_timeout);
 
     ASSERT(dp_intr_raised, "Interrupt was not raised!");
 }
 
-void test_ugfx_dram_buffer(TestContext *ctx)
+void test_gfx_dram_buffer(TestContext *ctx)
 {
     dp_intr_raised = 0;
     register_DP_handler(dp_interrupt_handler);
@@ -53,11 +53,11 @@ void test_ugfx_dram_buffer(TestContext *ctx)
 
     rspq_init();
     DEFER(rspq_close());
-    ugfx_init();
-    DEFER(ugfx_close());
+    gfx_init();
+    DEFER(gfx_close());
 
-    extern uint8_t __ugfx_dram_buffer[];
-    data_cache_hit_writeback_invalidate(__ugfx_dram_buffer, UGFX_RDP_DRAM_BUFFER_SIZE);
+    extern uint8_t __gfx_dram_buffer[];
+    data_cache_hit_writeback_invalidate(__gfx_dram_buffer, GFX_RDP_DRAM_BUFFER_SIZE);
 
     const uint32_t fbsize = 32 * 32 * 2;
     void *framebuffer = memalign(64, fbsize);
@@ -74,7 +74,7 @@ void test_ugfx_dram_buffer(TestContext *ctx)
     rdp_fill_rectangle(0, 0, 32 << 2, 32 << 2);
     rdp_sync_full();
 
-    wait_for_dp_interrupt(ugfx_timeout);
+    wait_for_dp_interrupt(gfx_timeout);
 
     ASSERT(dp_intr_raised, "Interrupt was not raised!");
 
@@ -87,7 +87,7 @@ void test_ugfx_dram_buffer(TestContext *ctx)
         0x29ULL << 56
     };
 
-    ASSERT_EQUAL_MEM(UncachedAddr(__ugfx_dram_buffer), (uint8_t*)expected_data, sizeof(expected_data), "Unexpected data in DRAM buffer!");
+    ASSERT_EQUAL_MEM(UncachedAddr(__gfx_dram_buffer), (uint8_t*)expected_data, sizeof(expected_data), "Unexpected data in DRAM buffer!");
 
     for (uint32_t i = 0; i < 32 * 32; i++)
     {
@@ -95,7 +95,7 @@ void test_ugfx_dram_buffer(TestContext *ctx)
     }
 }
 
-void test_ugfx_fill_dmem_buffer(TestContext *ctx)
+void test_gfx_fill_dmem_buffer(TestContext *ctx)
 {
     dp_intr_raised = 0;
     register_DP_handler(dp_interrupt_handler);
@@ -105,8 +105,8 @@ void test_ugfx_fill_dmem_buffer(TestContext *ctx)
 
     rspq_init();
     DEFER(rspq_close());
-    ugfx_init();
-    DEFER(ugfx_close());
+    gfx_init();
+    DEFER(gfx_close());
 
     const uint32_t fbsize = 32 * 32 * 2;
     void *framebuffer = memalign(64, fbsize);
@@ -119,7 +119,7 @@ void test_ugfx_fill_dmem_buffer(TestContext *ctx)
     rdp_set_scissor(0, 0, 32 << 2, 32 << 2);
     rdp_set_fill_color(0xFFFFFFFF);
 
-    for (uint32_t i = 0; i < UGFX_RDP_DMEM_BUFFER_SIZE / 8; i++)
+    for (uint32_t i = 0; i < GFX_RDP_DMEM_BUFFER_SIZE / 8; i++)
     {
         rdp_set_prim_color(0x0);
     }
@@ -128,7 +128,7 @@ void test_ugfx_fill_dmem_buffer(TestContext *ctx)
     rdp_fill_rectangle(0, 0, 32 << 2, 32 << 2);
     rdp_sync_full();
 
-    wait_for_dp_interrupt(ugfx_timeout);
+    wait_for_dp_interrupt(gfx_timeout);
 
     ASSERT(dp_intr_raised, "Interrupt was not raised!");
     
@@ -138,7 +138,7 @@ void test_ugfx_fill_dmem_buffer(TestContext *ctx)
     }
 }
 
-void test_ugfx_fill_dram_buffer(TestContext *ctx)
+void test_gfx_fill_dram_buffer(TestContext *ctx)
 {
     dp_intr_raised = 0;
     register_DP_handler(dp_interrupt_handler);
@@ -148,8 +148,8 @@ void test_ugfx_fill_dram_buffer(TestContext *ctx)
 
     rspq_init();
     DEFER(rspq_close());
-    ugfx_init();
-    DEFER(ugfx_close());
+    gfx_init();
+    DEFER(gfx_close());
 
     const uint32_t fbsize = 32 * 32 * 2;
     void *framebuffer = memalign(64, fbsize);
@@ -162,7 +162,7 @@ void test_ugfx_fill_dram_buffer(TestContext *ctx)
     rdp_set_scissor(0, 0, 32 << 2, 32 << 2);
     rdp_set_fill_color(0xFFFFFFFF);
 
-    for (uint32_t i = 0; i < UGFX_RDP_DRAM_BUFFER_SIZE / 8; i++)
+    for (uint32_t i = 0; i < GFX_RDP_DRAM_BUFFER_SIZE / 8; i++)
     {
         rdp_set_prim_color(0x0);
     }
@@ -171,7 +171,7 @@ void test_ugfx_fill_dram_buffer(TestContext *ctx)
     rdp_fill_rectangle(0, 0, 32 << 2, 32 << 2);
     rdp_sync_full();
 
-    wait_for_dp_interrupt(ugfx_timeout);
+    wait_for_dp_interrupt(gfx_timeout);
 
     ASSERT(dp_intr_raised, "Interrupt was not raised!");
     

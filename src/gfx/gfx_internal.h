@@ -1,22 +1,22 @@
-#ifndef __UGFX_INTERNAL
-#define __UGFX_INTERNAL
+#ifndef __GFX_INTERNAL
+#define __GFX_INTERNAL
 
-#define UGFX_RDP_DMEM_BUFFER_SIZE 0x100
-#define UGFX_RDP_DRAM_BUFFER_SIZE 0x1000
+#define GFX_RDP_DMEM_BUFFER_SIZE 0x100
+#define GFX_RDP_DRAM_BUFFER_SIZE 0x1000
 
 #ifndef __ASSEMBLER__
 
 #include <stdint.h>
 
-typedef struct ugfx_state_t {
-    uint8_t rdp_buffer[UGFX_RDP_DMEM_BUFFER_SIZE];
+typedef struct gfx_state_s {
+    uint8_t rdp_buffer[GFX_RDP_DMEM_BUFFER_SIZE];
     uint64_t other_modes;
     uint32_t dram_buffer;
     uint32_t dram_buffer_size;
     uint32_t dram_buffer_end;
     uint16_t dmem_buffer_ptr;
     uint16_t rdp_initialised;
-} ugfx_state_t;
+} gfx_state_t;
 
 #endif
 

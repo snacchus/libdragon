@@ -1,4 +1,4 @@
-#include "ugfx_internal.h"
+#include "gfx_internal.h"
 #include "../rspq/rsp_queue.S"
 
     .section .data.overlay
@@ -6,51 +6,51 @@
     # Each overlay requires a header. The first two arguments to overlayHeader are start and end of the area in DMEM that should
     # be saved when the overlay is swapped out. Put your persistent state here.
     # The last argument is the command base (The id of the first command in the overlay).
-    RSPQ_OverlayHeader UGFX_STATE_START, UGFX_STATE_END, 0x20
+    RSPQ_OverlayHeader GFX_STATE_START, GFX_STATE_END, 0x20
 
     .align 1
     # The command table maps the command ids to command descriptors, which are the IMEM address and the size
     # of the command encoded as a 16 bit value.
     # The first argument of RSPQ_DefineCommand is just the text label of the command, the second is the command size in bytes.
 COMMAND_TABLE:
-    RSPQ_DefineCommand command_fill_triangle,      32 # 0x20 
-    RSPQ_DefineCommand RSPQCmd_Noop,               8
-    RSPQ_DefineCommand RSPQCmd_Noop,               8
-    RSPQ_DefineCommand RSPQCmd_Noop,               8
-    RSPQ_DefineCommand command_rdp_passthrough_16, 16 # 0x24 TEXTURE_RECTANGLE
-    RSPQ_DefineCommand command_rdp_passthrough_16, 16 # 0x25 TEXTURE_RECTANGLE_FLIP
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x26 SYNC_LOAD
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x27 SYNC_PIPE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x28 SYNC_TILE
-    RSPQ_DefineCommand command_sync_full,          8  # 0x29 SYNC_FULL
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x2A SET_KEY_GB
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x2B SET_KEY_R
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x2C SET_CONVERT
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x2D SET_SCISSOR
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x2E SET_PRIM_DEPTH
-    RSPQ_DefineCommand command_set_other_modes,    8  # 0x2F SET_OTHER_MODES
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x30 LOAD_TLUT
-    RSPQ_DefineCommand RSPQCmd_Noop,               8
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x32 SET_TILE_SIZE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x33 LOAD_BLOCK
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x34 LOAD_TILE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x35 SET_TILE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x36 FILL_RECTANGLE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x37 SET_FILL_COLOR
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x38 SET_FOG_COLOR
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x39 SET_BLEND_COLOR
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x3A SET_PRIM_COLOR
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x3B SET_ENV_COLOR
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x3C SET_COMBINE_MODE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x3D SET_TEXTURE_IMAGE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x3E SET_Z_IMAGE
-    RSPQ_DefineCommand command_rdp_passthrough_8,  8  # 0x3F SET_COLOR_IMAGE
+    RSPQ_DefineCommand GFXCmd_FillTriangle,  32 # 0x20 
+    RSPQ_DefineCommand RSPQCmd_Noop,         8  # Invalid
+    RSPQ_DefineCommand RSPQCmd_Noop,         8  # Invalid
+    RSPQ_DefineCommand RSPQCmd_Noop,         8  # Invalid
+    RSPQ_DefineCommand GFXCmd_Passthrough16, 16 # 0x24 TEXTURE_RECTANGLE
+    RSPQ_DefineCommand GFXCmd_Passthrough16, 16 # 0x25 TEXTURE_RECTANGLE_FLIP
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x26 SYNC_LOAD
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x27 SYNC_PIPE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x28 SYNC_TILE
+    RSPQ_DefineCommand GFXCmd_SyncFull,      8  # 0x29 SYNC_FULL
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x2A SET_KEY_GB
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x2B SET_KEY_R
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x2C SET_CONVERT
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x2D SET_SCISSOR
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x2E SET_PRIM_DEPTH
+    RSPQ_DefineCommand GFXCmd_SetOtherModes, 8  # 0x2F SET_OTHER_MODES
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x30 LOAD_TLUT
+    RSPQ_DefineCommand RSPQCmd_Noop,         8  # Invalid
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x32 SET_TILE_SIZE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x33 LOAD_BLOCK
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x34 LOAD_TILE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x35 SET_TILE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x36 FILL_RECTANGLE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x37 SET_FILL_COLOR
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x38 SET_FOG_COLOR
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x39 SET_BLEND_COLOR
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x3A SET_PRIM_COLOR
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x3B SET_ENV_COLOR
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x3C SET_COMBINE_MODE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x3D SET_TEXTURE_IMAGE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x3E SET_Z_IMAGE
+    RSPQ_DefineCommand GFXCmd_Passthrough8,  8  # 0x3F SET_COLOR_IMAGE
 
     .align 3
-    # Everything between UGFX_STATE_START and UGFX_STATE_END is persistent state that is automatically saved by the overlay system.
-    # Should be kept consistent with ugfx_state_t in ugfx_internal.h
-UGFX_STATE_START:
-RDP_DMEM_BUFFER:       .ds.b UGFX_RDP_DMEM_BUFFER_SIZE
+    # Everything between GFX_STATE_START and GFX_STATE_END is persistent state that is automatically saved by the overlay system.
+    # Should be kept consistent with gfx_state_t in gfx_internal.h
+GFX_STATE_START:
+RDP_DMEM_BUFFER:       .ds.b GFX_RDP_DMEM_BUFFER_SIZE
 
 RDP_OTHER_MODES:       .quad  0
 
@@ -60,31 +60,31 @@ RDP_DRAM_BUFFER_END:   .long  0
 RDP_DMEM_BUFFER_PTR:   .short 0
 RDP_INITIALIZED:       .short 0
 
-UGFX_STATE_END:
+GFX_STATE_END:
 
     .section .bss.overlay
 
     .text 1
 
     #############################################################
-    # command_set_other_modes
+    # GFXCmd_SetOtherModes
     #
-    # Does the same as command_rdp_passthrough_8 and also saves the command in RDP_OTHER_MODES.
+    # Does the same as GFXCmd_Passthrough8 and also saves the command in RDP_OTHER_MODES.
     # (not used yet, can theoretically be used to enable partial updates of other modes)
     #
     # ARGS:
     #   a0: First 4 bytes of RDP command
     #   a1: Second 4 bytes of RDP command
     #############################################################
-    .func command_set_other_modes
-command_set_other_modes:
+    .func GFXCmd_SetOtherModes
+GFXCmd_SetOtherModes:
     sw a0, %lo(RDP_OTHER_MODES) + 0x0
     sw a1, %lo(RDP_OTHER_MODES) + 0x4
     .endfunc
 
     
     #############################################################
-    # command_rdp_passthrough_8
+    # GFXCmd_Passthrough8
     #
     # Forwards the RDP command contained in a0 and a1 to the RDP stream.
     #
@@ -92,18 +92,18 @@ command_set_other_modes:
     #   a0: First 4 bytes of RDP command
     #   a1: Second 4 bytes of RDP command
     #############################################################
-    .func command_rdp_passthrough_8
-command_rdp_passthrough_8:
-    jal rdp_write_begin
+    .func GFXCmd_Passthrough8
+GFXCmd_Passthrough8:
+    jal GFX_RdpWriteBegin
     li t3, 8
     sw a0, %lo(RDP_DMEM_BUFFER) + 0x0(s1)
     sw a1, %lo(RDP_DMEM_BUFFER) + 0x4(s1)
-    jal_and_j rdp_write_end, RSPQ_Loop
+    jal_and_j GFX_RdpWriteEnd, RSPQ_Loop
     .endfunc
 
 
     #############################################################
-    # command_rdp_passthrough_16
+    # GFXCmd_Passthrough16
     #
     # Forwards the RDP command contained in a0-a3 to the RDP stream.
     #
@@ -113,19 +113,19 @@ command_rdp_passthrough_8:
     #   a2: Third 4 bytes of RDP command
     #   a3: Fourth 4 bytes of RDP command
     #############################################################
-    .func command_rdp_passthrough_16
-command_rdp_passthrough_16:
-    jal rdp_write_begin
+    .func GFXCmd_Passthrough16
+GFXCmd_Passthrough16:
+    jal GFX_RdpWriteBegin
     li t3, 16
     sw a0, %lo(RDP_DMEM_BUFFER) + 0x0(s1)
     sw a1, %lo(RDP_DMEM_BUFFER) + 0x4(s1)
     sw a2, %lo(RDP_DMEM_BUFFER) + 0x8(s1)
     sw a3, %lo(RDP_DMEM_BUFFER) + 0xC(s1)
-    jal_and_j rdp_write_end, RSPQ_Loop
+    jal_and_j GFX_RdpWriteEnd, RSPQ_Loop
     .endfunc
 
     #############################################################
-    # command_fill_triangle
+    # GFXCmd_FillTriangle
     #
     # Forwards a basic triangle command (edge coefficients only).
     # Note that the command id is swapped out.
@@ -136,9 +136,9 @@ command_rdp_passthrough_16:
     #   a2: Third 4 bytes of RDP command
     #   a3: Fourth 4 bytes of RDP command
     #############################################################
-    .func command_fill_triangle
-command_fill_triangle:
-    jal rdp_write_begin
+    .func GFXCmd_FillTriangle
+GFXCmd_FillTriangle:
+    jal GFX_RdpWriteBegin
     li t3, 32
     # Replace 0x20 with 0x08
     lui t0, 0xFF
@@ -158,14 +158,14 @@ command_fill_triangle:
     sw t1, %lo(RDP_DMEM_BUFFER) + 0x14(s1)
     sw t2, %lo(RDP_DMEM_BUFFER) + 0x18(s1)
     sw t3, %lo(RDP_DMEM_BUFFER) + 0x1C(s1)
-    jal_and_j rdp_write_end, RSPQ_Loop
+    jal_and_j GFX_RdpWriteEnd, RSPQ_Loop
     .endfunc
 
 
     #############################################################
-    # command_sync_full
+    # GFXCmd_SyncFull
     #
-    # Behaves the same as command_rdp_passthrough_8 and forces a rdp_flush afterwards.
+    # Behaves the same as GFXCmd_Passthrough8 and forces a GFX_RdpFlush afterwards.
     # A sync_full command usually denotes the end of a frame, which is why this also
     # resets the state of the RDP stream.
     #
@@ -173,17 +173,17 @@ command_fill_triangle:
     #   a0: First 4 bytes of RDP command
     #   a1: Second 4 bytes of RDP command
     #############################################################
-    .func command_sync_full
-command_sync_full:
-    # This is the same as command_rdp_passthrough_8, but duplicating it seems easier for now
-    jal rdp_write_begin
+    .func GFXCmd_SyncFull
+GFXCmd_SyncFull:
+    # This is the same as GFXCmd_Passthrough8, but duplicating it seems easier for now
+    jal GFX_RdpWriteBegin
     li t3, 8
     sw a0, %lo(RDP_DMEM_BUFFER) + 0x0(s1)
-    jal rdp_write_end
+    jal GFX_RdpWriteEnd
     sw a1, %lo(RDP_DMEM_BUFFER) + 0x4(s1)
 
     # Afterwards, force flushing the buffer...
-    jal rdp_flush
+    jal GFX_RdpFlush
     nop
     j RSPQ_Loop
     # ...and set the RDP system back to uninitialized
@@ -192,10 +192,10 @@ command_sync_full:
 
 
     #############################################################
-    # rdp_write_begin
+    # GFX_RdpWriteBegin
     #
     # Opens the RDP command stream for writing. Takes the data size in bytes
-    # and returns a pointer in DMEM to write the data to. Call rdp_write_end with the same argument when done.
+    # and returns a pointer in DMEM to write the data to. Call GFX_RdpWriteEnd with the same argument when done.
     # If the RDP buffer is full, will flush it to RDRAM first.
     #
     # ARGS:
@@ -203,33 +203,33 @@ command_sync_full:
     # RETURNS:
     #   s1: Output pointer
     #############################################################
-    .func rdp_write_begin
-rdp_write_begin:
+    .func GFX_RdpWriteBegin
+GFX_RdpWriteBegin:
     # Load current buffer pointer
     lhu s1, %lo(RDP_DMEM_BUFFER_PTR)
 
     # If the requested size fits in the buffer, just return the current pointer
     add s2, s1, t3
-    addi s2, -UGFX_RDP_DMEM_BUFFER_SIZE
+    addi s2, -GFX_RDP_DMEM_BUFFER_SIZE
     blez s2, JrRa
     move t1, zero
 
     # Otherwise, flush the buffer and reset the pointer to zero
-    j rdp_flush
+    j GFX_RdpFlush
     move s1, zero
     .endfunc
 
 
     #############################################################
-    # rdp_write_end
+    # GFX_RdpWriteEnd
     #
     # Closes the RDP command stream for writing. Takes the data size in bytes.
     #
     # ARGS:
     #   t3: Data size
     #############################################################
-    .func rdp_write_end
-rdp_write_end:
+    .func GFX_RdpWriteEnd
+GFX_RdpWriteEnd:
     # Advance dmem buffer pointer
     lhu s2, %lo(RDP_DMEM_BUFFER_PTR)
     add s2, t3
@@ -239,7 +239,7 @@ rdp_write_end:
 
 
     #############################################################
-    # rdp_flush
+    # GFX_RdpFlush
     #
     # Copies the contents of the DMEM buffer to the RDRAM buffer via DMA.
     # If the RDRAM buffer is full, waits for the RDP to finish processing all commands
@@ -247,8 +247,8 @@ rdp_write_end:
     # Updates the DP_START and DP_END registers to process the new commands.
     #
     #############################################################
-    .func rdp_flush
-rdp_flush:
+    .func GFX_RdpFlush
+GFX_RdpFlush:
     #define dram_size t4
     #define init      t6
     #define dmem_ptr  t7

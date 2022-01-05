@@ -177,7 +177,7 @@ void rdp_init( void )
     register_DP_handler( __rdp_interrupt );
     set_DP_interrupt( 1 );
 
-    ugfx_init();
+    gfx_init();
 }
 
 void rdp_close( void )

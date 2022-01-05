@@ -51,7 +51,7 @@
 #include "xm64.h"
 #include "ym64.h"
 #include "rspq.h"
-#include "ugfx.h"
+#include "gfx.h"
 #include "rdp_commands.h"
 
 #endif
