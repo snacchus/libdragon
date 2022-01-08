@@ -64,10 +64,10 @@
  *     times by different libraries, with no side-effect.
  *   * Call #rspq_overlay_register to register a #rsp_ucode_t as RSP command
  *     queue overlay, assigning an overlay ID to it.
- *   * Provide higher-level APIs that, when required, call #rspq_write_begin,
- *     #rspq_write_end and #rspq_flush to enqueue commands for the RSP. For
+ *   * Provide higher-level APIs that, when required, call #rspq_write
+ *     and #rspq_flush to enqueue commands for the RSP. For
  *     instance, a matrix library might provide a "matrix_mult" function that
- *     internally calls #rspq_write_begin/#rspq_write_end to enqueue a command
+ *     internally calls #rspq_write to enqueue a command
  *     for the RSP to perform the calculation.
  * 
  * Normally, end-users will not need to manually enqueue commands in the RSP
@@ -114,7 +114,7 @@
  * moment a high-priority queue is created via #rspq_highpri_begin, the RSP
  * immediately suspends execution of the command queue, and switches to
  * the high-priority queue, waiting for commands. All commands added via
- * standard APIs (#rspq_write_begin / #rspq_write_end) are then directed
+ * standard APIs (#rspq_write) are then directed
  * to the high-priority queue, until #rspq_highpri_end is called. Once the
  * RSP has finished executing all the commands enqueue in the high-priority
  * queue, it resumes execution of the standard queue.
@@ -453,7 +453,7 @@ void rspq_wait_syncpoint(rspq_syncpoint_t sync_id);
  * @brief Begin creating a new block.
  * 
  * This function begins writing a command block (see #rspq_block_t).
- * While a block is being written, all calls to #rspq_write_begin / #rspq_write_end
+ * While a block is being written, all calls to #rspq_write
  * will record the commands into the block, without actually scheduling them for
  * execution. Use #rspq_block_end to close the block and get a reference to it.
  * 
@@ -472,7 +472,7 @@ void rspq_block_begin(void);
  * @brief Finish creating a block.
  * 
  * This function completes a block and returns a reference to it (see #rspq_block_t).
- * After this function is called, all subsequent #rspq_write_begin / #rspq_write_end
+ * After this function is called, all subsequent #rspq_write
  * will resume working as usual: they will add commands to the queue
  * for immediate RSP execution.
  * 

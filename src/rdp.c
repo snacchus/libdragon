@@ -186,6 +186,7 @@ void rdp_close( void )
     unregister_DP_handler( __rdp_interrupt );
 }
 
+/** @brief Used internally for bit-packing RDP commands. */
 #define _carg(value, mask, shift) (((uint32_t)((value) & mask)) << shift)
 
 void rdp_texture_rectangle(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t ds, int16_t dt)

@@ -492,8 +492,7 @@ void test_rspq_wait_sync_in_block(TestContext *ctx)
 
     rspq_wait_syncpoint(syncpoint);
 
-    // Test will block forever if it fails.
-    // TODO: implement RSP exception handler that detects infinite stalls
+    // Test will cause an RSP crash (timeout) if it fails.
 }
 
 void test_rspq_pause(TestContext *ctx)
@@ -706,6 +705,3 @@ void test_rspq_highpri_overlay(TestContext *ctx)
     ASSERT_EQUAL_UNSIGNED(actual_sum[1], 123, "highpri sum is not correct");
     TEST_RSPQ_EPILOG(0, rspq_timeout);
 }
-
-
-// TODO: test syncing with overlay switching

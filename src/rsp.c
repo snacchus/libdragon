@@ -420,4 +420,4 @@ void __rsp_crash(const char *file, int line, const char *func, const char *msg, 
     console_render();
     abort();
 }
-/// @endconf
+/// @endcond
