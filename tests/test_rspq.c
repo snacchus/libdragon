@@ -3,15 +3,12 @@
 
 #include <rspq.h>
 
-// TODO: don't use gfx.h here (write another dummy overlay to test switching)
-#include <gfx.h>
-
 #include "../src/rspq/rspq_internal.h"
-#include "../src/gfx/gfx_internal.h"
 
 #define ASSERT_GP_BACKWARD           0xF001   // Also defined in rsp_test.S
 
 DEFINE_RSP_UCODE(rsp_test);
+DEFINE_RSP_UCODE(rsp_test2);
 
 void test_ovl_init()
 {   
@@ -28,6 +25,7 @@ void test_ovl_init()
 
     rspq_init();
     rspq_overlay_register(&rsp_test, 0xF);
+    rspq_overlay_register(&rsp_test2, 0xE);
 }
 
 void rspq_test_4(uint32_t value)
@@ -72,6 +70,11 @@ void rspq_test_high(uint32_t value)
 void rspq_test_reset_log(void)
 {
     rspq_write(0xF7);
+}
+
+void rspq_test2(uint32_t v0, uint32_t v1)
+{
+    rspq_write(0xE0, v0, v1);
 }
 
 #define RSPQ_LOG_STATUS(step) debugf("STATUS: %#010lx, PC: %#010lx (%s)\n", *SP_STATUS, *SP_PC, step)
@@ -299,19 +302,15 @@ void test_rspq_load_overlay(TestContext *ctx)
 {
     TEST_RSPQ_PROLOG();
     
-    gfx_init();
-    DEFER(gfx_close());
+    test_ovl_init();
 
-    rdp_set_env_color_raw(0);
+    rspq_test_4(0);
 
     TEST_RSPQ_EPILOG(0, rspq_timeout);
-    
-    extern uint8_t rsp_gfx_text_start[];
-    extern uint8_t rsp_gfx_text_end[0];
 
-    uint32_t size = rsp_gfx_text_end - rsp_gfx_text_start;
+    uint32_t size = rsp_test_text_end - rsp_test_text_start;
 
-    ASSERT_EQUAL_MEM((uint8_t*)SP_IMEM, rsp_gfx_text_start, size, "gfx overlay was not loaded into IMEM!");
+    ASSERT_EQUAL_MEM((uint8_t*)SP_IMEM, rsp_test_text_start, size, "test overlay was not loaded into IMEM!");
 }
 
 void test_rspq_switch_overlay(TestContext *ctx)
@@ -320,24 +319,19 @@ void test_rspq_switch_overlay(TestContext *ctx)
     
     test_ovl_init();
 
-    gfx_init();
-    DEFER(gfx_close());
-
-    rdp_set_env_color_raw(0);
+    rspq_test2(0x123456, 0x87654321);
     rspq_test_16(0);
 
     TEST_RSPQ_EPILOG(0, rspq_timeout);
 
-    extern rsp_ucode_t rsp_gfx;
-    extern void* rspq_overlay_get_state(rsp_ucode_t *overlay_ucode);
+    uint8_t *test2_state = UncachedAddr(rspq_overlay_get_state(&rsp_test2));
 
-    gfx_state_t *gfx_state = UncachedAddr(rspq_overlay_get_state(&rsp_gfx));
-
-    uint64_t expected_commands[] = {
-        0x3BULL << 56
+    uint32_t expected_state[] = {
+        0xe0123456,
+        0x87654321
     };
 
-    ASSERT_EQUAL_MEM(gfx_state->rdp_buffer, (uint8_t*)expected_commands, sizeof(expected_commands), "State was not saved!");
+    ASSERT_EQUAL_MEM(test2_state, (uint8_t*)expected_state, sizeof(expected_state), "State was not saved!");
 }
 
 void test_rspq_multiple_flush(TestContext *ctx)
