@@ -123,9 +123,9 @@
 #define SOM_SAMPLE_2X2         (cast64(1)<<45)
 #define SOM_MIDTEXEL           (cast64(1)<<44)
 
-#define SOM_TC_FILTER          (cast64(0)<<41)  // NOTE: this values are bit-inverted, so that they end up with a good default
-#define SOM_TC_FILTERCONV      (cast64(3)<<41)
-#define SOM_TC_CONV            (cast64(6)<<41)
+#define SOM_TC_FILTER          (cast64(6)<<41)
+#define SOM_TC_FILTERCONV      (cast64(5)<<41)
+#define SOM_TC_CONV            (cast64(0)<<41)
 
 #define SOM_KEY_ENABLED        (cast64(1)<<41)
 

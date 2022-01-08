@@ -79,7 +79,7 @@ void test_gfx_dram_buffer(TestContext *ctx)
     ASSERT(dp_intr_raised, "Interrupt was not raised!");
 
     uint64_t expected_data[] = {
-        (0x2FULL << 56) | SOM_CYCLE_FILL | (6ULL << 41),
+        (0x2FULL << 56) | SOM_CYCLE_FILL,
         (0x2DULL << 56) | (32ULL << 14) | (32ULL << 2),
         (0x37ULL << 56) | 0xFFFFFFFFULL,
         (0x3FULL << 56) | ((uint64_t)RDP_TILE_FORMAT_RGBA << 53) | ((uint64_t)RDP_TILE_SIZE_16BIT << 51) | (31ULL << 32) | ((uint32_t)framebuffer & 0x1FFFFFF),

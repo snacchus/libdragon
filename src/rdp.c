@@ -265,7 +265,7 @@ void rdp_set_prim_depth(uint16_t primitive_z, uint16_t primitive_delta_z)
 void rdp_set_other_modes(uint64_t modes)
 {
     rspq_write(0x2F, 
-        ((modes >> 32) & 0x00FFFFFF) ^ (6 << 9),
+        ((modes >> 32) & 0x00FFFFFF),
         modes & 0xFFFFFFFF);
 }
 
