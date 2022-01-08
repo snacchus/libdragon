@@ -88,7 +88,6 @@ void render()
         {
             for (uint32_t x = 0; x < brew_sprite->hslices; x++)
             {
-                rdp_sync_load();
                 rdp_load_texture_stride(0, 0, MIRROR_DISABLED, brew_sprite, y*brew_sprite->hslices + x);
                 rdp_draw_sprite(0, obj_x + x * (brew_sprite->width / brew_sprite->hslices), obj_y + y * (brew_sprite->height / brew_sprite->vslices), MIRROR_DISABLED);
             }
@@ -151,7 +150,6 @@ int main()
     {
         for (uint32_t tx = 0; tx < display_width; tx += tile_width)
         {
-            rdp_sync_load();
             rdp_load_texture_stride(0, 0, MIRROR_DISABLED, tiles_sprite, RANDN(4));
             rdp_draw_sprite(0, tx, ty, MIRROR_DISABLED);
         }

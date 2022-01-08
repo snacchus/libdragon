@@ -186,198 +186,6 @@ void rdp_close( void )
     unregister_DP_handler( __rdp_interrupt );
 }
 
-/** @brief Used internally for bit-packing RDP commands. */
-#define _carg(value, mask, shift) (((uint32_t)((value) & mask)) << shift)
-
-void rdp_texture_rectangle(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t ds, int16_t dt)
-{
-    rspq_write(0x24,
-        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0),
-        _carg(tile, 0x7, 24) | _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0),
-        _carg(s, 0xFFFF, 16) | _carg(t, 0xFFFF, 0),
-        _carg(ds, 0xFFFF, 16) | _carg(dt, 0xFFFF, 0));
-}
-
-void rdp_texture_rectangle_flip(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t ds, int16_t dt)
-{
-    rspq_write(0x25,
-        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0),
-        _carg(tile, 0x7, 24) | _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0),
-        _carg(s, 0xFFFF, 16) | _carg(t, 0xFFFF, 0),
-        _carg(ds, 0xFFFF, 16) | _carg(dt, 0xFFFF, 0));
-}
-
-void rdp_sync_load()
-{
-    rspq_write(0x26, 0, 0);
-}
-
-void rdp_sync_pipe()
-{
-    rspq_write(0x27, 0, 0);
-}
-
-void rdp_sync_tile()
-{
-    rspq_write(0x28, 0, 0);
-}
-
-void rdp_sync_full()
-{
-    rspq_write(0x29, 0, 0);
-    rspq_flush();
-}
-
-void rdp_set_key_gb(uint16_t wg, uint8_t wb, uint8_t cg, uint16_t sg, uint8_t cb, uint8_t sb)
-{
-    rspq_write(0x2A,
-        _carg(wg, 0xFFF, 12) | _carg(wb, 0xFFF, 0),
-        _carg(cg, 0xFF, 24) | _carg(sg, 0xFF, 16) | _carg(cb, 0xFF, 8) | _carg(sb, 0xFF, 0));
-}
-
-void rdp_set_key_r(uint16_t wr, uint8_t cr, uint8_t sr)
-{
-    rspq_write(0x2B,
-        0,
-        _carg(wr, 0xFFF, 16) | _carg(cr, 0xFF, 8) | _carg(sr, 0xFF, 0));
-}
-
-void rdp_set_convert(uint16_t k0, uint16_t k1, uint16_t k2, uint16_t k3, uint16_t k4, uint16_t k5)
-{
-    rspq_write(0x2C,
-        _carg(k0, 0x1FF, 13) | _carg(k1, 0x1FF, 4) | (((uint32_t)(k2 & 0x1FF)) >> 5),
-        _carg(k2, 0x1F, 27) | _carg(k3, 0x1FF, 18) | _carg(k4, 0x1FF, 9) | _carg(k5, 0x1FF, 0));
-}
-
-void rdp_set_scissor(int16_t x0, int16_t y0, int16_t x1, int16_t y1)
-{
-    rspq_write(0x2D,
-        _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0),
-        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0));
-}
-
-void rdp_set_prim_depth(uint16_t primitive_z, uint16_t primitive_delta_z)
-{
-    rspq_write(0x2E,
-        0,
-        _carg(primitive_z, 0xFFFF, 16) | _carg(primitive_delta_z, 0xFFFF, 0));
-}
-
-void rdp_set_other_modes(uint64_t modes)
-{
-    rspq_write(0x2F, 
-        ((modes >> 32) & 0x00FFFFFF),
-        modes & 0xFFFFFFFF);
-}
-
-void rdp_load_tlut(uint8_t tile, uint8_t lowidx, uint8_t highidx)
-{
-    rspq_write(0x30,
-        _carg(lowidx, 0xFF, 14),
-        _carg(tile, 0x7, 24) | _carg(highidx, 0xFF, 14));
-}
-
-void rdp_set_tile_size(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1)
-{
-    rspq_write(0x32,
-        _carg(s0, 0xFFF, 12) | _carg(t0, 0xFFF, 0),
-        _carg(tile, 0x7, 24) | _carg(s1, 0xFFF, 12) | _carg(t1, 0xFFF, 0));
-}
-
-void rdp_load_block(uint8_t tile, uint16_t s0, uint16_t t0, uint16_t s1, uint16_t dxt)
-{
-    rspq_write(0x33,
-        _carg(s0, 0xFFF, 12) | _carg(t0, 0xFFF, 0),
-        _carg(tile, 0x7, 24) | _carg(s1, 0xFFF, 12) | _carg(dxt, 0xFFF, 0));
-}
-
-void rdp_load_tile(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1)
-{
-    rspq_write(0x34,
-        _carg(s0, 0xFFF, 12) | _carg(t0, 0xFFF, 0),
-        _carg(tile, 0x7, 24) | _carg(s1, 0xFFF, 12) | _carg(t1, 0xFFF, 0));
-}
-
-void rdp_set_tile(uint8_t format, uint8_t size, uint16_t line, uint16_t tmem_addr,
-                  uint8_t tile, uint8_t palette, uint8_t ct, uint8_t mt, uint8_t mask_t, uint8_t shift_t,
-                  uint8_t cs, uint8_t ms, uint8_t mask_s, uint8_t shift_s)
-{
-    rspq_write(0x35,
-        _carg(format, 0x7, 21) | _carg(size, 0x3, 19) | _carg(line, 0x1FF, 9) | _carg(tmem_addr, 0x1FF, 0),
-        _carg(tile, 0x7, 24) | _carg(palette, 0xF, 20) | _carg(ct, 0x1, 19) | _carg(mt, 0x1, 18) | _carg(mask_t, 0xF, 14) | 
-        _carg(shift_t, 0xF, 10) | _carg(cs, 0x1, 9) | _carg(ms, 0x1, 8) | _carg(mask_s, 0xF, 4) | _carg(shift_s, 0xF, 0));
-}
-
-void rdp_fill_rectangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1)
-{
-    rspq_write(0x36,
-        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0),
-        _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0));
-}
-
-void rdp_set_fill_color(uint32_t color)
-{
-    rspq_write(0x37,
-        0,
-        color);
-}
-
-void rdp_set_fog_color(uint32_t color)
-{
-    rspq_write(0x38,
-        0,
-        color);
-}
-
-void rdp_set_blend_color(uint32_t color)
-{
-    rspq_write(0x39,
-        0,
-        color);
-}
-
-void rdp_set_prim_color(uint32_t color)
-{
-    rspq_write(0x3A,
-        0,
-        color);
-}
-
-void rdp_set_env_color(uint32_t color)
-{
-    rspq_write(0x3B,
-        0,
-        color);
-}
-
-void rdp_set_combine_mode(uint64_t flags)
-{
-    rspq_write(0x3C, 
-        (flags >> 32) & 0x00FFFFFF, 
-        flags & 0xFFFFFFFF);
-}
-
-void rdp_set_texture_image(uint32_t dram_addr, uint8_t format, uint8_t size, uint16_t width)
-{
-    rspq_write(0x3D,
-        _carg(format, 0x7, 21) | _carg(size, 0x3, 19) | _carg(width, 0x3FF, 0),
-        dram_addr & 0x1FFFFFF);
-}
-
-void rdp_set_z_image(uint32_t dram_addr)
-{
-    rspq_write(0x3E,
-        0,
-        dram_addr & 0x1FFFFFF);
-}
-
-void rdp_set_color_image(uint32_t dram_addr, uint32_t format, uint32_t size, uint32_t width)
-{
-    rspq_write(0x3F,
-        _carg(format, 0x7, 21) | _carg(size, 0x3, 19) | _carg(width, 0x3FF, 0),
-        dram_addr & 0x1FFFFFF);
-}
-
 void rdp_attach_display( display_context_t disp )
 {
     if( disp == 0 ) { return; }
@@ -387,7 +195,7 @@ void rdp_attach_display( display_context_t disp )
 
     /* Set the rasterization buffer */
     uint32_t size = (__bitdepth == 2) ? RDP_TILE_SIZE_16BIT : RDP_TILE_SIZE_32BIT;
-    rdp_set_color_image((uint32_t)__get_buffer(disp), RDP_TILE_FORMAT_RGBA, size, __width - 1);
+    rdp_set_color_image_raw((uint32_t)__get_buffer(disp), RDP_TILE_FORMAT_RGBA, size, __width - 1);
 
 }
 
@@ -401,7 +209,7 @@ void rdp_detach_display( void )
     wait_intr = 0;
 
     /* Force the RDP to rasterize everything and then interrupt us */
-    rdp_sync_full();
+    rdp_sync_full_raw();
 
     if( INTERRUPTS_ENABLED == get_interrupts_state() )
     {
@@ -423,7 +231,7 @@ void rdp_detach_display_async(void (*cb)(display_context_t disp))
     assertf(rdp_is_display_attached(), "No display is currently attached!");
     assertf(cb != NULL, "Callback should not be NULL!");
     detach_callback = cb;
-    rdp_sync_full();
+    rdp_sync_full_raw();
 }
 
 void rdp_sync( sync_t sync )
@@ -431,16 +239,16 @@ void rdp_sync( sync_t sync )
     switch( sync )
     {
         case SYNC_FULL:
-            rdp_sync_full();
+            rdp_sync_full_raw();
             break;
         case SYNC_PIPE:
-            rdp_sync_pipe();
+            rdp_sync_pipe_raw();
             break;
         case SYNC_TILE:
-            rdp_sync_tile();
+            rdp_sync_tile_raw();
             break;
         case SYNC_LOAD:
-            rdp_sync_load();
+            rdp_sync_load_raw();
             break;
     }
 }
@@ -448,7 +256,7 @@ void rdp_sync( sync_t sync )
 void rdp_set_clipping( uint32_t tx, uint32_t ty, uint32_t bx, uint32_t by )
 {
     /* Convert pixel space to screen space in command */
-    rdp_set_scissor(tx << 2, ty << 2, bx << 2, by << 2);
+    rdp_set_scissor_raw(tx << 2, ty << 2, bx << 2, by << 2);
 }
 
 void rdp_set_default_clipping( void )
@@ -460,19 +268,19 @@ void rdp_set_default_clipping( void )
 void rdp_enable_primitive_fill( void )
 {
     /* Set other modes to fill and other defaults */
-    rdp_set_other_modes(SOM_ATOMIC_PRIM | SOM_CYCLE_FILL | SOM_RGBDITHER_NONE | SOM_ALPHADITHER_NONE | SOM_BLENDING);
+    rdp_set_other_modes_raw(SOM_ATOMIC_PRIM | SOM_CYCLE_FILL | SOM_RGBDITHER_NONE | SOM_ALPHADITHER_NONE | SOM_BLENDING);
 }
 
 void rdp_enable_blend_fill( void )
 {
     // TODO: Macros for blend modes (this sets blend rgb times input alpha on cycle 0)
-    rdp_set_other_modes(SOM_CYCLE_1 | SOM_RGBDITHER_NONE | SOM_ALPHADITHER_NONE | 0x80000000);
+    rdp_set_other_modes_raw(SOM_CYCLE_1 | SOM_RGBDITHER_NONE | SOM_ALPHADITHER_NONE | 0x80000000);
 }
 
 void rdp_enable_texture_copy( void )
 {
     /* Set other modes to copy and other defaults */
-    rdp_set_other_modes(SOM_ATOMIC_PRIM | SOM_CYCLE_COPY | SOM_RGBDITHER_NONE | SOM_ALPHADITHER_NONE | SOM_BLENDING | SOM_ALPHA_COMPARE);
+    rdp_set_other_modes_raw(SOM_ATOMIC_PRIM | SOM_CYCLE_COPY | SOM_RGBDITHER_NONE | SOM_ALPHADITHER_NONE | SOM_BLENDING | SOM_ALPHA_COMPARE);
 }
 
 /**
@@ -510,7 +318,7 @@ static uint32_t __rdp_load_texture( uint32_t texslot, uint32_t texloc, mirror_t 
     }
 
     /* Point the RDP at the actual sprite data */
-    rdp_set_texture_image((uint32_t)sprite->data, RDP_TILE_FORMAT_RGBA, (sprite->bitdepth == 2) ? RDP_TILE_SIZE_16BIT : RDP_TILE_SIZE_32BIT, sprite->width - 1);
+    rdp_set_texture_image_raw((uint32_t)sprite->data, RDP_TILE_FORMAT_RGBA, (sprite->bitdepth == 2) ? RDP_TILE_SIZE_16BIT : RDP_TILE_SIZE_32BIT, sprite->width - 1);
 
     /* Figure out the s,t coordinates of the sprite we are copying out of */
     int twidth = sh - sl + 1;
@@ -526,7 +334,7 @@ static uint32_t __rdp_load_texture( uint32_t texslot, uint32_t texloc, mirror_t 
     int round_amount = (real_width % 8) ? 1 : 0;
 
     /* Instruct the RDP to copy the sprite data out */
-    rdp_set_tile(
+    rdp_set_tile_raw(
         RDP_TILE_FORMAT_RGBA, 
         (sprite->bitdepth == 2) ? RDP_TILE_SIZE_16BIT : RDP_TILE_SIZE_32BIT, 
         (((real_width / 8) + round_amount) * sprite->bitdepth) & 0x1FF,
@@ -543,7 +351,7 @@ static uint32_t __rdp_load_texture( uint32_t texslot, uint32_t texloc, mirror_t 
         0);
 
     /* Copying out only a chunk this time */
-    rdp_load_tile(0, (sl << 2) & 0xFFF, (tl << 2) & 0xFFF, (sh << 2) & 0xFFF, (th << 2) & 0xFFF);
+    rdp_load_tile_raw(0, (sl << 2) & 0xFFF, (tl << 2) & 0xFFF, (sh << 2) & 0xFFF, (th << 2) & 0xFFF);
 
     /* Save sprite width and height for managed sprite commands */
     cache[texslot & 0x7].width = twidth - 1;
@@ -618,7 +426,7 @@ void rdp_draw_textured_rectangle_scaled( uint32_t texslot, int tx, int ty, int b
 
     /* Set up rectangle position in screen space */
     /* Set up texture position and scaling to 1:1 copy */
-    rdp_texture_rectangle(texslot & 0x7, tx << 2, ty << 2, bx << 2, by << 2, s, t, xs & 0xFFFF, ys & 0xFFFF);
+    rdp_texture_rectangle_raw(texslot & 0x7, tx << 2, ty << 2, bx << 2, by << 2, s, t, xs & 0xFFFF, ys & 0xFFFF);
 }
 
 void rdp_draw_textured_rectangle( uint32_t texslot, int tx, int ty, int bx, int by, mirror_t mirror )
@@ -646,7 +454,12 @@ void rdp_draw_sprite_scaled( uint32_t texslot, int x, int y, double x_scale, dou
 void rdp_set_primitive_color( uint32_t color )
 {
     /* Set packed color */
-    rdp_set_fill_color(color);
+    rdp_set_fill_color_raw(color);
+}
+
+void rdp_set_blend_color( uint32_t color )
+{
+    rdp_set_blend_color_raw(color);
 }
 
 void rdp_draw_filled_rectangle( int tx, int ty, int bx, int by )
@@ -654,7 +467,7 @@ void rdp_draw_filled_rectangle( int tx, int ty, int bx, int by )
     if( tx < 0 ) { tx = 0; }
     if( ty < 0 ) { ty = 0; }
 
-    rdp_fill_rectangle(tx << 2, ty << 2, bx << 2, by << 2);
+    rdp_fill_rectangle_raw(tx << 2, ty << 2, bx << 2, by << 2);
 }
 
 void rdp_draw_filled_triangle( float x1, float y1, float x2, float y2, float x3, float y3 )
@@ -693,6 +506,198 @@ void rdp_draw_filled_triangle( float x1, float y1, float x2, float y2, float x3,
 void rdp_set_texture_flush( flush_t flush )
 {
     flush_strategy = flush;
+}
+
+/** @brief Used internally for bit-packing RDP commands. */
+#define _carg(value, mask, shift) (((uint32_t)((value) & mask)) << shift)
+
+void rdp_texture_rectangle_raw(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t ds, int16_t dt)
+{
+    rspq_write(0x24,
+        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0),
+        _carg(tile, 0x7, 24) | _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0),
+        _carg(s, 0xFFFF, 16) | _carg(t, 0xFFFF, 0),
+        _carg(ds, 0xFFFF, 16) | _carg(dt, 0xFFFF, 0));
+}
+
+void rdp_texture_rectangle_flip_raw(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t ds, int16_t dt)
+{
+    rspq_write(0x25,
+        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0),
+        _carg(tile, 0x7, 24) | _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0),
+        _carg(s, 0xFFFF, 16) | _carg(t, 0xFFFF, 0),
+        _carg(ds, 0xFFFF, 16) | _carg(dt, 0xFFFF, 0));
+}
+
+void rdp_sync_load_raw()
+{
+    rspq_write(0x26, 0, 0);
+}
+
+void rdp_sync_pipe_raw()
+{
+    rspq_write(0x27, 0, 0);
+}
+
+void rdp_sync_tile_raw()
+{
+    rspq_write(0x28, 0, 0);
+}
+
+void rdp_sync_full_raw()
+{
+    rspq_write(0x29, 0, 0);
+    rspq_flush();
+}
+
+void rdp_set_key_gb_raw(uint16_t wg, uint8_t wb, uint8_t cg, uint16_t sg, uint8_t cb, uint8_t sb)
+{
+    rspq_write(0x2A,
+        _carg(wg, 0xFFF, 12) | _carg(wb, 0xFFF, 0),
+        _carg(cg, 0xFF, 24) | _carg(sg, 0xFF, 16) | _carg(cb, 0xFF, 8) | _carg(sb, 0xFF, 0));
+}
+
+void rdp_set_key_r_raw(uint16_t wr, uint8_t cr, uint8_t sr)
+{
+    rspq_write(0x2B,
+        0,
+        _carg(wr, 0xFFF, 16) | _carg(cr, 0xFF, 8) | _carg(sr, 0xFF, 0));
+}
+
+void rdp_set_convert_raw(uint16_t k0, uint16_t k1, uint16_t k2, uint16_t k3, uint16_t k4, uint16_t k5)
+{
+    rspq_write(0x2C,
+        _carg(k0, 0x1FF, 13) | _carg(k1, 0x1FF, 4) | (((uint32_t)(k2 & 0x1FF)) >> 5),
+        _carg(k2, 0x1F, 27) | _carg(k3, 0x1FF, 18) | _carg(k4, 0x1FF, 9) | _carg(k5, 0x1FF, 0));
+}
+
+void rdp_set_scissor_raw(int16_t x0, int16_t y0, int16_t x1, int16_t y1)
+{
+    rspq_write(0x2D,
+        _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0),
+        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0));
+}
+
+void rdp_set_prim_depth_raw(uint16_t primitive_z, uint16_t primitive_delta_z)
+{
+    rspq_write(0x2E,
+        0,
+        _carg(primitive_z, 0xFFFF, 16) | _carg(primitive_delta_z, 0xFFFF, 0));
+}
+
+void rdp_set_other_modes_raw(uint64_t modes)
+{
+    rspq_write(0x2F, 
+        ((modes >> 32) & 0x00FFFFFF),
+        modes & 0xFFFFFFFF);
+}
+
+void rdp_load_tlut_raw(uint8_t tile, uint8_t lowidx, uint8_t highidx)
+{
+    rspq_write(0x30,
+        _carg(lowidx, 0xFF, 14),
+        _carg(tile, 0x7, 24) | _carg(highidx, 0xFF, 14));
+}
+
+void rdp_set_tile_size_raw(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1)
+{
+    rspq_write(0x32,
+        _carg(s0, 0xFFF, 12) | _carg(t0, 0xFFF, 0),
+        _carg(tile, 0x7, 24) | _carg(s1, 0xFFF, 12) | _carg(t1, 0xFFF, 0));
+}
+
+void rdp_load_block_raw(uint8_t tile, uint16_t s0, uint16_t t0, uint16_t s1, uint16_t dxt)
+{
+    rspq_write(0x33,
+        _carg(s0, 0xFFF, 12) | _carg(t0, 0xFFF, 0),
+        _carg(tile, 0x7, 24) | _carg(s1, 0xFFF, 12) | _carg(dxt, 0xFFF, 0));
+}
+
+void rdp_load_tile_raw(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1)
+{
+    rspq_write(0x34,
+        _carg(s0, 0xFFF, 12) | _carg(t0, 0xFFF, 0),
+        _carg(tile, 0x7, 24) | _carg(s1, 0xFFF, 12) | _carg(t1, 0xFFF, 0));
+}
+
+void rdp_set_tile_raw(uint8_t format, uint8_t size, uint16_t line, uint16_t tmem_addr,
+                      uint8_t tile, uint8_t palette, uint8_t ct, uint8_t mt, uint8_t mask_t, uint8_t shift_t,
+                      uint8_t cs, uint8_t ms, uint8_t mask_s, uint8_t shift_s)
+{
+    rspq_write(0x35,
+        _carg(format, 0x7, 21) | _carg(size, 0x3, 19) | _carg(line, 0x1FF, 9) | _carg(tmem_addr, 0x1FF, 0),
+        _carg(tile, 0x7, 24) | _carg(palette, 0xF, 20) | _carg(ct, 0x1, 19) | _carg(mt, 0x1, 18) | _carg(mask_t, 0xF, 14) | 
+        _carg(shift_t, 0xF, 10) | _carg(cs, 0x1, 9) | _carg(ms, 0x1, 8) | _carg(mask_s, 0xF, 4) | _carg(shift_s, 0xF, 0));
+}
+
+void rdp_fill_rectangle_raw(int16_t x0, int16_t y0, int16_t x1, int16_t y1)
+{
+    rspq_write(0x36,
+        _carg(x1, 0xFFF, 12) | _carg(y1, 0xFFF, 0),
+        _carg(x0, 0xFFF, 12) | _carg(y0, 0xFFF, 0));
+}
+
+void rdp_set_fill_color_raw(uint32_t color)
+{
+    rspq_write(0x37,
+        0,
+        color);
+}
+
+void rdp_set_fog_color_raw(uint32_t color)
+{
+    rspq_write(0x38,
+        0,
+        color);
+}
+
+void rdp_set_blend_color_raw(uint32_t color)
+{
+    rspq_write(0x39,
+        0,
+        color);
+}
+
+void rdp_set_prim_color_raw(uint32_t color)
+{
+    rspq_write(0x3A,
+        0,
+        color);
+}
+
+void rdp_set_env_color_raw(uint32_t color)
+{
+    rspq_write(0x3B,
+        0,
+        color);
+}
+
+void rdp_set_combine_mode_raw(uint64_t flags)
+{
+    rspq_write(0x3C, 
+        (flags >> 32) & 0x00FFFFFF, 
+        flags & 0xFFFFFFFF);
+}
+
+void rdp_set_texture_image_raw(uint32_t dram_addr, uint8_t format, uint8_t size, uint16_t width)
+{
+    rspq_write(0x3D,
+        _carg(format, 0x7, 21) | _carg(size, 0x3, 19) | _carg(width, 0x3FF, 0),
+        dram_addr & 0x1FFFFFF);
+}
+
+void rdp_set_z_image_raw(uint32_t dram_addr)
+{
+    rspq_write(0x3E,
+        0,
+        dram_addr & 0x1FFFFFF);
+}
+
+void rdp_set_color_image_raw(uint32_t dram_addr, uint32_t format, uint32_t size, uint32_t width)
+{
+    rspq_write(0x3F,
+        _carg(format, 0x7, 21) | _carg(size, 0x3, 19) | _carg(width, 0x3FF, 0),
+        dram_addr & 0x1FFFFFF);
 }
 
 /** @} */

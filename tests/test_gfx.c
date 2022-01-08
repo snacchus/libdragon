@@ -36,7 +36,7 @@ void test_gfx_rdp_interrupt(TestContext *ctx)
     gfx_init();
     DEFER(gfx_close());
 
-    rdp_sync_full();
+    rdp_sync_full_raw();
 
     wait_for_dp_interrupt(gfx_timeout);
 
@@ -66,13 +66,13 @@ void test_gfx_dram_buffer(TestContext *ctx)
 
     data_cache_hit_writeback_invalidate(framebuffer, fbsize);
 
-    rdp_set_other_modes(SOM_CYCLE_FILL);
-    rdp_set_scissor(0, 0, 32 << 2, 32 << 2);
-    rdp_set_fill_color(0xFFFFFFFF);
+    rdp_set_other_modes_raw(SOM_CYCLE_FILL);
+    rdp_set_scissor_raw(0, 0, 32 << 2, 32 << 2);
+    rdp_set_fill_color_raw(0xFFFFFFFF);
     rspq_noop();
-    rdp_set_color_image((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
-    rdp_fill_rectangle(0, 0, 32 << 2, 32 << 2);
-    rdp_sync_full();
+    rdp_set_color_image_raw((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
+    rdp_fill_rectangle_raw(0, 0, 32 << 2, 32 << 2);
+    rdp_sync_full_raw();
 
     wait_for_dp_interrupt(gfx_timeout);
 
@@ -115,18 +115,18 @@ void test_gfx_fill_dmem_buffer(TestContext *ctx)
 
     data_cache_hit_writeback_invalidate(framebuffer, fbsize);
 
-    rdp_set_other_modes(SOM_CYCLE_FILL);
-    rdp_set_scissor(0, 0, 32 << 2, 32 << 2);
-    rdp_set_fill_color(0xFFFFFFFF);
+    rdp_set_other_modes_raw(SOM_CYCLE_FILL);
+    rdp_set_scissor_raw(0, 0, 32 << 2, 32 << 2);
+    rdp_set_fill_color_raw(0xFFFFFFFF);
 
     for (uint32_t i = 0; i < GFX_RDP_DMEM_BUFFER_SIZE / 8; i++)
     {
-        rdp_set_prim_color(0x0);
+        rdp_set_prim_color_raw(0x0);
     }
 
-    rdp_set_color_image((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
-    rdp_fill_rectangle(0, 0, 32 << 2, 32 << 2);
-    rdp_sync_full();
+    rdp_set_color_image_raw((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
+    rdp_fill_rectangle_raw(0, 0, 32 << 2, 32 << 2);
+    rdp_sync_full_raw();
 
     wait_for_dp_interrupt(gfx_timeout);
 
@@ -158,18 +158,18 @@ void test_gfx_fill_dram_buffer(TestContext *ctx)
 
     data_cache_hit_writeback_invalidate(framebuffer, fbsize);
 
-    rdp_set_other_modes(SOM_CYCLE_FILL);
-    rdp_set_scissor(0, 0, 32 << 2, 32 << 2);
-    rdp_set_fill_color(0xFFFFFFFF);
+    rdp_set_other_modes_raw(SOM_CYCLE_FILL);
+    rdp_set_scissor_raw(0, 0, 32 << 2, 32 << 2);
+    rdp_set_fill_color_raw(0xFFFFFFFF);
 
     for (uint32_t i = 0; i < GFX_RDP_DRAM_BUFFER_SIZE / 8; i++)
     {
-        rdp_set_prim_color(0x0);
+        rdp_set_prim_color_raw(0x0);
     }
 
-    rdp_set_color_image((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
-    rdp_fill_rectangle(0, 0, 32 << 2, 32 << 2);
-    rdp_sync_full();
+    rdp_set_color_image_raw((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
+    rdp_fill_rectangle_raw(0, 0, 32 << 2, 32 << 2);
+    rdp_sync_full_raw();
 
     wait_for_dp_interrupt(gfx_timeout);
 

@@ -67,143 +67,6 @@ extern "C" {
 void rdp_init( void );
 
 /**
- * @brief Low level function to draw a textured rectangle
- */
-void rdp_texture_rectangle(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t dsdx, int16_t dtdy);
-
-/**
- * @brief Low level function to draw a textured rectangle (s and t coordinates flipped)
- */
-void rdp_texture_rectangle_flip(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t dsdx, int16_t dtdy);
-
-/**
- * @brief Low level function to sync the RDP pipeline
- */
-void rdp_sync_pipe();
-
-/**
- * @brief Low level function to sync RDP tile operations
- */
-void rdp_sync_tile();
-
-/**
- * @brief Wait for any operation to complete before causing a DP interrupt
- */
-void rdp_sync_full();
-
-/**
- * @brief Low level function to set the green and blue components of the chroma key
- */
-void rdp_set_key_gb(uint16_t wg, uint8_t wb, uint8_t cg, uint16_t sg, uint8_t cb, uint8_t sb);
-
-/**
- * @brief Low level function to set the red component of the chroma key
- */
-void rdp_set_key_r(uint16_t wr, uint8_t cr, uint8_t sr);
-
-/**
- * @brief Low level functions to set the matrix coefficients for texture format conversion
- */
-void rdp_set_convert(uint16_t k0, uint16_t k1, uint16_t k2, uint16_t k3, uint16_t k4, uint16_t k5);
-
-/**
- * @brief Low level function to set the scissoring region
- */
-void rdp_set_scissor(int16_t xh, int16_t yh, int16_t xl, int16_t yl);
-
-/**
- * @brief Low level function to set the primitive depth
- */
-void rdp_set_prim_depth(uint16_t primitive_z, uint16_t primitive_delta_z);
-
-/**
- * @brief Low level function to set the "other modes"
- */
-void rdp_set_other_modes(uint64_t modes);
-
-/**
- * @brief Low level function to load a texture palette into TMEM
- */
-void rdp_load_tlut(uint8_t tile, uint8_t lowidx, uint8_t highidx);
-
-/**
- * @brief Low level function to synchronize RDP texture load operations
- */
-void rdp_sync_load();
-
-/**
- * @brief Low level function to set the size of a tile descriptor
- */
-void rdp_set_tile_size(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1);
-
-/**
- * @brief Low level function to load a texture image into TMEM in a single memory transfer
- */
-void rdp_load_block(uint8_t tile, uint16_t s0, uint16_t t0, uint16_t s1, uint16_t dxt);
-
-/**
- * @brief Low level function to load a texture image into TMEM
- */
-void rdp_load_tile(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1);
-
-/**
- * @brief Low level function to set the properties of a tile descriptor
- */
-void rdp_set_tile(uint8_t format, uint8_t size, uint16_t line, uint16_t tmem_addr,
-                  uint8_t tile, uint8_t palette, uint8_t ct, uint8_t mt, uint8_t mask_t, uint8_t shift_t,
-                  uint8_t cs, uint8_t ms, uint8_t mask_s, uint8_t shift_s);
-
-/**
- * @brief Low level function to render a rectangle filled with a solid color
- */
-void rdp_fill_rectangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1);
-
-/**
- * @brief Low level function to set the fill color
- */
-void rdp_set_fill_color(uint32_t color);
-
-/**
- * @brief Low level function to set the fog color
- */
-void rdp_set_fog_color(uint32_t color);
-
-/**
- * @brief Low level function to set the blend color
- */
-void rdp_set_blend_color(uint32_t color);
-
-/**
- * @brief Low level function to set the primitive color
- */
-void rdp_set_prim_color(uint32_t color);
-
-/**
- * @brief Low level function to set the environment color
- */
-void rdp_set_env_color(uint32_t color);
-
-/**
- * @brief Low level function to set the color combiner parameters
- */
-void rdp_set_combine_mode(uint64_t flags);
-
-/**
- * @brief Low level function to set RDRAM pointer to a texture image
- */
-void rdp_set_texture_image(uint32_t dram_addr, uint8_t format, uint8_t size, uint16_t width);
-
-/**
- * @brief Low level function to set RDRAM pointer to the depth buffer
- */
-void rdp_set_z_image(uint32_t dram_addr);
-
-/**
- * @brief Low level function to set RDRAM pointer to the color buffer
- */
-void rdp_set_color_image(uint32_t dram_addr, uint32_t format, uint32_t size, uint32_t width);
-
-/**
  * @brief Attach the RDP to a display context
  *
  * This function allows the RDP to operate on display contexts fetched with #display_lock.
@@ -480,6 +343,16 @@ void rdp_draw_sprite_scaled( uint32_t texslot, int x, int y, double x_scale, dou
 void rdp_set_primitive_color( uint32_t color );
 
 /**
+ * @brief Set the blend draw color for subsequent filled primitive operations
+ *
+ * This function sets the color of all #rdp_draw_filled_triangle operations that follow.
+ *
+ * @param[in] color
+ *            Color to draw primitives in
+ */
+void rdp_set_blend_color( uint32_t color );
+
+/**
  * @brief Draw a filled rectangle
  *
  * Given a color set with #rdp_set_primitive_color, this will draw a filled rectangle
@@ -549,6 +422,143 @@ void rdp_set_texture_flush( flush_t flush );
  * allocated by #rdp_init.
  */
 void rdp_close( void );
+
+/**
+ * @brief Low level function to draw a textured rectangle
+ */
+void rdp_texture_rectangle_raw(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t dsdx, int16_t dtdy);
+
+/**
+ * @brief Low level function to draw a textured rectangle (s and t coordinates flipped)
+ */
+void rdp_texture_rectangle_flip_raw(uint8_t tile, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t s, int16_t t, int16_t dsdx, int16_t dtdy);
+
+/**
+ * @brief Low level function to sync the RDP pipeline
+ */
+void rdp_sync_pipe_raw();
+
+/**
+ * @brief Low level function to sync RDP tile operations
+ */
+void rdp_sync_tile_raw();
+
+/**
+ * @brief Wait for any operation to complete before causing a DP interrupt
+ */
+void rdp_sync_full_raw();
+
+/**
+ * @brief Low level function to set the green and blue components of the chroma key
+ */
+void rdp_set_key_gb_raw(uint16_t wg, uint8_t wb, uint8_t cg, uint16_t sg, uint8_t cb, uint8_t sb);
+
+/**
+ * @brief Low level function to set the red component of the chroma key
+ */
+void rdp_set_key_r_raw(uint16_t wr, uint8_t cr, uint8_t sr);
+
+/**
+ * @brief Low level functions to set the matrix coefficients for texture format conversion
+ */
+void rdp_set_convert_raw(uint16_t k0, uint16_t k1, uint16_t k2, uint16_t k3, uint16_t k4, uint16_t k5);
+
+/**
+ * @brief Low level function to set the scissoring region
+ */
+void rdp_set_scissor_raw(int16_t xh, int16_t yh, int16_t xl, int16_t yl);
+
+/**
+ * @brief Low level function to set the primitive depth
+ */
+void rdp_set_prim_depth_raw(uint16_t primitive_z, uint16_t primitive_delta_z);
+
+/**
+ * @brief Low level function to set the "other modes"
+ */
+void rdp_set_other_modes_raw(uint64_t modes);
+
+/**
+ * @brief Low level function to load a texture palette into TMEM
+ */
+void rdp_load_tlut_raw(uint8_t tile, uint8_t lowidx, uint8_t highidx);
+
+/**
+ * @brief Low level function to synchronize RDP texture load operations
+ */
+void rdp_sync_load_raw();
+
+/**
+ * @brief Low level function to set the size of a tile descriptor
+ */
+void rdp_set_tile_size_raw(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1);
+
+/**
+ * @brief Low level function to load a texture image into TMEM in a single memory transfer
+ */
+void rdp_load_block_raw(uint8_t tile, uint16_t s0, uint16_t t0, uint16_t s1, uint16_t dxt);
+
+/**
+ * @brief Low level function to load a texture image into TMEM
+ */
+void rdp_load_tile_raw(uint8_t tile, int16_t s0, int16_t t0, int16_t s1, int16_t t1);
+
+/**
+ * @brief Low level function to set the properties of a tile descriptor
+ */
+void rdp_set_tile_raw(uint8_t format, uint8_t size, uint16_t line, uint16_t tmem_addr,
+                      uint8_t tile, uint8_t palette, uint8_t ct, uint8_t mt, uint8_t mask_t, uint8_t shift_t,
+                      uint8_t cs, uint8_t ms, uint8_t mask_s, uint8_t shift_s);
+
+/**
+ * @brief Low level function to render a rectangle filled with a solid color
+ */
+void rdp_fill_rectangle_raw(int16_t x0, int16_t y0, int16_t x1, int16_t y1);
+
+/**
+ * @brief Low level function to set the fill color
+ */
+void rdp_set_fill_color_raw(uint32_t color);
+
+/**
+ * @brief Low level function to set the fog color
+ */
+void rdp_set_fog_color_raw(uint32_t color);
+
+/**
+ * @brief Low level function to set the blend color
+ */
+void rdp_set_blend_color_raw(uint32_t color);
+
+/**
+ * @brief Low level function to set the primitive color
+ */
+void rdp_set_prim_color_raw(uint32_t color);
+
+/**
+ * @brief Low level function to set the environment color
+ */
+void rdp_set_env_color_raw(uint32_t color);
+
+/**
+ * @brief Low level function to set the color combiner parameters
+ */
+void rdp_set_combine_mode_raw(uint64_t flags);
+
+/**
+ * @brief Low level function to set RDRAM pointer to a texture image
+ */
+void rdp_set_texture_image_raw(uint32_t dram_addr, uint8_t format, uint8_t size, uint16_t width);
+
+/**
+ * @brief Low level function to set RDRAM pointer to the depth buffer
+ */
+void rdp_set_z_image_raw(uint32_t dram_addr);
+
+/**
+ * @brief Low level function to set RDRAM pointer to the color buffer
+ */
+void rdp_set_color_image_raw(uint32_t dram_addr, uint32_t format, uint32_t size, uint32_t width);
 
 #ifdef __cplusplus
 }

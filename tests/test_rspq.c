@@ -302,7 +302,7 @@ void test_rspq_load_overlay(TestContext *ctx)
     gfx_init();
     DEFER(gfx_close());
 
-    rdp_set_env_color(0);
+    rdp_set_env_color_raw(0);
 
     TEST_RSPQ_EPILOG(0, rspq_timeout);
     
@@ -323,7 +323,7 @@ void test_rspq_switch_overlay(TestContext *ctx)
     gfx_init();
     DEFER(gfx_close());
 
-    rdp_set_env_color(0);
+    rdp_set_env_color_raw(0);
     rspq_test_16(0);
 
     TEST_RSPQ_EPILOG(0, rspq_timeout);
