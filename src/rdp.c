@@ -210,6 +210,7 @@ void rdp_detach_display( void )
 
     /* Force the RDP to rasterize everything and then interrupt us */
     rdp_sync_full_raw();
+    rspq_flush();
 
     if( INTERRUPTS_ENABLED == get_interrupts_state() )
     {
@@ -232,6 +233,7 @@ void rdp_detach_display_async(void (*cb)(display_context_t disp))
     assertf(cb != NULL, "Callback should not be NULL!");
     detach_callback = cb;
     rdp_sync_full_raw();
+    rspq_flush();
 }
 
 void rdp_sync( sync_t sync )
@@ -547,7 +549,6 @@ void rdp_sync_tile_raw()
 void rdp_sync_full_raw()
 {
     rspq_write(0x29, 0, 0);
-    rspq_flush();
 }
 
 void rdp_set_key_gb_raw(uint16_t wg, uint8_t wb, uint8_t cg, uint16_t sg, uint8_t cb, uint8_t sb)

@@ -37,6 +37,7 @@ void test_gfx_rdp_interrupt(TestContext *ctx)
     DEFER(gfx_close());
 
     rdp_sync_full_raw();
+    rspq_flush();
 
     wait_for_dp_interrupt(gfx_timeout);
 
@@ -73,6 +74,7 @@ void test_gfx_dram_buffer(TestContext *ctx)
     rdp_set_color_image_raw((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
     rdp_fill_rectangle_raw(0, 0, 32 << 2, 32 << 2);
     rdp_sync_full_raw();
+    rspq_flush();
 
     wait_for_dp_interrupt(gfx_timeout);
 
@@ -127,6 +129,7 @@ void test_gfx_fill_dmem_buffer(TestContext *ctx)
     rdp_set_color_image_raw((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
     rdp_fill_rectangle_raw(0, 0, 32 << 2, 32 << 2);
     rdp_sync_full_raw();
+    rspq_flush();
 
     wait_for_dp_interrupt(gfx_timeout);
 
@@ -170,6 +173,7 @@ void test_gfx_fill_dram_buffer(TestContext *ctx)
     rdp_set_color_image_raw((uint32_t)framebuffer, RDP_TILE_FORMAT_RGBA, RDP_TILE_SIZE_16BIT, 31);
     rdp_fill_rectangle_raw(0, 0, 32 << 2, 32 << 2);
     rdp_sync_full_raw();
+    rspq_flush();
 
     wait_for_dp_interrupt(gfx_timeout);
 
