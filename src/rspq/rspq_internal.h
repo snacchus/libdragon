@@ -13,6 +13,9 @@
 /** Maximum number of overlays that can be registered (affects DMEM table size) */
 #define RSPQ_MAX_OVERLAY_COUNT         8
 
+#define RSPQ_RDP_DYNAMIC_BUFFER_SIZE   0x1000
+#define RSPQ_RDP_STATIC_BUFFER_SIZE    0x1000
+
 /** Minimum / maximum size of a block's chunk (contiguous memory buffer) */
 #define RSPQ_BLOCK_MIN_SIZE            64
 #define RSPQ_BLOCK_MAX_SIZE            4192

@@ -31,6 +31,9 @@
     .short (\function - _start) | ((\size) & 0x3C) << 10
 .endm
 
+# TODO: Initialize the header from CPU instead so the cmdBase can be determined correctly (after making them dynamic).
+#       The CPU can then also validate the state length. Currently if stateStart == stateEnd, then length becomes -1 (0xFFF)
+#       so a DMA transfer of 0x1000 would be attempted, overwriting the entirety of DMEM!!!
 .macro RSPQ_OverlayHeader stateStart, stateEnd, cmdBase
     OVERLAY_HEADER:
     .long \stateStart

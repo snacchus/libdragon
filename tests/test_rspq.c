@@ -84,7 +84,8 @@ void dump_mem(void* ptr, uint32_t size)
     for (uint32_t i = 0; i < size / sizeof(uint32_t); i += 8)
     {
         uint32_t *ints = ptr + i * sizeof(uint32_t);
-        debugf("%#010lX: %08lX %08lX %08lX %08lX %08lX %08lX %08lX %08lX\n", (uint32_t)ints, ints[0], ints[1], ints[2], ints[3], ints[4], ints[5], ints[6], ints[7]);
+        debugf("%08lX: %08lX %08lX %08lX %08lX %08lX %08lX %08lX %08lX\n",
+            (uint32_t)(ints) - (uint32_t)(ptr), ints[0], ints[1], ints[2], ints[3], ints[4], ints[5], ints[6], ints[7]);
     }
 }
 
@@ -697,5 +698,38 @@ void test_rspq_highpri_overlay(TestContext *ctx)
     rspq_sync();
         
     ASSERT_EQUAL_UNSIGNED(actual_sum[1], 123, "highpri sum is not correct");
+    TEST_RSPQ_EPILOG(0, rspq_timeout);
+}
+
+void test_rspq_rdp_static(TestContext *ctx)
+{
+    TEST_RSPQ_PROLOG();
+
+    const uint32_t count = 0x100;
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        rdp_write(0, 0, i);
+    }
+
+    TEST_RSPQ_EPILOG(0, rspq_timeout);
+
+    extern void *rspq_rdp_static_buffer;
+
+    ASSERT_EQUAL_HEX(*DP_START, PhysicalAddr(rspq_rdp_static_buffer), "DP_START does not match!");
+    ASSERT_EQUAL_HEX(*DP_END, PhysicalAddr(rspq_rdp_static_buffer) + count * 8, "DP_END does not match!");
+
+    uint64_t *rdp_buf = (uint64_t*)rspq_rdp_static_buffer;
+
+    for (uint64_t i = 0; i < count; i++)
+    {
+        ASSERT_EQUAL_HEX(rdp_buf[i], i, "Wrong command at idx: %llx", i);
+    }
+}
+
+void test_rspq_rdp_static_wrap(TestContext *ctx)
+{
+    TEST_RSPQ_PROLOG();
+
     TEST_RSPQ_EPILOG(0, rspq_timeout);
 }

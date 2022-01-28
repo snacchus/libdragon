@@ -507,15 +507,19 @@ display_context_t display_lock()
     /* Can't have the video interrupt happening here */
     disable_interrupts();
 
-    for( int i = 0; i < __buffers; i++ )
+    /* Only allow locking a new display if none is already locked */
+    if (now_drawing < 0)
     {
-        if( i != now_showing && i != now_drawing && i != show_next )
+        for( int i = 0; i < __buffers; i++ )
         {
-            /* This screen should be returned */
-            now_drawing = i;
-            retval = i + 1;
+            if( i != now_showing && i != now_drawing && i != show_next )
+            {
+                /* This screen should be returned */
+                now_drawing = i;
+                retval = i + 1;
 
-            break;
+                break;
+            }
         }
     }
 
@@ -524,6 +528,10 @@ display_context_t display_lock()
     /* Possibility of returning nothing, or a valid display context */
     return retval;
 }
+
+// TODO:
+// * let display_show not assert anymore if you lock another display meanwhile.
+//   I would probably switch the now_drawing variable to a bitmask so that you can have multiple displays locked.
 
 /**
  * @brief Display a previously locked buffer

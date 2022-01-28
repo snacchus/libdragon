@@ -590,11 +590,9 @@ void mixer_exec(int32_t *out, int num_samples) {
 		(num_samples << 16) | Mixer.num_channels,
 		PhysicalAddr(out),
 		PhysicalAddr(&Mixer.ucode_settings));
-
-	rspq_syncpoint_t sync = rspq_syncpoint();
 	rspq_highpri_end();
 
-	rspq_wait_syncpoint(sync);
+	rspq_highpri_sync();
 
 	__mixer_profile_rsp += TICKS_READ() - t0;
 
