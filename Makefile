@@ -34,7 +34,7 @@ libdragon.a: $(BUILD_DIR)/n64sys.o $(BUILD_DIR)/interrupt.o \
 			 $(BUILD_DIR)/dma.o $(BUILD_DIR)/timer.o \
 			 $(BUILD_DIR)/exception.o $(BUILD_DIR)/do_ctors.o \
 			 $(BUILD_DIR)/video/mpeg2.o $(BUILD_DIR)/video/yuv.o \
-			 $(BUILD_DIR)/video/profile.o $(BUILD_DIR)/video/throttle.o \
+			 $(BUILD_DIR)/video/throttle.o \
 			 $(BUILD_DIR)/video/rsp_yuv.o $(BUILD_DIR)/video/rsp_mpeg1.o \
 			 $(BUILD_DIR)/audio/mixer.o $(BUILD_DIR)/audio/samplebuffer.o \
 			 $(BUILD_DIR)/audio/rsp_mixer.o $(BUILD_DIR)/audio/wav64.o \
@@ -52,7 +52,7 @@ libdragon.a: $(BUILD_DIR)/n64sys.o $(BUILD_DIR)/interrupt.o \
 			 $(BUILD_DIR)/GL/array.o $(BUILD_DIR)/GL/pixelrect.o \
 			 $(BUILD_DIR)/GL/obj_map.o $(BUILD_DIR)/GL/list.o \
 			 $(BUILD_DIR)/GL/buffer.o $(BUILD_DIR)/GL/rsp_gl.o \
-			 $(BUILD_DIR)/GL/rsp_gl_pipeline.o
+			 $(BUILD_DIR)/GL/rsp_gl_pipeline.o $(BUILD_DIR)/GL/profile.o
 	@echo "    [AR] $@"
 	$(N64_AR) -rcs -o $@ $^
 

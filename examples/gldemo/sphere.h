@@ -21,8 +21,8 @@ static uint32_t sphere_index_count;
 void setup_sphere()
 {
     glGenBuffersARB(2, sphere_buffers);
-    sphere_rings = 16;
-    sphere_segments = 16;
+    sphere_rings = 32;
+    sphere_segments = 32;
 }
 
 void make_sphere_vertex(vertex_t *dst, uint32_t ring, uint32_t segment)

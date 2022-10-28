@@ -10,6 +10,7 @@
 #include <math.h>
 #include <malloc.h>
 #include "gl_internal.h"
+#include "profile.h"
 
 DEFINE_RSP_UCODE(rsp_gl);
 DEFINE_RSP_UCODE(rsp_gl_pipeline);
@@ -182,6 +183,8 @@ void gl_init_with_callbacks(gl_open_surf_func_t open_surface, gl_close_surf_func
     gl_set_word(GL_UPDATE_SCISSOR, offsetof(gl_server_state_t, fb_size), packed_size);
 
     glScissor(0, 0, state.default_framebuffer.color_buffer->width, state.default_framebuffer.color_buffer->height);
+
+    profile_init();
 }
 
 void gl_close()
@@ -285,12 +288,23 @@ void gl_on_frame_complete(surface_t *surface)
 
 void gl_swap_buffers()
 {
+    PROFILE_START(PS_SYNC, 0);
     rdpq_sync_full((void(*)(void*))gl_on_frame_complete, state.default_framebuffer.color_buffer);
     rspq_flush();
     gl_handle_deletion_lists();
+
+    rspq_wait();
     gl_set_default_framebuffer();
+    PROFILE_STOP(PS_SYNC, 0);
 
     state.frame_id++;
+
+    static int nframes=0;
+    profile_next_frame();
+    if (++nframes % 128 == 0) {
+    	profile_dump();
+    	profile_init();
+    }
 }
 
 GLenum glGetError(void)

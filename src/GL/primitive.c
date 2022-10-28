@@ -4,6 +4,7 @@
 #include "rdpq_mode.h"
 #include "rdpq_debug.h"
 #include "../rdpq/rdpq_internal.h"
+#include "profile.h"
 #include <malloc.h>
 #include <string.h>
 
@@ -215,6 +216,8 @@ void glEnd(void)
 
 void gl_load_attribs(const gl_attrib_source_t *sources, const uint32_t index)
 {
+    PROFILE_START(PS_GL_PIPE_CACHE_FETCH, 0);
+
     static const GLfloat default_values[] = {0, 0, 0, 1};
 
     for (uint32_t i = 0; i < ATTRIB_COUNT; i++)
@@ -235,6 +238,8 @@ void gl_load_attribs(const gl_attrib_source_t *sources, const uint32_t index)
             dst[r] = default_values[r];
         }
     }
+
+    PROFILE_STOP(PS_GL_PIPE_CACHE_FETCH, 0);
 }
 
 uint8_t gl_get_clip_codes(GLfloat *pos, GLfloat *ref)
@@ -254,6 +259,8 @@ uint8_t gl_get_clip_codes(GLfloat *pos, GLfloat *ref)
 
 void gl_vertex_pre_clip(uint8_t cache_index, uint16_t id)
 {
+    PROFILE_START(PS_GL_PIPE_CACHE_PRE_CULL, 0);
+
     gl_prim_vtx_t *v = &state.prim_cache[cache_index];
 
     memcpy(v, state.current_attribs, sizeof(float)*15);
@@ -273,6 +280,8 @@ void gl_vertex_pre_clip(uint8_t cache_index, uint16_t id)
         gl_material_t *m = &state.material_cache[cache_index];
         memcpy(m, &state.material, sizeof(gl_material_t));
     }
+
+    PROFILE_STOP(PS_GL_PIPE_CACHE_PRE_CULL, 0);
 }
 
 void gl_reset_vertex_cache()
@@ -285,6 +294,7 @@ void gl_reset_vertex_cache()
 
 bool gl_check_vertex_cache(uint16_t id, uint8_t *cache_index)
 {
+    PROFILE_START(PS_GL_PIPE_PC_CHECK, 0);
     bool miss = true;
 
     uint32_t min_age = 0xFFFFFFFF;
@@ -304,6 +314,7 @@ bool gl_check_vertex_cache(uint16_t id, uint8_t *cache_index)
 
     state.lru_age_table[*cache_index] = state.lru_next_age++;
     state.vertex_cache_ids[*cache_index] = id;
+    PROFILE_STOP(PS_GL_PIPE_PC_CHECK, 0);
 
     return miss;
 }
@@ -376,6 +387,8 @@ void gl_vertex_calc_screenspace(gl_screen_vtx_t *v)
 
 void gl_vertex_t_l(gl_screen_vtx_t *dst, uint8_t src_index)
 {
+    PROFILE_START(PS_GL_PIPE_PC_T_L, 0);
+
     gl_prim_vtx_t *src = &state.prim_cache[src_index];
 
     gl_matrix_t *mv = gl_matrix_stack_get_matrix(&state.modelview_stack);
@@ -427,6 +440,8 @@ void gl_vertex_t_l(gl_screen_vtx_t *dst, uint8_t src_index)
     memcpy(dst->cs_pos, src->cs_pos, sizeof(dst->cs_pos));
 
     gl_vertex_calc_screenspace(dst);
+
+    PROFILE_STOP(PS_GL_PIPE_PC_T_L, 0);
 }
 
 gl_screen_vtx_t * gl_get_screen_vtx(uint8_t prim_index)
@@ -496,14 +511,19 @@ void gl_draw(const gl_attrib_source_t *sources, uint32_t offset, uint32_t count,
         return;
     }
 
+    PROFILE_START(PS_GL_PIPE, 0);
+
     for (uint32_t i = 0; i < count; i++)
     {
+        PROFILE_START(PS_GL_PIPE_CACHE, 0);
+        PROFILE_START(PS_GL_PIPE_CACHE_INDICES, 0);
         uint32_t index = indices != NULL ? read_index(indices, i) : offset + i;
 
         // The pipeline is based on 16-bit IDs
         assertf(index < (1 << 16), "Index out of range");
         
         uint8_t cache_index = state.prim_next;
+        PROFILE_STOP(PS_GL_PIPE_CACHE_INDICES, 0);
 
         gl_load_attribs(sources, index);
         gl_vertex_pre_clip(cache_index, index);
@@ -516,9 +536,14 @@ void gl_draw(const gl_attrib_source_t *sources, uint32_t offset, uint32_t count,
         do {
             state.prim_next = (state.prim_next + 1) % 4;
         } while (state.prim_next == state.prim_locked);
+        PROFILE_STOP(PS_GL_PIPE_CACHE, 0);
 
+        PROFILE_START(PS_GL_PIPE_PC, 0);
         gl_prim_assembly(cache_index);
+        PROFILE_STOP(PS_GL_PIPE_PC, 0);
     }
+
+    PROFILE_STOP(PS_GL_PIPE, 0);
 }
 
 uint8_t gl_points()
@@ -674,6 +699,7 @@ void gl_cull_triangle(gl_screen_vtx_t *v0, gl_screen_vtx_t *v1, gl_screen_vtx_t 
 
     if (state.cull_face)
     {
+        PROFILE_START(PS_GL_PIPE_PC_CULL, 0);
         float winding = v0->screen_pos[0] * (v1->screen_pos[1] - v2->screen_pos[1]) +
                         v1->screen_pos[0] * (v2->screen_pos[1] - v0->screen_pos[1]) +
                         v2->screen_pos[0] * (v0->screen_pos[1] - v1->screen_pos[1]);
@@ -681,10 +707,13 @@ void gl_cull_triangle(gl_screen_vtx_t *v0, gl_screen_vtx_t *v1, gl_screen_vtx_t 
         bool is_front = (state.front_face == GL_CCW) ^ (winding > 0.0f);
         GLenum face = is_front ? GL_FRONT : GL_BACK;
 
+        PROFILE_STOP(PS_GL_PIPE_PC_CULL, 0);
         if (state.cull_face_mode == face) {
             return;
         }
     }
+
+    PROFILE_START(PS_GL_PIPE_PC_DRAW, 0);
 
     if (state.shade_model == GL_FLAT) {
         memcpy(v2->shade, state.flat_color, sizeof(state.flat_color));
@@ -705,6 +734,8 @@ void gl_cull_triangle(gl_screen_vtx_t *v0, gl_screen_vtx_t *v1, gl_screen_vtx_t 
         gl_draw_triangle(v0, v1, v2);
         break;
     }
+
+    PROFILE_STOP(PS_GL_PIPE_PC_DRAW, 0);
 }
 
 void gl_intersect_line_plane(gl_screen_vtx_t *intersection, const gl_screen_vtx_t *p0, const gl_screen_vtx_t *p1, const float *clip_plane)
@@ -749,6 +780,8 @@ void gl_clip_triangle()
         gl_cull_triangle(v0, v1, v2);
         return;
     }
+
+    PROFILE_START(PS_GL_PIPE_PC_CLIP, 0);
 
     // Polygon clipping using the Sutherland-Hodgman algorithm
     // See https://en.wikipedia.org/wiki/Sutherland%E2%80%93Hodgman_algorithm
@@ -836,6 +869,8 @@ void gl_clip_triangle()
         // Mark all points that were discarded as unused
         cache_used &= ~cache_unused;
     }
+
+    PROFILE_STOP(PS_GL_PIPE_PC_CLIP, 0);
 
     for (uint32_t i = 2; i < out_list->count; i++)
     {
