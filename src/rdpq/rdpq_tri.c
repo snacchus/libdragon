@@ -501,6 +501,11 @@ void rdpq_triangle(rdpq_tile_t tile, uint8_t mipmaps, bool flat_shading, int32_t
 #if RDPQ_TRIANGLE_REFERENCE
     rdpq_triangle_cpu(tile, mipmaps, flat_shading, pos_offset, shade_offset, tex_offset, z_offset, v1, v2, v3);
 #else
+#if 0
+    void (*func)(rdpq_tile_t, uint8_t, bool, int32_t, int32_t, int32_t, int32_t, const float *, const float *, const float *) = UncachedAddr(rdpq_triangle_rsp);
+    func(tile, mipmaps, flat_shading, pos_offset, shade_offset, tex_offset, z_offset, v1, v2, v3);
+#else
     rdpq_triangle_rsp(tile, mipmaps, flat_shading, pos_offset, shade_offset, tex_offset, z_offset, v1, v2, v3);
+#endif
 #endif
 }

@@ -7,6 +7,8 @@
 #include "cube.h"
 #include "sphere.h"
 
+#include "../../src/GL/profile.h"
+
 static uint32_t animation = 3283;
 static uint32_t texture_index = 0;
 
@@ -202,7 +204,9 @@ int main()
             texture_index = (texture_index + 1) % 4;
         }
 
+        PROFILE_START(PS_GL, 0);
         render();
+        PROFILE_STOP(PS_GL, 0);
 
         gl_swap_buffers();
     }

@@ -4,6 +4,7 @@
 #include "rdpq_mode.h"
 #include "rdpq_debug.h"
 #include "../rdpq/rdpq_internal.h"
+#include "profile.h"
 #include <malloc.h>
 #include <string.h>
 
@@ -163,6 +164,7 @@ bool gl_begin(GLenum mode)
 
     __rdpq_autosync_change(AUTOSYNC_TILES);
     gl_update(GL_UPDATE_TEXTURE_UPLOAD);
+
     return true;
 }
 
@@ -299,6 +301,7 @@ void gl_cull_triangle(gl_vertex_t *v0, gl_vertex_t *v1, gl_vertex_t *v2)
 
     if (state.cull_face)
     {
+        PROFILE_START(PS_GL_PIPE_PC_CULL, 0);
         float winding = v0->screen_pos[0] * (v1->screen_pos[1] - v2->screen_pos[1]) +
                         v1->screen_pos[0] * (v2->screen_pos[1] - v0->screen_pos[1]) +
                         v2->screen_pos[0] * (v0->screen_pos[1] - v1->screen_pos[1]);
@@ -306,10 +309,13 @@ void gl_cull_triangle(gl_vertex_t *v0, gl_vertex_t *v1, gl_vertex_t *v2)
         bool is_front = (state.front_face == GL_CCW) ^ (winding > 0.0f);
         GLenum face = is_front ? GL_FRONT : GL_BACK;
 
+        PROFILE_STOP(PS_GL_PIPE_PC_CULL, 0);
         if (state.cull_face_mode == face) {
             return;
         }
     }
+
+    PROFILE_START(PS_GL_PIPE_PC_DRAW, 0);
 
     if (state.shade_model == GL_FLAT) {
         memcpy(v2->color, state.flat_color, sizeof(state.flat_color));
@@ -330,6 +336,8 @@ void gl_cull_triangle(gl_vertex_t *v0, gl_vertex_t *v1, gl_vertex_t *v2)
         gl_draw_triangle(v0, v1, v2);
         break;
     }
+
+    PROFILE_STOP(PS_GL_PIPE_PC_DRAW, 0);
 }
 
 float dot_product4(const float *a, const float *b)
@@ -432,6 +440,8 @@ void gl_clip_triangle()
         return;
     }
 
+    PROFILE_START(PS_GL_PIPE_PC_CLIP, 0);
+
     // Polygon clipping using the Sutherland-Hodgman algorithm
     // See https://en.wikipedia.org/wiki/Sutherland%E2%80%93Hodgman_algorithm
 
@@ -518,6 +528,8 @@ void gl_clip_triangle()
         // Mark all points that were discarded as unused
         cache_used &= ~cache_unused;
     }
+
+    PROFILE_STOP(PS_GL_PIPE_PC_CLIP, 0);
 
     for (uint32_t i = 2; i < out_list->count; i++)
     {
@@ -726,6 +738,8 @@ void gl_calc_texture_coords(GLfloat *dest, const GLfloat *input, const GLfloat *
 
 void gl_vertex_pre_clip(uint8_t cache_index)
 {
+    PROFILE_START(PS_GL_PIPE_PC_PRE_CULL, 0);
+
     gl_vertex_t *v = &state.vertex_cache[cache_index];
 
     memcpy(v, state.current_attribs, sizeof(float)*15);
@@ -746,6 +760,8 @@ void gl_vertex_pre_clip(uint8_t cache_index)
         gl_material_t *m = &state.material_cache[cache_index];
         memcpy(m, &state.material, sizeof(gl_material_t));
     }
+
+    PROFILE_STOP(PS_GL_PIPE_PC_PRE_CULL, 0);
 }
 
 void gl_vertex_t_l(uint8_t cache_index)
@@ -753,6 +769,8 @@ void gl_vertex_t_l(uint8_t cache_index)
     gl_vertex_t *v = &state.vertex_cache[cache_index];
 
     if (v->flags & VTX_FLAG_TLDONE) return;
+
+    PROFILE_START(PS_GL_PIPE_PC_T_L, 0);
 
     gl_matrix_t *mv = gl_matrix_stack_get_matrix(&state.modelview_stack);
 
@@ -807,6 +825,8 @@ void gl_vertex_t_l(uint8_t cache_index)
     gl_vertex_calc_screenspace(v);
 
     v->flags |= VTX_FLAG_TLDONE;
+
+    PROFILE_STOP(PS_GL_PIPE_PC_T_L, 0);
 }
 
 typedef uint32_t (*read_index_func)(const void*,uint32_t);
@@ -835,7 +855,9 @@ void gl_reset_vertex_cache()
 }
 
 bool gl_check_vertex_cache(uint32_t vert_index, uint8_t *cache_index)
-{
+{   
+    PROFILE_START(PS_GL_PIPE_CACHE_CHECK, 0);
+
     bool miss = true;
 
     uint32_t min_age = 0xFFFFFFFF;
@@ -861,11 +883,14 @@ bool gl_check_vertex_cache(uint32_t vert_index, uint8_t *cache_index)
 
     state.vertex_cache_indices[*cache_index] = vert_index;
 
+    PROFILE_STOP(PS_GL_PIPE_CACHE_CHECK, 0);
     return miss;
 }
 
 void gl_load_attribs(const gl_attrib_source_t *sources, const uint32_t index)
 {
+    PROFILE_START(PS_GL_PIPE_PC_FETCH, 0);
+
     static const GLfloat default_values[] = {0, 0, 0, 1};
 
     for (uint32_t i = 0; i < ATTRIB_COUNT; i++)
@@ -886,6 +911,8 @@ void gl_load_attribs(const gl_attrib_source_t *sources, const uint32_t index)
             dst[r] = default_values[r];
         }
     }
+
+    PROFILE_STOP(PS_GL_PIPE_PC_FETCH, 0);
 }
 
 void gl_draw(const gl_attrib_source_t *sources, uint32_t offset, uint32_t count, const void *indices, read_index_func read_index)
@@ -897,14 +924,19 @@ void gl_draw(const gl_attrib_source_t *sources, uint32_t offset, uint32_t count,
         return;
     }
 
+    PROFILE_START(PS_GL_PIPE, 0);
+
     for (uint32_t i = 0; i < count; i++)
     {
+        PROFILE_START(PS_GL_PIPE_CACHE, 0);
         uint32_t index;
         uint8_t cache_index = 0;
         bool miss = true;
 
         if (indices != NULL) {
+            PROFILE_START(PS_GL_PIPE_CACHE_INDICES, 0);
             index = read_index(indices, i);
+            PROFILE_STOP(PS_GL_PIPE_CACHE_INDICES, 0);
             miss = gl_check_vertex_cache(index, &cache_index);
         } else {
             index = offset + i;
@@ -913,7 +945,9 @@ void gl_draw(const gl_attrib_source_t *sources, uint32_t offset, uint32_t count,
                 state.next_cache_index = (state.next_cache_index + 1) % VERTEX_CACHE_SIZE;
             } while (cache_index == state.locked_vertex);
         }
+        PROFILE_STOP(PS_GL_PIPE_CACHE, 0);
         
+        PROFILE_START(PS_GL_PIPE_PC, 0);
         if (miss) {
             // FIXME: Technically the attributes should be loaded regardless of whether a cache miss happens
             //        just so that after the draw call, the current attributes have the correct values (according to spec).
@@ -928,7 +962,10 @@ void gl_draw(const gl_attrib_source_t *sources, uint32_t offset, uint32_t count,
         }
 
         gl_prim_assembly(cache_index);
+        PROFILE_STOP(PS_GL_PIPE_PC, 0);
     }
+
+    PROFILE_STOP(PS_GL_PIPE, 0);
 }
 
 void read_u8(GLfloat *dst, const uint8_t *src, uint32_t count)
