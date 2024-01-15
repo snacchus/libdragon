@@ -73,5 +73,7 @@
 #include "debugcpp.h"
 #include "dlfcn.h"
 #include "model64.h"
+#include "magma.h"
+#include "magma_fixed_function.h"
 
 #endif
