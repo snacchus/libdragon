@@ -90,9 +90,25 @@ typedef enum
 
 typedef struct
 {
-    mg_shader_t *vertex_shader;
     mg_cull_flags_t cull_flags;
     mg_front_face_t front_face;
+} mg_culling_parms_t;
+
+typedef struct
+{
+    float x;
+    float y;
+    float width;
+    float height;
+    float minDepth;
+    float maxDepth;
+} mg_viewport_t;
+
+typedef struct
+{
+    mg_shader_t *vertex_shader;
+    mg_culling_parms_t culling;
+    mg_viewport_t viewport;
 } mg_graphics_pipeline_parms_t;
 
 typedef struct
@@ -147,16 +163,6 @@ typedef struct
     mg_descriptor_binding_t *bindings;
 } mg_descriptor_set_parms_t;
 
-typedef struct
-{
-    float x;
-    float y;
-    float width;
-    float height;
-    float minDepth;
-    float maxDepth;
-} mg_viewport_t;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -208,6 +214,9 @@ void mg_descriptor_set_free(mg_descriptor_set_t *descriptor_set);
 
 /** @brief Bind the pipeline for subsequent use, uploading the attached shader to IMEM */
 void mg_bind_pipeline(mg_pipeline_t *pipeline);
+
+/** @brief Set culling flags */
+void mg_set_culling(mg_culling_parms_t *culling);
 
 /** @brief Set the viewport */
 void mg_set_viewport(mg_viewport_t *mg_viewport_t);
