@@ -96,6 +96,7 @@ typedef struct
 {
     mgfx_matrix_t mvp;
     mgfx_matrix_t mv;
+    mgfx_matrix_t normal;
 } __attribute__((packed)) mgfx_matrices_t;
 
 /* Parameter structs */
@@ -144,6 +145,7 @@ typedef struct
 {
     float *model_view_projection;
     float *model_view;
+    float *normal;
 } mgfx_matrices_parms_t;
 
 #ifdef __cplusplus
