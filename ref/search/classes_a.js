@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['old_5fgbc_5ftitle_0',['old_gbc_title',['../tpak_8h.html#structold__gbc__title',1,'']]],
-  ['open_5ffile_5ft_1',['open_file_t',['../group__dfs.html#structopen__file__t',1,'']]]
+  ['lz4dec_5ffaststate_5ft_0',['lz4dec_faststate_t',['../structlz4dec__faststate__t.html',1,'']]],
+  ['lz4dec_5fstate_5ft_1',['lz4dec_state_t',['../structlz4dec__state__t.html',1,'']]]
 ];
