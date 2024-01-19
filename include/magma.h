@@ -113,11 +113,6 @@ typedef struct
 
 typedef struct
 {
-    mg_shader_t *compute_shader;
-} mg_compute_pipeline_parms_t;
-
-typedef struct
-{
     uint32_t location;
     mg_vertex_format_t format;
     uint32_t offset;
@@ -185,7 +180,6 @@ void mg_vertex_loader_free(mg_vertex_loader_t *vertex_loader);
 /* Pipelines */
 
 mg_pipeline_t *mg_pipeline_create_graphics(mg_graphics_pipeline_parms_t *parms);
-mg_pipeline_t *mg_pipeline_create_compute(mg_compute_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
 
 /* Memory */
@@ -238,9 +232,6 @@ void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_co
 
 /** @brief Draw indexed primitives */
 void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, uint32_t index_count, uint16_t *indices, int32_t vertex_offset);
-
-/** @brief Dispatch the currently bound compute shader (WIP) */
-void mg_dispatch(uint32_t count);
 
 // TODO: Instanced draw calls?
 // TODO: Indirect draw calls?
