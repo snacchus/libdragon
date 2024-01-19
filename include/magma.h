@@ -16,10 +16,6 @@ typedef struct mg_shader_s          mg_shader_t;
 /** @brief An instance of the magma pipeline, with an attached vertex shader */
 typedef struct mg_pipeline_s        mg_pipeline_t;
 
-// TODO: Is the separation of "memory" and "buffer" useful in our case?
-/** @brief Represents a contiguous block of memory, located in RDRAM */
-typedef struct mg_memory_s          mg_memory_t;
-
 /** @brief A linear array of data, which can be bound to a pipeline for various purposes */
 typedef struct mg_buffer_s          mg_buffer_t;
 
@@ -69,17 +65,17 @@ typedef enum
 // TODO: "Host visible"? "Host coherent"?
 typedef enum
 {
-    MG_MEMORY_FLAGS_MIRRORED                = 0x1,
-    MG_MEMORY_FLAGS_WRITABLE                = 0x2,
-    MG_MEMORY_FLAGS_COPY_ON_WRITE           = 0x4,
-    MG_MEMORY_FLAGS_HOST_READABLE           = 0x8,
-} mg_memory_flags_t;
+    MG_BUFFER_FLAGS_MIRRORED                = 0x1,
+    MG_BUFFER_FLAGS_WRITABLE                = 0x2,
+    MG_BUFFER_FLAGS_COPY_ON_WRITE           = 0x4,
+    MG_BUFFER_FLAGS_HOST_READABLE           = 0x8,
+} mg_buffer_flags_t;
 
 typedef enum
 {
-    MG_MEMORY_MAP_FLAGS_READ                = 0x1,
-    MG_MEMORY_MAP_FLAGS_WRITE               = 0x2,
-} mg_memory_map_flags_t;
+    MG_BUFFER_MAP_FLAGS_READ                = 0x1,
+    MG_BUFFER_MAP_FLAGS_WRITE               = 0x2,
+} mg_buffer_map_flags_t;
 
 typedef enum
 {
@@ -133,13 +129,9 @@ typedef struct
 
 typedef struct
 {
-    mg_memory_flags_t flags;
-    void *pointer;
+    mg_buffer_flags_t flags;
+    void *initial_data;
     uint32_t size;
-} mg_memory_parms_t;
-
-typedef struct
-{
 } mg_buffer_parms_t;
 
 typedef struct
@@ -182,21 +174,13 @@ void mg_vertex_loader_free(mg_vertex_loader_t *vertex_loader);
 mg_pipeline_t *mg_pipeline_create_graphics(mg_graphics_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
 
-/* Memory */
-
-mg_memory_t *mg_memory_create(mg_memory_parms_t *parms);
-void mg_memory_free(mg_memory_t *memory);
-void *mg_memory_map(mg_memory_t *memory, uint32_t offset, uint32_t size, mg_memory_map_flags_t flags);
-void mg_memory_unmap(mg_memory_t *memory);
-void mg_memory_write(mg_memory_t *memory, uint32_t offset, uint32_t size, const void *data);
-
 /* Buffers */
 
 mg_buffer_t *mg_buffer_create(mg_buffer_parms_t *parms);
 void mg_buffer_free(mg_buffer_t *buffer);
-
-/** @brief Swaps out the currently bound block of memory with a new one */
-void mg_buffer_bind_memory(mg_buffer_t *buffer, mg_memory_t *memory, uint32_t size, uint32_t offset);
+void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags);
+void mg_buffer_unmap(mg_buffer_t *buffer);
+void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const void *data);
 
 /* Descriptors */
 
@@ -218,7 +202,7 @@ void mg_set_viewport(mg_viewport_t *mg_viewport_t);
 /** @brief Bind a descriptor set, uploading the bound resources to DMEM */
 void mg_bind_descriptor_set(mg_descriptor_set_t *descriptor_set);
 
-/** @brief Push a block of memory directly to DMEM, embedding the data in the command */
+/** @brief Push a block of data directly to DMEM, embedding the data in the command */
 void mg_push_constants(uint32_t offset, uint32_t size, const void *data);
 
 /** @brief Bind a vertex buffer to be used by subsequent drawing commands */
