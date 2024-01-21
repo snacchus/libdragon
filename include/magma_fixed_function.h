@@ -52,7 +52,7 @@ typedef enum
 typedef struct
 {
     uint32_t flags;
-} __attribute__((packed)) mgfx_modes_t;
+} __attribute__((packed, aligned(8))) mgfx_modes_t;
 
 typedef struct
 {
@@ -60,7 +60,7 @@ typedef struct
     int16_t offset_int;
     uint16_t factor_frac;
     uint16_t offset_frac;
-} __attribute__((packed)) mgfx_fog_t;
+} __attribute__((packed, aligned(8))) mgfx_fog_t;
 
 typedef struct
 {
@@ -71,33 +71,33 @@ typedef struct
     int16_t ambient[4];
     uint32_t count;
 
-} __attribute__((packed)) mgfx_lighting_t;
+} __attribute__((packed, aligned(16))) mgfx_lighting_t;
 
 typedef struct 
 {
     int16_t diffuse[4];
     int16_t emissive[4];
     uint32_t color_target;
-} __attribute__((packed)) mgfx_material_t;
+} __attribute__((packed, aligned(8))) mgfx_material_t;
 
 typedef struct
 {
     int16_t tex_scale[2];
     int16_t tex_offset[2];
-} __attribute__((packed)) mgfx_texturing_t;
+} __attribute__((packed, aligned(8))) mgfx_texturing_t;
 
 typedef struct
 {
     int16_t  i[4][4];
     uint16_t f[4][4];
-} __attribute__((packed)) mgfx_matrix_t;
+} __attribute__((packed, aligned(16))) mgfx_matrix_t;
 
 typedef struct
 {
     mgfx_matrix_t mvp;
     mgfx_matrix_t mv;
     mgfx_matrix_t normal;
-} __attribute__((packed)) mgfx_matrices_t;
+} __attribute__((packed, aligned(16))) mgfx_matrices_t;
 
 /* Parameter structs */
 
@@ -116,9 +116,7 @@ typedef struct
 {
     float position[4];
     color_t diffuse_color;
-    float constant_attenuation;
-    float linear_attenuation;
-    float quadratic_attenuation;
+    float radius;
 } mgfx_light_t;
 
 typedef struct
