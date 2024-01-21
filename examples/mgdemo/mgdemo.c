@@ -186,7 +186,7 @@ void create_scene_resources()
         });
         mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {0});
         mgfx_get_lighting(&raw_data->lighting, &(mgfx_lighting_parms_t) {
-            .ambient_color = color_from_packed32(0x101010ff),
+            .ambient_color = color_from_packed32(ambient_light_color),
             .light_count = ARRAY_SIZE(lights),
             .lights = lights
         });

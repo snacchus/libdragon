@@ -19,9 +19,9 @@
 
 /* Textures */
 static const char *texture_files[] = {
-    "rom:/texture0.sprite",
-    "rom:/texture1.sprite",
-    "rom:/texture2.sprite",
+    "rom:/texture0.ci4.sprite",
+    "rom:/texture1.ci4.sprite",
+    "rom:/texture2.ci4.sprite",
 };
 
 
@@ -87,6 +87,7 @@ static const float light_radii[] = {
     0.0f,
     30.0f
 };
+static const uint32_t ambient_light_color = 0x101010ff;
 
 /* Camera */
 static const float camera_fov = 65.0f;
