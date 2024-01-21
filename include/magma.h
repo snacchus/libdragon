@@ -61,13 +61,12 @@ typedef enum
     MG_FRONT_FACE_CLOCKWISE                 = 1,
 } mg_front_face_t;
 
-// TODO: "Host visible"? "Host coherent"?
 typedef enum
 {
-    MG_BUFFER_FLAGS_MIRRORED                = 0x1,
-    MG_BUFFER_FLAGS_WRITABLE                = 0x2,
-    MG_BUFFER_FLAGS_COPY_ON_WRITE           = 0x4,
-    MG_BUFFER_FLAGS_HOST_READABLE           = 0x8,
+    MG_BUFFER_FLAGS_USAGE_VERTEX            = 0x1,
+    MG_BUFFER_FLAGS_USAGE_INDEX             = 0x2,
+    MG_BUFFER_FLAGS_USAGE_UNIFORM           = 0x4,
+    MG_BUFFER_FLAGS_LAZY_ALLOC              = 0x8,
 } mg_buffer_flags_t;
 
 typedef enum
@@ -78,9 +77,9 @@ typedef enum
 
 typedef enum
 {
-    MG_RESOURCE_TYPE_UNIFORM_BUFFER       = 0,
-    MG_RESOURCE_TYPE_STORAGE_BUFFER       = 1,
-    MG_RESOURCE_TYPE_INLINE_UNIFORM       = 2,
+    MG_RESOURCE_TYPE_UNIFORM_BUFFER         = 0,
+    MG_RESOURCE_TYPE_STORAGE_BUFFER         = 1,
+    MG_RESOURCE_TYPE_INLINE_UNIFORM         = 2,
 } mg_resource_type_t;
 
 typedef struct
@@ -104,7 +103,7 @@ typedef struct
     mg_shader_t *vertex_shader;
     mg_culling_parms_t culling;
     mg_viewport_t viewport;
-} mg_graphics_pipeline_parms_t;
+} mg_pipeline_parms_t;
 
 typedef struct
 {
@@ -129,7 +128,7 @@ typedef struct
 typedef struct
 {
     mg_buffer_flags_t flags;
-    void *initial_data;
+    const void *initial_data;
     uint32_t size;
 } mg_buffer_parms_t;
 
@@ -144,7 +143,7 @@ typedef struct
 
 typedef struct
 {
-    mg_shader_t *shader;
+    mg_pipeline_t *pipeline;
     uint32_t binding_count;
     mg_resource_binding_t *bindings;
 } mg_resource_set_parms_t;
@@ -170,7 +169,7 @@ void mg_vertex_loader_free(mg_vertex_loader_t *vertex_loader);
 
 /* Pipelines */
 
-mg_pipeline_t *mg_pipeline_create_graphics(mg_graphics_pipeline_parms_t *parms);
+mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
 
 /* Buffers */
@@ -207,6 +206,9 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data);
 /** @brief Bind a vertex buffer to be used by subsequent drawing commands */
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset);
 
+/** @brief Bind an index buffer to be used by subsequent drawing commands */
+void mg_bind_index_buffer(mg_buffer_t *buffer, uint32_t offset);
+
 /** @brief Bind a vertex loader to be used by subsequent drawing commands */
 void mg_bind_vertex_loader(mg_vertex_loader_t *vertex_loader);
 
@@ -214,7 +216,7 @@ void mg_bind_vertex_loader(mg_vertex_loader_t *vertex_loader);
 void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex);
 
 /** @brief Draw indexed primitives */
-void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, uint32_t index_count, uint16_t *indices, int32_t vertex_offset);
+void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, uint32_t index_count, uint32_t index_offset, int32_t vertex_offset);
 
 // TODO: Instanced draw calls?
 // TODO: Indirect draw calls?
