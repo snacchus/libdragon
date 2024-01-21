@@ -7,7 +7,7 @@
 #include <rsp.h>
 
 /** @brief A precompiled vertex loader that will load vertices in a certain format. */
-typedef struct mg_vertex_loader_s    mg_vertex_loader_t;
+typedef struct mg_vertex_loader_s   mg_vertex_loader_t;
 
 // TODO: Should "shader" and "pipeline" be separate objects?
 /** @brief A piece of ucode that is compatible with the magma pipeline */
@@ -20,7 +20,7 @@ typedef struct mg_pipeline_s        mg_pipeline_t;
 typedef struct mg_buffer_s          mg_buffer_t;
 
 /** @brief A set of resources, that can be bound for use by a shader */
-typedef struct mg_resource_set_s  mg_resource_set_t;
+typedef struct mg_resource_set_s    mg_resource_set_t;
 
 // TODO: figure out better naming scheme
 // TODO: complete?
