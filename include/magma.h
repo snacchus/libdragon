@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <graphics.h>
 #include <rsp.h>
+#include <rspq.h>
+#include <debug.h>
 
 /** @brief A precompiled vertex loader that will load vertices in a certain format. */
 typedef struct mg_vertex_loader_s   mg_vertex_loader_t;
@@ -49,11 +51,10 @@ typedef enum
 
 typedef enum
 {
-    MG_CULL_FLAGS_NONE                      = 0,
-    MG_CULL_FLAGS_BACK                      = 0x1,
-    MG_CULL_FLAGS_FRONT                     = 0x2,
-    MG_CULL_FLAGS_FRONT_AND_BACK            = MG_CULL_FLAGS_BACK | MG_CULL_FLAGS_FRONT,
-} mg_cull_flags_t;
+    MG_CULL_MODE_NONE                      = 0,
+    MG_CULL_MODE_BACK                      = 1,
+    MG_CULL_MODE_FRONT                     = 2,
+} mg_cull_mode_t;
 
 typedef enum
 {
@@ -84,7 +85,7 @@ typedef enum
 
 typedef struct
 {
-    mg_cull_flags_t cull_flags;
+    mg_cull_mode_t cull_mode;
     mg_front_face_t front_face;
 } mg_culling_parms_t;
 
@@ -192,10 +193,10 @@ void mg_resource_set_free(mg_resource_set_t *resource_set);
 void mg_bind_pipeline(mg_pipeline_t *pipeline);
 
 /** @brief Set culling flags */
-void mg_set_culling(mg_culling_parms_t *culling);
+inline void mg_set_culling(mg_culling_parms_t *culling);
 
 /** @brief Set the viewport */
-void mg_set_viewport(mg_viewport_t *mg_viewport_t);
+inline void mg_set_viewport(mg_viewport_t *viewport);
 
 /** @brief Bind a resource set, uploading the bound resources to DMEM */
 void mg_bind_resource_set(mg_resource_set_t *resource_set);
@@ -207,7 +208,7 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data);
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset);
 
 /** @brief Bind an index buffer to be used by subsequent drawing commands */
-void mg_bind_index_buffer(mg_buffer_t *buffer, uint32_t offset);
+//void mg_bind_index_buffer(mg_buffer_t *buffer, uint32_t offset);
 
 /** @brief Bind a vertex loader to be used by subsequent drawing commands */
 void mg_bind_vertex_loader(mg_vertex_loader_t *vertex_loader);
@@ -216,10 +217,137 @@ void mg_bind_vertex_loader(mg_vertex_loader_t *vertex_loader);
 void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex);
 
 /** @brief Draw indexed primitives */
-void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, uint32_t index_count, uint32_t index_offset, int32_t vertex_offset);
+void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t index_count, int32_t vertex_offset);
 
 // TODO: Instanced draw calls?
 // TODO: Indirect draw calls?
+
+/// @cond
+
+/* Inline function definitions and prerequisites */
+
+#define mg_cmd_write(cmd_id, ...)   rspq_write(mg_overlay_id, cmd_id, ##__VA_ARGS__)
+
+extern uint32_t mg_overlay_id;
+
+enum
+{
+    MG_CMD_SET_BYTE         = 0x1,
+    MG_CMD_SET_SHORT        = 0x2,
+    MG_CMD_SET_WORD         = 0x3,
+    MG_CMD_SET_QUAD         = 0x4,
+    MG_CMD_LOAD_VERTICES    = 0x5,
+    MG_CMD_DRAW_INDICES     = 0x6,
+};
+
+typedef struct
+{
+    int16_t scale[4];
+    int16_t offset[4];
+} mg_rsp_viewport_t;
+
+typedef struct
+{
+    mg_rsp_viewport_t viewport;
+    uint32_t vertex_buffer;
+    uint16_t vertex_stride;
+    uint16_t tri_cmd;
+    uint8_t cull_mode;
+    uint8_t prim_topology;
+} __attribute__((packed)) mg_rsp_state_t;
+
+inline void mg_cmd_set_byte(uint32_t offset, uint8_t value)
+{
+    mg_cmd_write(MG_CMD_SET_BYTE, offset, value);
+}
+
+inline void mg_cmd_set_short(uint32_t offset, uint16_t value)
+{
+    mg_cmd_write(MG_CMD_SET_SHORT, offset, value);
+}
+
+inline void mg_cmd_set_word(uint32_t offset, uint32_t value)
+{
+    mg_cmd_write(MG_CMD_SET_WORD, offset, value);
+}
+
+inline void mg_cmd_set_quad(uint32_t offset, uint32_t value0, uint32_t value1, uint32_t value2, uint32_t value3)
+{
+    mg_cmd_write(MG_CMD_SET_QUAD, offset, value0, value1, value2, value3);
+}
+
+inline uint8_t mg_culling_parms_to_rsp_state(mg_culling_parms_t *culling)
+{
+    uint8_t cull_mode;
+    uint8_t is_front_cw;
+
+    switch (culling->cull_mode) {
+    case MG_CULL_MODE_NONE:
+        cull_mode = 2;
+        break;
+    case MG_CULL_MODE_BACK:
+        cull_mode = 1;
+        break;
+    case MG_CULL_MODE_FRONT:
+        cull_mode = 0;
+        break;
+    default:
+        assertf(0, "%d is not a valid cull mode!", culling->cull_mode);
+    }
+
+    switch (culling->front_face) {
+    case MG_FRONT_FACE_COUNTER_CLOCKWISE:
+        is_front_cw = 0;
+        break;
+    case MG_FRONT_FACE_CLOCKWISE:
+        is_front_cw = 1;
+        break;
+    default:
+        assertf(0, "%d is not a valid front face winding direction!", culling->front_face);
+    }
+
+    // If the front face is clockwise, flip the cull mode. 
+    // If the cull mode is NONE anyway, this has no effect because the final value is still > 1
+    return cull_mode ^ is_front_cw;
+}
+
+inline mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
+{
+    float half_width = viewport->width / 2;
+    float half_height = viewport->height / 2;
+    float depth_diff = viewport->maxDepth - viewport->minDepth;
+    float half_depth = depth_diff / 2;
+    return (mg_rsp_viewport_t) {
+        .scale = {
+            half_width,
+            half_height,
+            half_depth,
+            1.0f
+        },
+        .offset = {
+            viewport->x - half_width,
+            viewport->y - half_height,
+            viewport->minDepth - half_depth,
+            0.0f
+        }
+    };
+}
+
+inline void mg_set_culling(mg_culling_parms_t *culling)
+{
+    mg_cmd_set_byte(offsetof(mg_rsp_state_t, cull_mode), mg_culling_parms_to_rsp_state(culling));
+}
+
+inline void mg_set_viewport(mg_viewport_t *viewport)
+{
+    mg_rsp_viewport_t rsp_viewport = mg_viewport_to_rsp_state(viewport);
+    uint32_t value0 = (rsp_viewport.scale[0] << 16) | rsp_viewport.scale[1];
+    uint32_t value1 = (rsp_viewport.scale[2] << 16) | rsp_viewport.scale[3];
+    uint32_t value2 = (rsp_viewport.offset[0] << 16) | rsp_viewport.offset[1];
+    uint32_t value3 = (rsp_viewport.offset[2] << 16) | rsp_viewport.offset[3];
+    mg_cmd_set_quad(offsetof(mg_rsp_state_t, viewport), value0, value1, value2, value3);
+}
+/// @endcond
 
 #ifdef __cplusplus
 }

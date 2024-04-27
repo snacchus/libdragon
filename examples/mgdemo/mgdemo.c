@@ -26,7 +26,7 @@ typedef struct
 typedef struct
 {
     mg_buffer_t *vertex_buffer;
-    mg_buffer_t *index_buffer;
+    const uint16_t *indices;
     uint32_t index_count;
 } mesh_data;
 
@@ -97,7 +97,7 @@ void init()
     // Culling flags and viewport can be changed later (which we won't be doing in this demo). See mg_set_culling and mg_set_viewport.
     pipeline = mg_pipeline_create(&(mg_pipeline_parms_t){
         .vertex_shader = vertex_shader,
-        .culling.cull_flags = MG_CULL_FLAGS_BACK,
+        .culling.cull_mode = MG_CULL_MODE_BACK,
         .viewport = (mg_viewport_t) {
             .width = resolution.width,
             .height = resolution.height,
@@ -295,12 +295,7 @@ void mesh_create(mesh_data *mesh, const vertex *vertices, uint32_t vertex_count,
         .flags = MG_BUFFER_FLAGS_USAGE_VERTEX | MG_BUFFER_FLAGS_LAZY_ALLOC
     });
 
-    mesh->index_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-        .size = sizeof(uint16_t) * index_count,
-        .initial_data = indices,
-        .flags = MG_BUFFER_FLAGS_USAGE_INDEX | MG_BUFFER_FLAGS_LAZY_ALLOC
-    });
-
+    mesh->indices = indices;
     mesh->index_count = index_count;
 }
 
@@ -366,7 +361,7 @@ void render()
             current_mesh_id = object->mesh_id;
             current_mesh = &meshes[current_mesh_id];
             mg_bind_vertex_buffer(current_mesh->vertex_buffer, 0);
-            mg_bind_index_buffer(current_mesh->index_buffer, 0);
+            //mg_bind_index_buffer(current_mesh->index_buffer, 0);
         }
 
         // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
@@ -386,7 +381,7 @@ void render()
         // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
         mg_draw_indexed(&(mg_input_assembly_parms_t) {
             .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-        }, current_mesh->index_count, 0, 0);
+        }, current_mesh->indices, current_mesh->index_count, 0);
     }
 
     // Done. Detach from the framebuffer and present it.

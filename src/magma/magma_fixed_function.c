@@ -1,5 +1,16 @@
 #include "magma_fixed_function.h"
 
+typedef struct 
+{
+    mgfx_modes_t modes;
+    mgfx_fog_t fog;
+    mgfx_lighting_t lighting;
+    mgfx_material_t material;
+    mgfx_texturing_t texturing;
+    mgfx_matrices_t matrices;
+    uint32_t matrix_palette;
+} mgfx_state_t;
+
 mg_shader_t *mgfx_create_vertex_shader()
 {
     return NULL;
@@ -67,5 +78,5 @@ void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms)
 
 void mgfx_set_matrix_palette(mg_buffer_t *palette_buffer)
 {
-    
+    uint32_t size = sizeof(mgfx_state_t);
 }
