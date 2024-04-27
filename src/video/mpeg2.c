@@ -16,10 +16,19 @@
 DEFINE_RSP_UCODE(rsp_mpeg1);
 
 static uint32_t ovl_id;
+static bool rsp_mpeg1_initialized = false;
 
 void rsp_mpeg1_init(void) {
+	if (rsp_mpeg1_initialized) return;
 	rspq_init();
 	ovl_id = rspq_overlay_register(&rsp_mpeg1);
+	rsp_mpeg1_initialized = true;
+}
+
+void rsp_mpeg1_close(void) {
+	if (!rsp_mpeg1_initialized) return;
+	rspq_overlay_unregister(ovl_id); ovl_id = 0;
+	rsp_mpeg1_initialized = false;
 }
 
 void rsp_mpeg1_load_matrix(int16_t *mtx) {
@@ -90,7 +99,7 @@ void rsp_mpeg1_set_quant_matrix(bool intra, const uint8_t quant_mtx[64]) {
 #define PL_MPEG_IMPLEMENTATION
 #include "pl_mpeg/pl_mpeg.h"
 
-void mpeg2_open(mpeg2_t *mp2, const char *fn) {
+void mpeg2_open(mpeg2_t *mp2, const char *fn, int output_width, int output_height) {
 	memset(mp2, 0, sizeof(mpeg2_t));
 
 	rsp_mpeg1_init();
@@ -123,7 +132,7 @@ void mpeg2_open(mpeg2_t *mp2, const char *fn) {
 		// Create a YUV blitter for this resolution
 		mp2->yuv_blitter = yuv_blitter_new_fmv(
 			width, height,
-			display_get_width(), display_get_height(),
+			output_width, output_height,
 			NULL);
 	}
 
@@ -164,4 +173,11 @@ void mpeg2_draw_frame(mpeg2_t *mp2, display_context_t disp) {
 
 float mpeg2_get_framerate(mpeg2_t *mp2) {
 	return plm_video_get_framerate(mp2->v);
+}
+
+void mpeg2_close(mpeg2_t *mp2) {
+	plm_video_destroy(mp2->v);
+	plm_buffer_destroy(mp2->buf);
+	if (YUV_MODE == 1) yuv_blitter_free(&mp2->yuv_blitter);
+	memset(mp2, 0, sizeof(mpeg2_t));
 }

@@ -14,8 +14,8 @@ EXAMPLES += loadspritefromsd
 EXAMPLES += mgdemo
 EXAMPLES += micro-ui
 EXAMPLES += mixertest
-EXAMPLES += mptest
-EXAMPLES += mputest
+EXAMPLES += cpaktest
+EXAMPLES += cpak-utest
 EXAMPLES += overlays
 EXAMPLES += pixelshader
 EXAMPLES += rdpqdemo
@@ -34,7 +34,7 @@ clean: $(foreach example,$(EXAMPLES),$(example)-clean)
 
 define EXAMPLE_template
 $(1):
-ifdef $(BASE_DIR)
+ifdef BASE_DIR
 	$$(MAKE) -C $(1) SOURCE_DIR=$(BASE_DIR)/$(1)
 else
 	$$(MAKE) -C $(1)

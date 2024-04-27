@@ -8,17 +8,23 @@
 #define RSPQ_DRAM_HIGHPRI_BUFFER_SIZE  0x80    ///< Size of each RSPQ RDRAM buffer for highpri queue (in 32-bit words)
 
 #define RSPQ_DMEM_BUFFER_SIZE          0x100   ///< Size of the RSPQ DMEM buffer (in bytes)
-#define RSPQ_OVERLAY_TABLE_SIZE        0x10    ///< Number of overlay IDs (0-F)
-#define RSPQ_OVERLAY_DESC_SIZE         0x10    ///< Size of a single overlay descriptor
 
-/** Maximum number of overlays that can be registered (affects DMEM table size) */
-#define RSPQ_MAX_OVERLAY_COUNT         8
-#define RSPQ_OVERLAY_ID_COUNT          16
-#define RSPQ_MAX_OVERLAY_COMMAND_COUNT ((RSPQ_MAX_OVERLAY_COUNT - 1) * 16)
+#define RSPQ_OVERLAY_ID_BITS           4                             ///< Number of overlay ID bits (0-F)
+#define RSPQ_OVERLAY_ID_SHIFT          (32 - RSPQ_OVERLAY_ID_BITS)   ///< Shift to isolate overlay ID bits
+#define RSPQ_OVERLAY_CMD_BITS          (8 - RSPQ_OVERLAY_ID_BITS)    ///< Number of overlay command bits
+#define RSPQ_MAX_OVERLAYS              (1 << RSPQ_OVERLAY_ID_BITS)   ///< Maximum number of overlays that can be registered
+
+#define RSPQ_MAX_OVERLAY_COMMAND_COUNT ((1 << RSPQ_OVERLAY_CMD_BITS) * (RSPQ_MAX_OVERLAYS-1))
+
+#if RSPQ_PROFILE
+#define RSPQ_OVERLAY_HEADER_SIZE     18         ///< Internal overlay header size in bytes
+#else
+#define RSPQ_OVERLAY_HEADER_SIZE     16         ///< Internal overlay header size in bytes
+#endif
 
 /** Minimum / maximum size of a block's chunk (contiguous memory buffer) */
 #define RSPQ_BLOCK_MIN_SIZE            64
-#define RSPQ_BLOCK_MAX_SIZE            4192
+#define RSPQ_BLOCK_MAX_SIZE            8192
 
 /** Maximum number of nested block calls */
 #define RSPQ_MAX_BLOCK_NESTING_LEVEL   8
@@ -64,16 +70,13 @@
 #define ASSERT_INVALID_OVERLAY       0xFF01    ///< A command is referencing an overlay that is not registered
 #define ASSERT_INVALID_COMMAND       0xFF02    ///< The requested command is not defined in the overlay
 
-/** Debug marker in DMEM to check that C and Assembly have the same DMEM layout */
-#define RSPQ_DEBUG_MARKER            0xABCD0123
 
-#define RSPQ_PROFILE_SLOT_SIZE          8
-#define RSPQ_PROFILE_SLOT_COUNT         (RSPQ_MAX_OVERLAY_COUNT + 6)
-#define RSPQ_PROFILE_BUILTIN_SLOT       0
-#define RSPQ_PROFILE_IDLE_SLOT          RSPQ_MAX_OVERLAY_COUNT
-#define RSPQ_PROFILE_IDLE_RDP_SLOT      (RSPQ_MAX_OVERLAY_COUNT + 1)
-#define RSPQ_PROFILE_IDLE_SYNC_SLOT     (RSPQ_MAX_OVERLAY_COUNT + 2)
-#define RSPQ_PROFILE_RDPQ_SYNC_SLOT     (RSPQ_MAX_OVERLAY_COUNT + 3)
-#define RSPQ_PROFILE_OVL_SWITCH_SLOT    (RSPQ_MAX_OVERLAY_COUNT + 4)
+#define RSPQ_PROFILE_CSLOT_WAIT_CPU                 (RSPQ_MAX_OVERLAYS+0)
+#define RSPQ_PROFILE_CSLOT_WAIT_RDP                 (RSPQ_MAX_OVERLAYS+1)
+#define RSPQ_PROFILE_CSLOT_WAIT_RDP_SYNCFULL        (RSPQ_MAX_OVERLAYS+2)
+#define RSPQ_PROFILE_CSLOT_WAIT_RDP_SYNCFULL_MULTI  (RSPQ_MAX_OVERLAYS+3)
+#define RSPQ_PROFILE_CSLOT_OVL_SWITCH               (RSPQ_MAX_OVERLAYS+4)
+#define RSPQ_PROFILE_CSLOT_COUNT                    5
+#define RSPQ_PROFILE_SLOT_COUNT                     (RSPQ_MAX_OVERLAYS+5)
 
 #endif

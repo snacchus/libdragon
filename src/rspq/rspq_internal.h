@@ -140,13 +140,6 @@ enum {
      * commands appended in the current buffer to be sent to RDP.
      */
     RSPQ_CMD_RDP_APPEND_BUFFER = 0x0B,
-
-#if RSPQ_PROFILE
-    /**
-     * @brief RSPQ Command: measure the total time the current frame has taken
-     */
-    RSPQ_CMD_PROFILE_FRAME     = 0x0C,
-#endif
 };
 
 /** @brief Write an internal command to the RSP queue */
@@ -183,33 +176,13 @@ typedef struct __attribute__((packed)) {
     uint64_t other_modes;
 } rspq_rdp_mode_t;
 
-// TODO: We could save 4 bytes in the overlay descriptor by assuming that data == code + code_size and that code_size is always a multiple of 8
-/** @brief A RSPQ overlay ucode. This is similar to rsp_ucode_t, but is used
- * internally to managed it as a RSPQ overlay */
-typedef struct rspq_overlay_t {
-    uint32_t code;              ///< Address of the overlay code in RDRAM
-    uint32_t data;              ///< Address of the overlay data in RDRAM
-    uint32_t state;             ///< Address of the overlay state in RDRAM (within data)
-    uint16_t code_size;         ///< Size of the code in bytes - 1
-    uint16_t data_size;         ///< Size of the data in bytes - 1
-} rspq_overlay_t;
-
-/// @cond
-_Static_assert(sizeof(rspq_overlay_t) == RSPQ_OVERLAY_DESC_SIZE);
-/// @endcond
-
 /**
- * @brief The overlay table in DMEM. 
- *
- * This structure is defined in DMEM by rsp_queue.S, and contains the descriptors
- * for the overlays, used by the queue engine to load each overlay when needed.
+ * @brief Table of registered overlays (as stored in DMEM)
  */
-typedef struct rspq_overlay_tables_s {
-    /** @brief Table mapping overlay ID to overlay index (used for the descriptors) */
-    uint8_t overlay_table[RSPQ_OVERLAY_TABLE_SIZE];
-    /** @brief Descriptor for each overlay, indexed by the previous table. */
-    rspq_overlay_t overlay_descriptors[RSPQ_MAX_OVERLAY_COUNT];
-} rspq_overlay_tables_t;
+typedef struct __attribute__((packed)) {
+    uint32_t data_rdram[RSPQ_MAX_OVERLAYS];     ///< Packed RDRAM address of data segment and size
+    uint8_t idmap[RSPQ_MAX_OVERLAYS];           ///< Map of overlay IDs to base IDs
+} rspq_ovl_table_t;
 
 /**
  * @brief RSP profiling data for a single overlay.
@@ -217,18 +190,7 @@ typedef struct rspq_overlay_tables_s {
 typedef struct rspq_profile_slot_dmem_s {
     uint32_t total_ticks;
     uint32_t sample_count;
-} rspq_profile_slot_dmem_t __attribute__((aligned(8)));
-
-/**
- * @brief RSP profiling data.
- */
-typedef struct rspq_profile_data_dmem_s {
-    rspq_profile_slot_dmem_t slots[RSPQ_PROFILE_SLOT_COUNT];
-    uint32_t frame_time;
-    uint32_t busy_time;
-    uint32_t frame_last;
-    uint32_t busy_last;
-} rspq_profile_data_dmem_t;
+} rspq_profile_slot_dmem_t;
 
 /**
  * @brief RSP Queue data in DMEM.
@@ -237,35 +199,41 @@ typedef struct rspq_profile_data_dmem_s {
  * top portion of DMEM.
  */
 typedef struct rsp_queue_s {
-    rspq_overlay_tables_t tables;        ///< Overlay table
+    rspq_ovl_table_t rspq_ovl_table;     ///< Overlay table
     /** @brief Pointer stack used by #RSPQ_CMD_CALL and #RSPQ_CMD_RET. */
     uint32_t rspq_pointer_stack[RSPQ_MAX_BLOCK_NESTING_LEVEL];
     uint32_t rspq_dram_lowpri_addr;      ///< Address of the lowpri queue (special slot in the pointer stack)
     uint32_t rspq_dram_highpri_addr;     ///< Address of the highpri queue  (special slot in the pointer stack)
-    uint32_t rspq_dram_addr;             ///< Current RDRAM address being processed
-    uint32_t rspq_rdp_sentinel;          ///< Current RDP RDRAM end pointer (when rdp_current reaches this, the buffer is full)
+    uint8_t banner[32];                  ///< Banner
     rspq_rdp_mode_t rdp_mode;            ///< RDP current render mode definition
     uint64_t rdp_scissor_rect;           ///< Current RDP scissor rectangle
     uint32_t rspq_rdp_buffers[2];        ///< RDRAM Address of dynamic RDP buffers
     uint32_t rspq_rdp_current;           ///< Current RDP RDRAM write pointer (normally DP_END)
+    uint32_t rspq_rdp_sentinel;          ///< Current RDP RDRAM end pointer (when rdp_current reaches this, the buffer is full)
     uint32_t rdp_fill_color;             ///< Current RDP fill color
     uint8_t rdp_target_bitdepth;         ///< Current RDP target buffer bitdepth
     uint8_t rdp_syncfull_ongoing;        ///< True if a SYNC_FULL is currently ongoing
     uint8_t rdpq_debug;                  ///< Debug mode flag
-    uint8_t __padding0;
+    uint8_t padding;                     ///< Padding
+    uint32_t rspq_dram_addr;             ///< Current RDRAM address being processed
+    uint16_t current_ovl;                ///< Current overlay ID
+    uint16_t padding2;                   ///< Padding
 #if RSPQ_PROFILE
     uint32_t rspq_profile_cur_slot;
-    rspq_profile_data_dmem_t rspq_profile_data;
     uint32_t rspq_profile_start_time;
+    rspq_profile_slot_dmem_t rspq_profile_cslots[RSPQ_PROFILE_CSLOT_COUNT];
+    rspq_profile_slot_dmem_t rspq_profile_builtin_slot;
 #endif
-    int16_t current_ovl;                 ///< Current overlay index
-} __attribute__((aligned(16), packed)) rsp_queue_t;
+ } __attribute__((aligned(16), packed)) rsp_queue_t;
 
 /** @brief Address of the RSPQ data header in DMEM (see #rsp_queue_t) */
-#define RSPQ_DATA_ADDRESS                32
+#define RSPQ_DATA_ADDRESS                8
 
 /** @brief ID of the last syncpoint reached by RSP. */
 extern volatile int __rspq_syncpoints_done;
+
+/** @brief Registered overlays */
+extern rsp_ucode_t *rspq_overlay_ucodes[RSPQ_MAX_OVERLAYS];
 
 /** @brief Flag to mark deferred calls that needs to wait for RDP SYNC_FULL */
 #define RSPQ_DCF_WAITRDP                 (1<<0)

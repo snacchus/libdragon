@@ -110,7 +110,9 @@ const rom_header_t header = {
     .pi_dom1_config = 0x80371240,
     // Our IPL3 does not use directly this field. We do set it
     // mainly for iQue, so that the special iQue trampoline is run,
-    // which jumps to our IPL3.
+    // which jumps to our IPL3. Notice that n64tool will also overwrite
+    // this to align it to the one found in the ELF, to try to coerce
+    // iQue OS to use the same memory region used by the ELF.
     .boot_address = 0x80000400,
     // Default title name
     .title = "Libdragon           ",
@@ -238,7 +240,7 @@ void stage1pre(void)
     // instead, which is technically faster (though the final performance
     // difference is not measurable), but it would make the life harder
     // for emulators for very little gain.
-    asm ("li $sp, %0"::"i"(SP_DMEM+0x1000));
+    asm ("li $sp, %0"::"i"((uint32_t)SP_DMEM + 4096 - 0x10));
     __builtin_unreachable(); // avoid function epilog, fallthrough to stage1 (see linker script)
 }
 
@@ -276,6 +278,14 @@ void stage1(void)
             // in-use by save state emulation, so we shouldn't access it anyway.
             if (memsize == 0x800000)
                 memsize = 0x7C0000;
+
+            if (memsize == 0x400000 && io_read(0xB0000008) >= 0x80400000) {
+                // This is a special case for writing code in SA2 context on iQue.
+                // In that case, the ELF must be located above 4 MiB, but 0xA0000318
+                // is initialized to 4 MiB. We need to boot the application by
+                // reporting the true size of the memory.
+                memsize = 0x800000;
+            }
 
             // iQue has a hardware RNG. Use that to fetch 32 bits of entropy
             uint32_t rng = 0;

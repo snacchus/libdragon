@@ -327,9 +327,12 @@ RDPQ_UpdateRenderMode:
     #define bkg_blending t8
 
     # If updates are frozen, do nothing
+    # We just call RDPQ_Finalize just in case we come
+    # from RDPQCmd_ResetMode and we have a pending
+    # scissor change to send.
     lw som_hi, %lo(RDPQ_OTHER_MODES) + 0
     andi t0, som_hi, SOMX_UPDATE_FREEZE >> 32
-    bnez t0, RSPQ_Loop
+    bnez t0, RDPQ_Finalize
     lw som_lo, %lo(RDPQ_OTHER_MODES) + 4
 
     # If we are in fill/copy mode, we just need to emit SOM
@@ -714,6 +717,13 @@ RDPQ_WriteSetFillColor:
     or a1, t0
     .endfunc
 
+#########################################################################
+#
+#  RDPQ_Triangle_Send_Async: assemble a RDP triangle command (optimized version)
+#
+##########################################################################
+
+#include "rsp_rdpq_tri.inc"
 
 #########################################################################
 #
@@ -815,12 +825,19 @@ RDPQ_Triangle:
     #define VTX_ATTR_X      0
     #define VTX_ATTR_Y      2
     #define VTX_ATTR_Z      4
+    #define VTX_ATTR_CLIPCODE 6         // Clipping codes
+    #define VTX_ATTR_TRCODE   7         // Negated trivial-reject codes
     #define VTX_ATTR_RGBA   8
     #define VTX_ATTR_S      12
     #define VTX_ATTR_T      14
     #define VTX_ATTR_W      16
     #define VTX_ATTR_INVWi  20
     #define VTX_ATTR_INVWf  22
+
+#if 0
+    mfc0 fp, COP0_DP_CLOCK
+    emux_trace_start
+#endif
 
     j half_swap
     li t0, 1
@@ -867,6 +884,11 @@ swap_end:
     ssv vxy32.e5, 4,s3    # y2
     ssv vxy32.e4, 2,s3    # y3
 
+    # Add num mipmap levels to tricmd
+    lbu t1, %lo(RDPQ_OTHER_MODES) + 0
+    andi t1, 0x38     # Isolate bits 2-5 (aka 59-61 of SOM)
+    or tricmd, t1
+
     # Now calculate:
     #  vxy32    = X3 X2 X3 --    Y3 Y2 Y3 --
     #    -
@@ -910,11 +932,6 @@ swap_end:
     beq t0, cull, JrRa
     sll t0, 7
     or tricmd, t0
-
-    # Add num mipmap levels
-    lbu t1, %lo(RDPQ_OTHER_MODES) + 0
-    andi t1, 0x38     # Isolate bits 2-5 (aka 59-61 of SOM)
-    or tricmd, t1
 
     # Calculate reciprocal of normal
     vrcph vnz_i.e0, vnz_i.e4
@@ -1270,8 +1287,19 @@ no_texture:
     ssv    vde_f.e7, 0x0A,s3
     ssv    vdy_i.e7, 0x0C,s3
     ssv    vdy_f.e7, 0x0E,s3
-    jr ra
     addi s3, 0x10
+
+#if 0
+    emux_trace_stop
+
+    mfc0 t0, COP0_DP_CLOCK
+    sub t0, t0, fp
+    emux_log_string "RDPQ_Triangle:  "
+    emux_dump_gpr t0
+#endif
+
+    jr ra
+    nop
 
     #undef tricm
     #undef vtx1 
@@ -1336,5 +1364,4 @@ no_texture:
 
     .endfunc
 
-
-
+    .section .text

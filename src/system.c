@@ -1118,21 +1118,29 @@ void *sbrk( int incr )
  */
 int stat( const char *file, struct stat *st )
 {
-    /* Dirty hack, open read only */
-    int fd = open( (char *)file, O_RDONLY );
-
-    if( fd > 0 )
-    {
-        int ret = fstat( fd, st );
-        close( fd );
-
-        return ret;
-    }
-    else
+    if( st == NULL )
     {
         errno = EINVAL;
         return -1;
     }
+
+    filesystem_t *fs = __get_fs_pointer_by_name( file );
+    int mapping = __get_fs_link_by_name( file );
+
+    /* Use stat function when available, and fstat as a fallback */
+    if( fs != 0 && mapping >= 0 && fs->stat )
+        return fs->stat( (char *)file + __strlen( filesystems[mapping].prefix ) - 1, st );
+
+    /* Dirty hack, open read only */
+    int fd = open( (char *)file, O_RDONLY );
+    if( fd < 0 )
+        return fd;
+
+    /* Run fstat */
+    int ret = fstat( fd, st );
+    close( fd );
+
+    return ret;
 }
 
 /**
@@ -1285,6 +1293,62 @@ int write( int file, char *ptr, int len )
 }
 
 /**
+ * @brief Truncate a file to the specified length.
+ * 
+ * If the specified length is larger than the current file size,
+ * the file is extended with zeros. If the specified length is smaller
+ * than the current file size, the file is truncated to the specified
+ * length.
+ * 
+ * @param file      File handle
+ * @param length    New length of the file
+ * @return int      0 on success, -1 on failure (errno will be set)
+ */
+int ftruncate( int file, off_t length )
+{
+    filesystem_t *fs = __get_fs_pointer_by_handle( file );
+    void **handle_ptr = __get_fs_handle( file );
+
+    if( fs == 0 || handle_ptr == 0 || length < 0 )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if( fs->ftruncate == 0 )
+    {
+        /* Filesystem doesn't support ftruncate */
+        errno = ENOSYS;
+        return -1;
+    }
+
+    return fs->ftruncate( *handle_ptr, length );
+}
+
+/**
+ * @brief Truncate a file to the specified length.
+ * 
+ * If the specified length is larger than the current file size,
+ * the file is extended with zeros. If the specified length is smaller
+ * than the current file size, the file is truncated to the specified
+ * length.
+ * 
+ * @param path      Path to the file
+ * @param length    New length of the file
+ * @return int      0 on success, -1 on failure (errno will be set)
+ */
+int truncate( const char *path, off_t length )
+{
+    int fd = open( path, O_WRONLY );
+    if (fd < 0)
+        return fd;
+
+    int ret = ftruncate( fd, length );
+    close( fd );
+    return ret;
+}
+
+/**
  * @brief Generate an array of unpredictable random numbers
  * 
  * This function can be used to generate an array of random data. The function
@@ -1368,14 +1432,15 @@ int getentropy(uint8_t *buf, size_t buflen)
  * @param[out] dir
  *             Directory entry structure to populate with first entry
  *
- * @return 0 on successful lookup or a negative value on error.
+ * @return 0 on successful lookup, -1 if the directory existed and is empty,
+ *         or a different negative value on error (in which case, errno will be set).
  */
 int dir_findfirst( const char * const path, dir_t *dir )
 {
     filesystem_t *fs = __get_fs_pointer_by_name( path );
     int mapping = __get_fs_link_by_name( path );
 
-    if( fs == 0 )
+    if( fs == 0 || mapping < 0 || dir == 0 )
     {
         errno = EINVAL;
         return -1;
@@ -1388,7 +1453,12 @@ int dir_findfirst( const char * const path, dir_t *dir )
         return -1;
     }
 
-    return fs->findfirst( (char *)path + + __strlen( filesystems[mapping].prefix ), dir );
+    /* Initialize dir_t structure. Set size to -1 in case the filesystem
+       does not report it. */
+    __builtin_memset( dir, 0, sizeof( dir_t ) );
+    dir->d_size = -1;
+
+    return fs->findfirst( (char *)path + __strlen( filesystems[mapping].prefix ) - 1, dir );
 }
 
 /**
@@ -1403,13 +1473,14 @@ int dir_findfirst( const char * const path, dir_t *dir )
  * @param[out] dir
  *             Directory entry structure to populate with next entry
  *
- * @return 0 on successful lookup or a negative value on error.
+ * @return 0 on successful lookup, -1 if there are no more files in the directory,
+ *         or a different negative value on error (in which case, errno will be set).
  */
 int dir_findnext( const char * const path, dir_t *dir )
 {
     filesystem_t *fs = __get_fs_pointer_by_name( path );
 
-    if( fs == 0 )
+    if( fs == 0 || dir == 0 )
     {
         errno = EINVAL;
         return -1;
@@ -1423,6 +1494,36 @@ int dir_findnext( const char * const path, dir_t *dir )
     }
 
     return fs->findnext( dir );
+}
+
+/**
+ * @brief Create a directory.
+ * 
+ * Creates a new directory at the specified location.
+ * 
+ * @param path      Path of the directory to create, relative to the root of the filesystem
+ * @param mode      Directory access mode
+ * @return int      0 on success, -1 on failure (errno will be set)
+ */
+int mkdir( const char * path, mode_t mode )
+{
+    filesystem_t *fs = __get_fs_pointer_by_name( path );
+    int mapping = __get_fs_link_by_name( path );
+
+    if( fs == 0 || mapping < 0 )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if( fs->mkdir == 0 )
+    {
+        /* Filesystem doesn't support mkdir */
+        errno = ENOSYS;
+        return -1;
+    }
+    
+    return fs->mkdir( (char *)path + __strlen( filesystems[mapping].prefix ) - 1, mode );
 }
 
 /**

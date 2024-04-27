@@ -130,16 +130,15 @@ GLCmd_SetShort:
     sh a1, %lo(GL_STATE)(a0)
     .endfunc
 
-    .func GLCmd_SetWord
-GLCmd_SetWord:
-    j GLCmd_Update
-    sw a1, %lo(GL_STATE)(a0)
-    .endfunc
-
     .func GLCmd_SetLong
 GLCmd_SetLong:
-    sw a1, %lo(GL_STATE) + 0(a0)
     sw a2, %lo(GL_STATE) + 4(a0)
+    # fallthrough!
+    .endfunc
+
+    .func GLCmd_SetWord
+GLCmd_SetWord:
+    sw a1, %lo(GL_STATE) + 0(a0)
     # fallthrough!
     .endfunc
 
@@ -147,7 +146,7 @@ GLCmd_Update:
     srl t0, a0, 12
     lhu t1, %lo(UPDATE_FUNCTIONS)(t0)
     jr t1
-    nop
+    #nop
 
 GLCmd_GetValue:
     srl t0, a0, 12
@@ -925,6 +924,7 @@ gl_mergemask:
     and t2, modes0, ~(RDPQ_TEXTURING_MASK)
     or  modes0, t1, t2
 
+
 1:
 
     lw t0, %lo(RDPQ_OTHER_MODES) + 0x0
@@ -965,10 +965,33 @@ GLCmd_PreInitPipeTex:
     # (FLAG2_USE_RDPQ_TEXTURING)
     lw state_flags2, %lo(GL_STATE_FLAGS2)
     andi t1, state_flags2, FLAG2_USE_RDPQ_TEXTURING
-    bnez t1, RSPQ_Loop
-
-    # Get pointer to active texture state in DMEM
+    beqz t1, 2f
     lw state_flags, %lo(GL_STATE_FLAGS)
+
+    or state_flags, FLAG_TEXTURE_ACTIVE
+    sw state_flags, %lo(GL_STATE_FLAGS)
+
+    # If bilinear sampling is active, texture coords need to be offset by half a texel,
+    # which is 0x10 in s10.5
+    lw t2, %lo(RDPQ_OTHER_MODES) + 0x4
+    and t2, (SOM_SAMPLE_BILINEAR >> 32)
+    sll t2, t2, (SOM_SAMPLE_SHIFT - 32 + 1)
+
+    andi t3, state_flags2, FLAG2_TEX_FLIP_T
+    lh t6, %lo(GL_STATE_TEX_SIZE) + 2
+    sll t1, t2, TEX_BILINEAR_OFFSET_SHIFT
+    neg t1, t1
+    beqz t7, 1f
+    sh t1, %lo(GL_STATE_TEX_OFFSET) + 0
+    sra t6, 1
+    sub t1, t6
+
+1:
+    sh t1, %lo(GL_STATE_TEX_OFFSET) + 2
+    j RSPQ_Loop
+
+2:
+    # Get pointer to active texture state in DMEM
     li active_tex_id, %lo(GL_STATE_TEXTURE_IDS) + 0x4
     andi t1, state_flags, FLAG_TEXTURE_2D
     bnez t1, 1f
@@ -1012,7 +1035,7 @@ GLCmd_PreInitPipeTex:
     bne tex_id, uploaded_tex, 1f
     andi t0, tex_flags, TEX_FLAG_UPLOAD_DIRTY
     beqz t0, RSPQ_Loop
-    nop
+#    nop
 
 1:
     # OK we are going to do the upload. Update the state: clear dirty flag and

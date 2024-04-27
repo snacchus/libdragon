@@ -50,6 +50,7 @@ LIBDRAGON_OBJS += \
 			 $(BUILD_DIR)/video/profile.o $(BUILD_DIR)/video/throttle.o \
 			 $(BUILD_DIR)/video/rsp_yuv.o $(BUILD_DIR)/video/rsp_mpeg1.o \
 			 $(BUILD_DIR)/rspq/rspq.o $(BUILD_DIR)/rspq/rsp_queue.o \
+			 $(BUILD_DIR)/rspq/rspq_profile.o $(BUILD_DIR)/rspq/rsp_profile.o \
 			 $(BUILD_DIR)/rdpq/rdpq.o $(BUILD_DIR)/rdpq/rsp_rdpq.o \
 			 $(BUILD_DIR)/rdpq/rdpq_debug.o $(BUILD_DIR)/rdpq/rdpq_tri.o \
 			 $(BUILD_DIR)/rdpq/rdpq_rect.o $(BUILD_DIR)/rdpq/rdpq_mode.o \
@@ -66,6 +67,7 @@ LIBDRAGON_OBJS += \
 			 $(BUILD_DIR)/GL/rsp_gl_pipeline.o $(BUILD_DIR)/GL/glu.o \
 			 $(BUILD_DIR)/GL/cpu_pipeline.o $(BUILD_DIR)/GL/rsp_pipeline.o \
 			 $(BUILD_DIR)/dlfcn.o $(BUILD_DIR)/model64.o \
+			 $(BUILD_DIR)/bb/skc.o $(BUILD_DIR)/bb/nand.o $(BUILD_DIR)/bb/bbfs.o \
 			 $(BUILD_DIR)/magma/magma.o $(BUILD_DIR)/magma/magma_fixed_function.o \
 			 $(BUILD_DIR)/magma/rsp_magma.o
 
@@ -117,6 +119,7 @@ install: install-mk libdragon
 	install -Cv -m 0644 include/backtrace.h $(INSTALLDIR)/mips64-elf/include/backtrace.h
 	install -Cv -m 0644 include/cop0.h $(INSTALLDIR)/mips64-elf/include/cop0.h
 	install -Cv -m 0644 include/cop1.h $(INSTALLDIR)/mips64-elf/include/cop1.h
+	install -Cv -m 0644 include/mi.h $(INSTALLDIR)/mips64-elf/include/mi.h
 	install -Cv -m 0644 include/interrupt.h $(INSTALLDIR)/mips64-elf/include/interrupt.h
 	install -Cv -m 0644 include/dma.h $(INSTALLDIR)/mips64-elf/include/dma.h
 	install -Cv -m 0644 include/dragonfs.h $(INSTALLDIR)/mips64-elf/include/dragonfs.h
@@ -151,6 +154,7 @@ install: install-mk libdragon
 	install -Cv -m 0644 include/rsp.inc $(INSTALLDIR)/mips64-elf/include/rsp.inc
 	install -Cv -m 0644 include/rsp_dma.inc $(INSTALLDIR)/mips64-elf/include/rsp_dma.inc
 	install -Cv -m 0644 include/rsp_assert.inc $(INSTALLDIR)/mips64-elf/include/rsp_assert.inc
+	install -Cv -m 0644 include/rsp_highpri.inc $(INSTALLDIR)/mips64-elf/include/rsp_highpri.inc
 	install -Cv -m 0644 include/mpeg2.h $(INSTALLDIR)/mips64-elf/include/mpeg2.h
 	install -Cv -m 0644 include/yuv.h $(INSTALLDIR)/mips64-elf/include/yuv.h
 	install -Cv -m 0644 include/throttle.h $(INSTALLDIR)/mips64-elf/include/throttle.h
@@ -178,6 +182,7 @@ install: install-mk libdragon
 	install -Cv -m 0644 include/rdpq_macros.h $(INSTALLDIR)/mips64-elf/include/rdpq_macros.h
 	install -Cv -m 0644 include/rdpq_constants.h $(INSTALLDIR)/mips64-elf/include/rdpq_constants.h
 	install -Cv -m 0644 include/rsp_rdpq.inc $(INSTALLDIR)/mips64-elf/include/rsp_rdpq.inc
+	install -Cv -m 0644 include/rsp_rdpq_tri.inc $(INSTALLDIR)/mips64-elf/include/rsp_rdpq_tri.inc
 	install -Cv -m 0644 include/surface.h $(INSTALLDIR)/mips64-elf/include/surface.h
 	install -Cv -m 0644 include/GL/gl.h $(INSTALLDIR)/mips64-elf/include/GL/gl.h
 	install -Cv -m 0644 include/GL/gl_enums.h $(INSTALLDIR)/mips64-elf/include/GL/gl_enums.h
@@ -185,6 +190,9 @@ install: install-mk libdragon
 	install -Cv -m 0644 include/GL/glu.h $(INSTALLDIR)/mips64-elf/include/GL/glu.h
 	install -Cv -m 0644 include/dlfcn.h $(INSTALLDIR)/mips64-elf/include/dlfcn.h
 	install -Cv -m 0644 include/model64.h $(INSTALLDIR)/mips64-elf/include/model64.h
+	install -Cv -m 0644 include/skc.h $(INSTALLDIR)/mips64-elf/include/skc.h
+	install -Cv -m 0644 include/nand.h $(INSTALLDIR)/mips64-elf/include/nand.h
+	install -Cv -m 0644 include/bbfs.h $(INSTALLDIR)/mips64-elf/include/bbfs.h
 	install -Cv -m 0644 include/magma.h $(INSTALLDIR)/mips64-elf/include/magma.h
 	install -Cv -m 0644 include/magma_fixed_function.h $(INSTALLDIR)/mips64-elf/include/magma_fixed_function.h
 	mkdir -p $(INSTALLDIR)/mips64-elf/include/libcart

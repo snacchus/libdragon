@@ -6,6 +6,8 @@
 #ifndef __LIBDRAGON_DIR_H
 #define __LIBDRAGON_DIR_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,10 +32,21 @@ extern "C" {
  */
 typedef struct
 {
-    /** @brief The name of the directory entry */
+    /** @brief The name of the directory entry (relative to the directory path) */
     char d_name[256];
     /** @brief The type of the directory entry.  See #DT_REG and #DT_DIR. */
     int d_type;
+    /** @brief Size of the file.
+     * 
+     * This value is well defined for files. For directories, the value
+     * is filesystem-dependent.
+     * 
+     * If negative, the filesystem does not report the size during directory
+     * walking.
+     */
+    int64_t d_size;
+    /** @brief Opaque cookie used to continue walking. */
+    uint32_t d_cookie;
 } dir_t;
 
 /** @} */

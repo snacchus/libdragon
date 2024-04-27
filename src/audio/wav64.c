@@ -190,6 +190,11 @@ static void waveform_vadpcm_read(void *ctx, samplebuffer_t *sbuf, int wpos, int 
 	bool highpri = false;
 	while (wlen > 0) {
 		int nframes = wlen / 16;
+		// Most of the code here would be ready to loop over multiple blocks of
+		// 256 frames, but the problem is that we don't doublebuffer the RDRAM
+		// buffers, so the RSP doesn't get to process the data in time. This
+		// would require CPU-spinning here. Since it's a very rare case, just
+		// block it for now.
 		assert(nframes <= 256);
 		nframes = MIN(nframes, 256);
 
@@ -333,6 +338,18 @@ void wav64_set_loop(wav64_t *wav, bool loop) {
 	// Notice that audioconv64 does the same during conversion.
 	if (wav->wave.bits == 8 && wav->wave.loop_len & 1)
 		wav->wave.loop_len -= 1;
+}
+
+int wav64_get_bitrate(wav64_t *wav) {
+	if (wav->ext) {
+		switch (wav->format) {
+		case WAV64_FORMAT_VADPCM:
+			return wav->wave.frequency * wav->wave.channels * 72 / 16;
+		case WAV64_FORMAT_OPUS:
+			return wav64_opus_get_bitrate(wav);
+		}
+	}
+	return wav->wave.frequency * wav->wave.channels * wav->wave.bits;
 }
 
 void wav64_close(wav64_t *wav)

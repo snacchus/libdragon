@@ -259,8 +259,11 @@ void mixer_close(void) {
 
 void mixer_ch_set_freq(int ch, float frequency) {
 	mixer_channel_t *c = &Mixer.channels[ch];
-	assertf(!(c->flags & CH_FLAGS_STEREO_SUB), "mixer_ch_set_freq: cannot call on secondary stereo channel %d", ch);
-	assertf(frequency >= 0, "mixer_ch_set_freq: cannot set negative frequency on channel %d: %f", ch, frequency);
+	assertf(!(c->flags & CH_FLAGS_STEREO_SUB), "cannot call on secondary stereo channel %d", ch);
+	assertf(frequency >= 0, "cannot set negative frequency on channel %d: %f", ch, frequency);
+	// Check if the frequency is within the configured limit. Allow for a 1% margin because of rounding errors
+	// for default maximum frequency being the output sample rate converted from fixed point.
+	assertf(frequency <= Mixer.limits[ch].max_frequency*1.01, "frequency %.1f exceeds configured limit %.1f on channel %d; use mixer_ch_set_limit to change the limit for this channel", frequency, Mixer.limits[ch].max_frequency, ch);
 	c->step = MIXER_FX64(frequency / (float)Mixer.sample_rate) << (c->flags & CH_FLAGS_BPS_SHIFT);
 }
 
@@ -497,14 +500,17 @@ static void mixer_exec(int32_t *out, int num_samples) {
 			int loop_len = ch->loop_len >> bps_fx64;
 			int wpos = ch->pos >> bps_fx64;
 			// Calculate how many samples we need to have available for this
-			// frame. We used to calculate the last sample as ch->step * (num_samples+1),
-			// but in the unlikely case the playing rate is much higher than the
-			// mixing rate, this might cause a seek in the waveform (eg: if we play
+			// frame. We used to only calculate the last sample, but in the unlikely
+			// case the playback rate is much higher than the output rate,
+			// this might cause a seek in the waveform (eg: if we play
 			// one sample every 10, we don't want to cause a seek forward by 9,
 			// between the last sample of this frame and the first sample of
-			// next frame).
+			// next frame). Seeking creates problem with compressed streams, so
+			// we want to avoid it.
+			int wlast = (ch->pos + ch->step*(num_samples-1)) >> bps_fx64;
 			int wnext = (ch->pos + ch->step*num_samples) >> bps_fx64;
-			int wlen = MAX(wnext - wpos, 1);
+			int wlen = MAX(wlast-wpos+1, wnext-wpos);
+
 			assertf(wlen >= 0, "channel %d: wpos overflow", i);
 			tracef("ch:%d wpos:%x wlen:%x len:%x loop_len:%x sbuf_size:%x\n", i, wpos, wlen, len, loop_len, sbuf->size);
 

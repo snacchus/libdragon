@@ -195,7 +195,7 @@ extern char __bss_end[];
 /**
  * @brief Returns equivalent count ticks for the given microseconds.
  */
-#define TICKS_FROM_US(val) (((val) * (8 * TICKS_PER_SECOND / 1000000) / 8)
+#define TICKS_FROM_US(val) (((val) * (8 * TICKS_PER_SECOND / 1000000) / 8))
 
 /**
  * @brief Returns equivalent count ticks for the given microseconds.
@@ -212,7 +212,11 @@ extern char __bss_end[];
 extern "C" {
 #endif
 
-bool sys_bbplayer(void);
+/** @brief Return true if we are running on a iQue player */
+inline bool sys_bbplayer(void) {
+    extern int __boot_consoletype;
+    return __boot_consoletype != 0;
+}
 
 /**
  * @brief Read the number of ticks since system startup

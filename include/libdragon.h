@@ -40,6 +40,7 @@
 #include "eeprom.h"
 #include "eepromfs.h"
 #include "graphics.h"
+#include "mi.h"
 #include "interrupt.h"
 #include "n64sys.h"
 #include "backtrace.h"
@@ -73,6 +74,9 @@
 #include "debugcpp.h"
 #include "dlfcn.h"
 #include "model64.h"
+#include "skc.h"
+#include "nand.h"
+#include "bbfs.h"
 #include "magma.h"
 #include "magma_fixed_function.h"
 
