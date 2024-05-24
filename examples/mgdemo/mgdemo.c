@@ -50,9 +50,9 @@ void update_object_matrices(object_data *object);
 
 static surface_t zbuffer;
 
-static mg_shader_t *vertex_shader;
+static mg_viewport_t viewport;
+static mg_culling_parms_t culling;
 static mg_pipeline_t *pipeline;
-static mg_vertex_loader_t *vertex_loader;
 static mg_buffer_t *scene_resource_buffer;
 static mg_resource_set_t *scene_resource_set;
 
@@ -90,28 +90,25 @@ void init()
     // Create depth buffer
     zbuffer = surface_alloc(FMT_RGBA16, resolution.width, resolution.height);
 
-    // Create the vertex shader. This function returns the vertex shader of the fixed function pipeline provided by libdragon.
-    vertex_shader = mgfx_create_vertex_shader();
+    // Initialize viewport
+    viewport = (mg_viewport_t) {
+        .width = resolution.width,
+        .height = resolution.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+    
+    // Initialize culling mode
+    culling = (mg_culling_parms_t) {
+        .cull_mode = MG_CULL_MODE_BACK
+    };
+
+    // This function returns the vertex shader of the fixed function pipeline provided by libdragon.
+    rsp_ucode_t *vertex_shader_ucode = mgfx_get_shader_ucode();
 
     // Create the graphics pipeline. We need to attach the vertex shader and setup some initial state.
-    // Culling flags and viewport can be changed later (which we won't be doing in this demo). See mg_set_culling and mg_set_viewport.
     pipeline = mg_pipeline_create(&(mg_pipeline_parms_t){
-        .vertex_shader = vertex_shader,
-        .culling.cull_mode = MG_CULL_MODE_BACK,
-        .viewport = (mg_viewport_t) {
-            .width = resolution.width,
-            .height = resolution.height,
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        }
-    });
-
-    // Create the vertex loader. We need to create one of these per vertex layout we intend on using.
-    // After creation, a vertex loader contains a little piece of ucode that can load vertices of the specified layout optimally.
-    vertex_loader = mg_vertex_loader_create(&(mg_vertex_loader_parms_t) {
-        .attribute_descriptor_count = ARRAY_SIZE(vertex_attributes),
-        .attribute_descriptors = vertex_attributes,
-        .stride = sizeof(vertex)
+        .vertex_shader_ucode = vertex_shader_ucode
     });
 
     create_scene_resources();
@@ -318,11 +315,13 @@ void render()
         rdpq_mode_combiner(RDPQ_COMBINER_TEX_SHADE);
     rdpq_mode_end();
 
+    // Set viewport, culling mode and geometry flags
+    mg_set_viewport(&viewport);
+    mg_set_culling(&culling);
+    //mg_set_geometry_flags(MG_GEOMETRY_FLAGS_SHADE_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED | MG_GEOMETRY_FLAGS_Z_ENABLED);
+
     // All our materials use the same pipeline in this demo, so bind it once for the entire scene
     mg_bind_pipeline(pipeline);
-
-    // Because all our meshes have the same vertex format in this demo, we can just bind the vertex loader once for the entire scene
-    mg_bind_vertex_loader(vertex_loader);
 
     // Bind resources that stay constant for the entire scene (for example lighting)
     mg_bind_resource_set(scene_resource_set);

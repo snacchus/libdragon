@@ -3,9 +3,41 @@
 #include "rspq.h"
 #include "utils.h"
 
+typedef struct
+{
+    uint32_t binding;
+    uint32_t offset;
+    uint32_t size;
+} mg_uniform_t;
+
+typedef struct mg_pipeline_s 
+{
+    rsp_ucode_t *shader_ucode;
+    uint32_t uniform_count;
+    mg_uniform_t *uniforms;
+} mg_pipeline_t;
+
+typedef struct mg_buffer_s 
+{
+    void *memory;
+    uint32_t size;
+    bool is_mapped;
+} mg_buffer_t;
+
+typedef struct mg_resource_set_s 
+{
+    rspq_block_t *block;
+    void *inline_data;
+} mg_resource_set_t;
+
 DEFINE_RSP_UCODE(rsp_magma);
 
 uint32_t mg_overlay_id;
+
+inline void mg_cmd_load_uniform(const void *buffer, uint32_t size, uint32_t dmem_offset)
+{
+    mg_cmd_write(MG_CMD_LOAD_UNIFORM, PhysicalAddr(buffer), ((size-1) << 16) | dmem_offset);
+}
 
 inline void mg_cmd_load_vertices(uint32_t count, uint8_t cache_offset, uint32_t buffer_offset)
 {
@@ -29,99 +61,224 @@ void mg_close(void)
     rspq_overlay_unregister(mg_overlay_id);
 }
 
-mg_shader_t *mg_shader_create(rsp_ucode_t *ucode)
-{
-    return NULL;
-}
-
-void mg_shader_free(mg_shader_t *vertex_shader)
-{
-
-}
-
-mg_vertex_loader_t *mg_vertex_loader_create(mg_vertex_loader_parms_t *parms)
-{
-    return NULL;
-}
-
-void mg_vertex_loader_free(mg_vertex_loader_t *vertex_loader)
-{
-
-}
-
 mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms)
 {
-    return NULL;
+    mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
+    pipeline->shader_ucode = parms->vertex_shader_ucode;
+    // TODO: uniforms
+    return pipeline;
 }
 
 void mg_pipeline_free(mg_pipeline_t *pipeline)
 {
+    free(pipeline);
+}
 
+mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
+{
+    for (uint32_t i = 0; i < pipeline->uniform_count; i++)
+    {
+        if (pipeline->uniforms[i].binding == binding) {
+            return &pipeline->uniforms[i];
+        }
+    }
+    
+    assertf(0, "Uniform with binding number %ld was not found", binding);
 }
 
 mg_buffer_t *mg_buffer_create(mg_buffer_parms_t *parms)
 {
-    return NULL;
+    mg_buffer_t *buffer = malloc(sizeof(mg_buffer_t));
+    buffer->memory = malloc_uncached(parms->size);
+    buffer->size = parms->size;
+
+    if (parms->initial_data) {
+        memcpy(buffer->memory, parms->initial_data, parms->size);
+    }
+
+    return buffer;
 }
 
 void mg_buffer_free(mg_buffer_t *buffer)
 {
-
+    free_uncached(buffer->memory);
+    free(buffer);
 }
 
 void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags)
 {
-    return NULL;
+    assertf(!buffer->is_mapped, "Buffer is already mapped");
+    assertf(offset + size < buffer->size, "Map is out of range");
+
+    // TODO: Optimize for different types of access depending on flags
+
+    buffer->is_mapped = true;
+    return (uint8_t*)buffer->memory + offset;
 }
 
 void mg_buffer_unmap(mg_buffer_t *buffer)
 {
-
+    assertf(buffer->is_mapped, "Buffer is not mapped");
+    buffer->is_mapped = false;
 }
 
 void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const void *data)
 {
+    assertf(!buffer->is_mapped, "Buffer is mapped");
+    assertf(offset + size < buffer->size, "Out of range");
 
+    memcpy((uint8_t*)buffer->memory + offset, data, size);
 }
 
 mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms)
 {
-    return NULL;
+    mg_resource_set_t *resource_set = malloc(sizeof(mg_resource_set_t));
+
+    // Preprocessing
+
+    uint32_t inline_data_size = 0;
+
+    for (uint32_t i = 0; i < parms->binding_count; i++)
+    {
+        mg_resource_binding_t *binding = &parms->bindings[i];
+        switch (binding->type) {
+        case MG_RESOURCE_TYPE_INLINE_UNIFORM:
+            mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
+            inline_data_size += uniform->size;
+            break;
+
+        case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
+        case MG_RESOURCE_TYPE_STORAGE_BUFFER:
+            break;
+        }
+    }
+
+    if (inline_data_size > 0) {
+        resource_set->inline_data = malloc_uncached(inline_data_size);
+    }
+
+    // Record block
+    // TODO: optimize
+
+    inline_data_size = 0;
+
+    rspq_block_begin();
+    for (uint32_t i = 0; i < parms->binding_count; i++)
+    {
+        mg_resource_binding_t *binding = &parms->bindings[i];
+        mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
+
+        switch (binding->type) {
+        case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
+            uint8_t *uniform_data = (uint8_t*)binding->buffer->memory + binding->offset;
+            mg_cmd_load_uniform(uniform_data, uniform->size, uniform->offset);
+            break;
+
+        case MG_RESOURCE_TYPE_STORAGE_BUFFER:
+            assertf(uniform->size == 8, "Uniform at binding %ld can't be used as a storage buffer", uniform->binding);
+            uint32_t storage_data[2] = { PhysicalAddr(binding->buffer->memory), 0 };
+            mg_push_constants(uniform->offset, 8, storage_data);
+            break;
+
+        case MG_RESOURCE_TYPE_INLINE_UNIFORM:
+            uint8_t *inline_data = (uint8_t*)resource_set->inline_data + inline_data_size;
+            assertf(((uint32_t)inline_data&0x7) == 0, "Uniform pointer not aligned to 8 bytes");
+            memcpy(inline_data, binding->inline_data, uniform->size);
+            inline_data_size += uniform->size;
+            mg_cmd_load_uniform(inline_data, uniform->size, uniform->offset);
+            break;
+        }
+    }
+
+    return resource_set;
 }
 
 void mg_resource_set_free(mg_resource_set_t *resource_set)
 {
+    rspq_block_free(resource_set->block);
+    if (resource_set->inline_data) {
+        free_uncached(resource_set->inline_data);
+    }
+    free(resource_set);
+}
 
+inline void mg_load_shader(const rsp_ucode_t *shader_ucode)
+{
+    uint32_t code = PhysicalAddr(shader_ucode->code);
+    uint32_t data = PhysicalAddr(shader_ucode->data);
+    uint32_t code_size = (uint8_t*)shader_ucode->code_end - shader_ucode->code;
+    uint32_t data_size = (uint8_t*)shader_ucode->data_end - shader_ucode->data;
+    uint32_t packed_sizes = ((ROUND_UP(code_size, 8) - 1) << 16) | (ROUND_UP(data_size, 8) - 1);
+    mg_cmd_write(MG_CMD_SET_SHADER, code, data, packed_sizes);
 }
 
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
-
+    // TODO: inline?
+    mg_load_shader(pipeline->shader_ucode);
 }
 
 void mg_bind_resource_set(mg_resource_set_t *resource_set)
 {
-
+    // TODO: inline?
+    rspq_block_run(resource_set->block);
 }
 
 void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
 {
+    assertf((offset&7) == 0, "offset must be a multiple of 8");
+    assertf((size&3) == 0, "size must be a multiple of 4");
+    assertf(size <= MAGMA_MAX_UNIFORM_PAYLOAD_SIZE, "size must not be greater than %d", MAGMA_MAX_UNIFORM_PAYLOAD_SIZE);
 
+    uint32_t aligned_size = ROUND_UP(size, 8);
+
+    uint32_t command_id = MG_CMD_PUSH_CONSTANT_MAX;
+    uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE;
+
+    if (aligned_size <= 8) {
+        command_id = MG_CMD_PUSH_CONSTANT_8;
+        command_size = 8;
+    } else if (aligned_size <= 16) {
+        command_id = MG_CMD_PUSH_CONSTANT_16;
+        command_size = 16;
+    } else if (aligned_size <= 32) {
+        command_id = MG_CMD_PUSH_CONSTANT_32;
+        command_size = 32;
+    } else if (aligned_size <= 64) {
+        command_id = MG_CMD_PUSH_CONSTANT_64;
+        command_size = 64;
+    } else if (aligned_size <= 128) {
+        command_id = MG_CMD_PUSH_CONSTANT_128;
+        command_size = 128;
+    }
+
+    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, MAGMA_PUSH_CONSTANT_HEADER + command_size);
+
+    uint32_t pointer = PhysicalAddr(w.pointer);
+    bool aligned = (pointer & 0x7) == 0;
+
+    rspq_write_arg(&w, aligned ? pointer + 8 : pointer + 12);
+    rspq_write_arg(&w, ((aligned_size-1) << 16) | offset);
+
+    if (!aligned) {
+        rspq_write_arg(&w, 0);
+    }
+
+    const uint32_t *words = data;
+
+    uint32_t word_count = size / sizeof(uint32_t);
+    for (uint32_t i = 0; i < word_count; i++)
+    {
+        rspq_write_arg(&w, words[i]);
+    }
+
+    rspq_write_end(&w);
 }
 
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
 {
-
-}
-
-void mg_bind_index_buffer(mg_buffer_t *buffer, uint32_t offset)
-{
-
-}
-
-void mg_bind_vertex_loader(mg_vertex_loader_t *vertex_loader)
-{
-
+    // TODO: inline?
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer->memory) + offset);
 }
 
 #define TRI_LIST_ADVANCE_COUNT ROUND_DOWN(MAGMA_VERTEX_CACHE_COUNT, 3)

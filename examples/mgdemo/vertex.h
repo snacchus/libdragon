@@ -21,25 +21,4 @@ typedef struct
     int8_t normal[3];
 } __attribute__((packed)) vertex;
 
-
-// This describes the vertex layout and format to magma. It is used to create a "vertex loader" object.
-static mg_vertex_attribute_descriptor_t vertex_attributes[] = {
-    {
-        .location = MGFX_VERTEX_ATTRIBUTE_POSITION,
-        .format = MG_VERTEX_FORMAT_VEC3_16,
-        .offset = 0,
-    },
-    {
-        .location = MGFX_VERTEX_ATTRIBUTE_TEXCOORD,
-        .format = MG_VERTEX_FORMAT_VEC2_16,
-        .offset = 6,
-    },
-    {
-        .location = MGFX_VERTEX_ATTRIBUTE_NORMAL,
-        .format = MG_VERTEX_FORMAT_VEC3_8,
-        .offset = 10
-    },
-};
-
-
 #endif

@@ -1,5 +1,15 @@
 #include "magma_fixed_function.h"
 
+_Static_assert(sizeof(mgfx_matrix_t) == MGFX_MATRIX_SIZE);
+
+_Static_assert(offsetof(mgfx_vertex_t, position) == MGFX_VTX_POS);
+_Static_assert(offsetof(mgfx_vertex_t, packed_normal) == MGFX_VTX_NORM);
+_Static_assert(offsetof(mgfx_vertex_t, color) == MGFX_VTX_RGBA);
+_Static_assert(offsetof(mgfx_vertex_t, texcoord) == MGFX_VTX_TEX);
+_Static_assert(sizeof(mgfx_vertex_t) == MGFX_VTX_SIZE);
+
+DEFINE_RSP_UCODE(rsp_magma_fixed_function);
+
 typedef struct 
 {
     mgfx_modes_t modes;
@@ -10,11 +20,6 @@ typedef struct
     mgfx_matrices_t matrices;
     uint32_t matrix_palette;
 } mgfx_state_t;
-
-mg_shader_t *mgfx_create_vertex_shader()
-{
-    return NULL;
-}
 
 void mgfx_get_modes(mgfx_modes_t *dst, const mgfx_modes_parms_t *parms)
 {

@@ -2,10 +2,7 @@
 #define __LIBDRAGON_MAGMA_FIXED_FUNCTION_H
 
 #include <magma.h>
-
-/* Constants */
-
-#define MGFX_LIGHT_COUNT_MAX    8
+#include <magma_fixed_function_constants.h>
 
 /* Enums */
 
@@ -52,7 +49,7 @@ typedef enum
 typedef struct
 {
     uint32_t flags;
-} __attribute__((packed, aligned(8))) mgfx_modes_t;
+} __attribute__((packed, aligned(16))) mgfx_modes_t;
 
 typedef struct
 {
@@ -60,7 +57,7 @@ typedef struct
     int16_t offset_int;
     uint16_t factor_frac;
     uint16_t offset_frac;
-} __attribute__((packed, aligned(8))) mgfx_fog_t;
+} __attribute__((packed, aligned(16))) mgfx_fog_t;
 
 typedef struct
 {
@@ -78,13 +75,13 @@ typedef struct
     int16_t diffuse[4];
     int16_t emissive[4];
     uint32_t color_target;
-} __attribute__((packed, aligned(8))) mgfx_material_t;
+} __attribute__((packed, aligned(16))) mgfx_material_t;
 
 typedef struct
 {
     int16_t tex_scale[2];
     int16_t tex_offset[2];
-} __attribute__((packed, aligned(8))) mgfx_texturing_t;
+} __attribute__((packed, aligned(16))) mgfx_texturing_t;
 
 typedef struct
 {
@@ -146,13 +143,28 @@ typedef struct
     float *normal;
 } mgfx_matrices_parms_t;
 
+/* Vertex struct */
+
+typedef struct
+{
+    int16_t position[3];
+    uint16_t packed_normal;
+    uint32_t color;
+    int16_t texcoord[2];
+} __attribute__((packed)) mgfx_vertex_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* Functions */
 
-mg_shader_t *mgfx_create_vertex_shader();
+extern rsp_ucode_t rsp_magma_fixed_function;
+
+inline rsp_ucode_t *mgfx_get_shader_ucode()
+{
+    return &rsp_magma_fixed_function;
+}
 
 /* Convert parameter structs to RSP side uniform structs */
 

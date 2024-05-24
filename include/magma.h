@@ -8,13 +8,6 @@
 #include <rspq.h>
 #include <debug.h>
 
-/** @brief A precompiled vertex loader that will load vertices in a certain format. */
-typedef struct mg_vertex_loader_s   mg_vertex_loader_t;
-
-// TODO: Should "shader" and "pipeline" be separate objects?
-/** @brief A piece of ucode that is compatible with the magma pipeline */
-typedef struct mg_shader_s          mg_shader_t;
-
 /** @brief An instance of the magma pipeline, with an attached vertex shader */
 typedef struct mg_pipeline_s        mg_pipeline_t;
 
@@ -23,24 +16,6 @@ typedef struct mg_buffer_s          mg_buffer_t;
 
 /** @brief A set of resources, that can be bound for use by a shader */
 typedef struct mg_resource_set_s    mg_resource_set_t;
-
-// TODO: figure out better naming scheme
-// TODO: complete?
-typedef enum
-{
-    MG_VERTEX_FORMAT_SCAL_8                 = 0,
-    MG_VERTEX_FORMAT_VEC2_8                 = 1,
-    MG_VERTEX_FORMAT_VEC3_8                 = 2,
-    MG_VERTEX_FORMAT_VEC4_8                 = 3,
-    MG_VERTEX_FORMAT_SCAL_16                = 4,
-    MG_VERTEX_FORMAT_VEC2_16                = 5,
-    MG_VERTEX_FORMAT_VEC3_16                = 6,
-    MG_VERTEX_FORMAT_VEC4_16                = 7,
-    MG_VERTEX_FORMAT_SCAL_32                = 8,
-    MG_VERTEX_FORMAT_VEC2_32                = 9,
-    MG_VERTEX_FORMAT_VEC3_32                = 10,
-    MG_VERTEX_FORMAT_VEC4_32                = 11,
-} mg_vertex_format_t;
 
 typedef enum
 {
@@ -51,9 +26,16 @@ typedef enum
 
 typedef enum
 {
-    MG_CULL_MODE_NONE                      = 0,
-    MG_CULL_MODE_BACK                      = 1,
-    MG_CULL_MODE_FRONT                     = 2,
+    MG_GEOMETRY_FLAGS_Z_ENABLED             = 0x1,
+    MG_GEOMETRY_FLAGS_TEX_ENABLED           = 0x2,
+    MG_GEOMETRY_FLAGS_SHADE_ENABLED         = 0x4,
+} mg_geometry_flags_t;
+
+typedef enum
+{
+    MG_CULL_MODE_NONE                       = 0,
+    MG_CULL_MODE_BACK                       = 1,
+    MG_CULL_MODE_FRONT                      = 2,
 } mg_cull_mode_t;
 
 typedef enum
@@ -62,6 +44,7 @@ typedef enum
     MG_FRONT_FACE_CLOCKWISE                 = 1,
 } mg_front_face_t;
 
+// TODO: rethink these flags
 typedef enum
 {
     MG_BUFFER_FLAGS_USAGE_VERTEX            = 0x1,
@@ -101,24 +84,8 @@ typedef struct
 
 typedef struct
 {
-    mg_shader_t *vertex_shader;
-    mg_culling_parms_t culling;
-    mg_viewport_t viewport;
+    rsp_ucode_t *vertex_shader_ucode;
 } mg_pipeline_parms_t;
-
-typedef struct
-{
-    uint32_t location;
-    mg_vertex_format_t format;
-    uint32_t offset;
-} mg_vertex_attribute_descriptor_t;
-
-typedef struct
-{
-    mg_vertex_attribute_descriptor_t *attribute_descriptors;
-    uint32_t attribute_descriptor_count;
-    uint32_t stride;
-} mg_vertex_loader_parms_t;
 
 typedef struct
 {
@@ -158,16 +125,6 @@ void mg_close(void);
 
 // NOTE: The following functions are not commands, so they are not automatically synchronized with RSP!
 
-/* Shaders */
-
-mg_shader_t *mg_shader_create(rsp_ucode_t *ucode);
-void mg_shader_free(mg_shader_t *vertex_shader);
-
-/* Vertex input */
-
-mg_vertex_loader_t *mg_vertex_loader_create(mg_vertex_loader_parms_t *parms);
-void mg_vertex_loader_free(mg_vertex_loader_t *vertex_loader);
-
 /* Pipelines */
 
 mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms);
@@ -195,6 +152,9 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline);
 /** @brief Set culling flags */
 inline void mg_set_culling(mg_culling_parms_t *culling);
 
+/** @brief Set culling flags */
+inline void mg_set_geometry_flags(mg_geometry_flags_t flags);
+
 /** @brief Set the viewport */
 inline void mg_set_viewport(mg_viewport_t *viewport);
 
@@ -206,12 +166,6 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data);
 
 /** @brief Bind a vertex buffer to be used by subsequent drawing commands */
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset);
-
-/** @brief Bind an index buffer to be used by subsequent drawing commands */
-//void mg_bind_index_buffer(mg_buffer_t *buffer, uint32_t offset);
-
-/** @brief Bind a vertex loader to be used by subsequent drawing commands */
-void mg_bind_vertex_loader(mg_vertex_loader_t *vertex_loader);
 
 /** @brief Draw primitives */
 void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex);
@@ -232,12 +186,20 @@ extern uint32_t mg_overlay_id;
 
 enum
 {
-    MG_CMD_SET_BYTE         = 0x1,
-    MG_CMD_SET_SHORT        = 0x2,
-    MG_CMD_SET_WORD         = 0x3,
-    MG_CMD_SET_QUAD         = 0x4,
-    MG_CMD_LOAD_VERTICES    = 0x5,
-    MG_CMD_DRAW_INDICES     = 0x6,
+    MG_CMD_SET_BYTE             = 0x0,
+    MG_CMD_SET_SHORT            = 0x1,
+    MG_CMD_SET_WORD             = 0x2,
+    MG_CMD_SET_QUAD             = 0x3,
+    MG_CMD_SET_SHADER           = 0x4,
+    MG_CMD_LOAD_VERTICES        = 0x5,
+    MG_CMD_DRAW_INDICES         = 0x6,
+    MG_CMD_LOAD_UNIFORM         = 0x7,
+    MG_CMD_PUSH_CONSTANT_8      = 0x8,
+    MG_CMD_PUSH_CONSTANT_16     = 0x9,
+    MG_CMD_PUSH_CONSTANT_32     = 0xA,
+    MG_CMD_PUSH_CONSTANT_64     = 0xB,
+    MG_CMD_PUSH_CONSTANT_128    = 0xC,
+    MG_CMD_PUSH_CONSTANT_MAX    = 0xD,
 };
 
 typedef struct
@@ -249,11 +211,14 @@ typedef struct
 typedef struct
 {
     mg_rsp_viewport_t viewport;
+    uint16_t clip_factors[4];
+    uint32_t shader_code;
+    uint32_t shader_data;
+    uint16_t shader_code_size;
+    uint16_t shader_data_size;
     uint32_t vertex_buffer;
-    uint16_t vertex_stride;
     uint16_t tri_cmd;
     uint8_t cull_mode;
-    uint8_t prim_topology;
 } __attribute__((packed)) mg_rsp_state_t;
 
 inline void mg_cmd_set_byte(uint32_t offset, uint8_t value)
@@ -336,6 +301,12 @@ inline mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
 inline void mg_set_culling(mg_culling_parms_t *culling)
 {
     mg_cmd_set_byte(offsetof(mg_rsp_state_t, cull_mode), mg_culling_parms_to_rsp_state(culling));
+}
+
+inline void mg_set_geometry_flags(mg_geometry_flags_t flags)
+{
+    uint16_t tricmd = 0x8 | (flags&0x7);
+    mg_cmd_set_short(offsetof(mg_rsp_state_t, tri_cmd), tricmd << 8);
 }
 
 inline void mg_set_viewport(mg_viewport_t *viewport)
