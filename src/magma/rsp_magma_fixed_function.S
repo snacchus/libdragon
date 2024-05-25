@@ -80,6 +80,8 @@ MgBeginShader
     #define vclip_factors   $v18
     #define vguard_i        $v19
     #define vguard_f        $v20
+    #define vtex            $v21
+    #define vrgba           $v22
     #define default_w       vconst.e2
 
     lw s0, %lo(MAGMA_VERTEX_BUFFER)
@@ -153,6 +155,27 @@ vertex_loop:
     ldv vpos_in.e0, MGFX_VTX_POS + 0,            vtx_in_ptr
     ldv vpos_in.e4, MGFX_VTX_POS + MGFX_VTX_SIZE,vtx_in_ptr
 
+    # load rgba (of two vertices)
+    # shuffle values around so they can be loaded in a single luv op
+    llv vrgba.e0, MGFX_VTX_RGBA + 0,             vtx_in_ptr
+    llv vrgba.e2, MGFX_VTX_RGBA + MGFX_VTX_SIZE, vtx_in_ptr
+    sdv vrgba.e0, 0,vtx_out_ptr
+    luv vrgba.e0, 0,vtx_out_ptr
+
+    # load texcoords (of two vertices)
+    llv vtex.e0, MGFX_VTX_TEX + 0,            vtx_in_ptr
+    llv vtex.e4, MGFX_VTX_TEX + MGFX_VTX_SIZE,vtx_in_ptr
+
+    # TODO: load normal
+
+    # TODO: transform texcoords
+
+    # TODO: lighting
+
+    # store texcoords to vertex cache
+    slv vtex.e0, MAGMA_VTX_ST + 0,            vtx_out_ptr
+    slv vtex.e4, MAGMA_VTX_ST + MGFX_VTX_SIZE,vtx_out_ptr
+
     # transform vertex position into clip space
     vmudn v___,        vmvp0_f, vpos_in
     vmadh v___,        vmvp0_i, vpos_in
@@ -163,11 +186,26 @@ vertex_loop:
     vmadn vpos_clip_f, vmvp3_f, vpos_in
     vmadh vpos_clip_i, vmvp3_i, vpos_in
 
+    # 32-bit right shift by 5, to keep the clip space coordinates unscaled
+    vmudm vpos_clip_i, vpos_clip_i, vshift8.e4
+    vmadl vpos_clip_f, vpos_clip_f, vshift8.e4
+
     # store clip space position to vertex cache
     sdv vpos_clip_i.e0,  MAGMA_VTX_CS_POSi + 0,             vtx_out_ptr
     sdv vpos_clip_f.e0,  MAGMA_VTX_CS_POSf + 0,             vtx_out_ptr
     sdv vpos_clip_i.e4,  MAGMA_VTX_CS_POSi + MAGMA_VTX_SIZE,vtx_out_ptr
     sdv vpos_clip_f.e4,  MAGMA_VTX_CS_POSf + MAGMA_VTX_SIZE,vtx_out_ptr
+
+    # store rgba to vertex cache
+    # CAUTION: this also overwrites the next 4 bytes after the rgba value
+    suv vrgba.e0, MAGMA_VTX_RGBA + 0,             vtx_out_ptr
+    suv vrgba.e4, MAGMA_VTX_RGBA + MAGMA_VTX_SIZE,vtx_out_ptr
+
+    # store W to vertex cache
+    ssv vpos_clip_i.e3, MAGMA_VTX_Wi + 0,              vtx_out_ptr
+    ssv vpos_clip_f.e3, MAGMA_VTX_Wf + 0,              vtx_out_ptr
+    ssv vpos_clip_i.e7, MAGMA_VTX_Wi + MAGMA_VTX_SIZE, vtx_out_ptr
+    ssv vpos_clip_f.e7, MAGMA_VTX_Wf + MAGMA_VTX_SIZE, vtx_out_ptr
 
     # perspective division
     vrcph v___.e3,    vpos_clip_i.e3
@@ -193,8 +231,8 @@ vertex_loop:
     vmadh vpos_scr_i, vpos_scr_i, vviewscale
 
     # store screen space position to vertex cache
-    sdv vpos_scr_i.e0,  MAGMA_VTX_X + 0,             vtx_out_ptr
-    sdv vpos_scr_i.e4,  MAGMA_VTX_X + MAGMA_VTX_SIZE,vtx_out_ptr
+    sdv vpos_scr_i.e0,  MAGMA_VTX_XYZ + 0,             vtx_out_ptr
+    sdv vpos_scr_i.e4,  MAGMA_VTX_XYZ + MAGMA_VTX_SIZE,vtx_out_ptr
 
     # calculate clipping codes
     vmudn vguard_f, vpos_clip_f, vclip_factors
