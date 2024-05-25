@@ -39,7 +39,7 @@ static const uint32_t material_diffuse_colors[] = { // Currently unused
 
 
 /* Meshes */
-static const vertex *mesh_vertices[] = {
+static const mgfx_vertex_t *mesh_vertices[] = {
     cube_vertices
 };
 static const uint32_t mesh_vertex_counts[] = {

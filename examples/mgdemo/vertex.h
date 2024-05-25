@@ -10,15 +10,8 @@
 
 #define POS(x, y, z) { S10_5(x), S10_5(y), S10_5(z) }
 #define TEX(s, t) { S8_8(s), S8_8(t) }
-#define NRM(x, y, z) { N8(x), N8(y), N8(z) }
+#define NRM(x, y, z) (((int)((x)*0xF)<<11) | ((int)((y)*0x1F)<<5) | ((int)((z)*0xF)))
 
-#define VERTEX(x, y, z, s, t, nx, ny, nz) { .position = POS((x), (y), (z)), .texcoord = TEX((s), (t)), .normal = NRM((nx), (ny), (nz)) }
-
-typedef struct
-{
-    int16_t position[3];
-    int16_t texcoord[2];
-    int8_t normal[3];
-} __attribute__((packed)) vertex;
+#define VERTEX(x, y, z, s, t, nx, ny, nz, c) { .position = POS((x), (y), (z)), .texcoord = TEX((s), (t)), .packed_normal = NRM((nx), (ny), (nz)), .color = (c) }
 
 #endif

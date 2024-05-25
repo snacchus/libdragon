@@ -45,7 +45,7 @@ void init();
 void render();
 void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms);
-void mesh_create(mesh_data *mesh, const vertex *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count);
+void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count);
 void update_object_matrices(object_data *object);
 
 static surface_t zbuffer;
@@ -269,7 +269,7 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     };
 }
 
-void mesh_create(mesh_data *mesh, const vertex *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count)
+void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count)
 {
     // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
     // By setting "initial_data", the buffer will already contain this data after creation, so we don't 
@@ -281,7 +281,7 @@ void mesh_create(mesh_data *mesh, const vertex *vertices, uint32_t vertex_count,
     // However, the flag doesn't guarantee that no extra memory will ever be allocated. When and if it happens is up to the implementation.
 
     mesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-        .size = sizeof(vertex) * vertex_count,
+        .size = sizeof(mgfx_vertex_t) * vertex_count,
         .initial_data = vertices,
         .flags = MG_BUFFER_FLAGS_USAGE_VERTEX | MG_BUFFER_FLAGS_LAZY_ALLOC
     });
