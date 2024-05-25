@@ -29,7 +29,7 @@ static const char *texture_files[] = {
 static const uint32_t material_texture_indices[] = {
     0, 0, 0, 1, 2
 };
-static const uint32_t material_diffuse_colors[] = {
+static const uint32_t material_diffuse_colors[] = { // Currently unused
     0xffffffff,
     0x5a81e6ff,
     0x3b5c34ff,
@@ -43,13 +43,13 @@ static const vertex *mesh_vertices[] = {
     cube_vertices
 };
 static const uint32_t mesh_vertex_counts[] = {
-    ARRAY_SIZE(cube_vertices)
+    ARRAY_COUNT(cube_vertices)
 };
 static const uint16_t *mesh_indices[] = {
     cube_indices
 };
 static const uint32_t mesh_index_counts[] = {
-    ARRAY_SIZE(cube_indices)
+    ARRAY_COUNT(cube_indices)
 };
 
 

@@ -12,19 +12,13 @@ DEFINE_RSP_UCODE(rsp_magma_fixed_function);
 
 typedef struct 
 {
-    mgfx_modes_t modes;
     mgfx_fog_t fog;
     mgfx_lighting_t lighting;
-    mgfx_material_t material;
     mgfx_texturing_t texturing;
+    mgfx_modes_t modes;
     mgfx_matrices_t matrices;
     uint32_t matrix_palette;
 } mgfx_state_t;
-
-void mgfx_get_modes(mgfx_modes_t *dst, const mgfx_modes_parms_t *parms)
-{
-
-}
 
 void mgfx_get_fog(mgfx_fog_t *dst, const mgfx_fog_parms_t *parms)
 {
@@ -36,22 +30,17 @@ void mgfx_get_lighting(mgfx_lighting_t *dst, const mgfx_lighting_parms_t *parms)
 
 }
 
-void mgfx_get_material(mgfx_material_t *dst, const mgfx_material_parms_t *parms)
-{
-
-}
-
 void mgfx_get_texturing(mgfx_texturing_t *dst, const mgfx_texturing_parms_t *parms)
 {
 
 }
 
-void mgfx_get_matrices(mgfx_matrices_t *dst, const mgfx_matrices_parms_t *parms)
+void mgfx_get_modes(mgfx_modes_t *dst, const mgfx_modes_parms_t *parms)
 {
 
 }
 
-void mgfx_set_modes_inline(const mgfx_modes_parms_t *parms)
+void mgfx_get_matrices(mgfx_matrices_t *dst, const mgfx_matrices_parms_t *parms)
 {
 
 }
@@ -66,12 +55,12 @@ void mgfx_set_lighting_inline(const mgfx_lighting_parms_t *parms)
 
 }
 
-void mgfx_set_material_inline(const mgfx_material_parms_t *parms)
+void mgfx_set_texturing_inline(const mgfx_texturing_parms_t *parms)
 {
 
 }
 
-void mgfx_set_texturing_inline(const mgfx_texturing_parms_t *parms)
+void mgfx_set_modes_inline(const mgfx_modes_parms_t *parms)
 {
 
 }
@@ -83,5 +72,5 @@ void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms)
 
 void mgfx_set_matrix_palette(mg_buffer_t *palette_buffer)
 {
-    uint32_t size = sizeof(mgfx_state_t);
+    
 }

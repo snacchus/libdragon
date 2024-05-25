@@ -2,18 +2,14 @@
 #include <magma_fixed_function_constants.h>
 
 MgBeginShaderConstants
-    MgBeginUniform MODES, 0
-        MODES_FLAGS:        .word   0
-    MgEndUniform
-
-    MgBeginUniform FOG, 1
+    MgBeginUniform FOG, 0
         FOG_FACTOR_INT:     .half   0
         FOG_OFFSET_INT:     .half   0
         FOG_FACTOR_FRAC:    .half   0
         FOG_OFFSET_FRAC:    .half   0
     MgEndUniform
 
-    MgBeginUniform LIGHTING, 2
+    MgBeginUniform LIGHTING, 1
         LIGHTING_POSITION:  .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
         LIGHTING_DIFFUSE:   .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
         LIGHTING_ATT_INT:   .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
@@ -22,24 +18,22 @@ MgBeginShaderConstants
         LIGHTING_COUNT:     .word   0
     MgEndUniform
 
-    MgBeginUniform MATERIAL, 3
-        MATERIAL_DIFFUSE:   .dcb.w  4
-        MATERIAL_EMISSIVE:  .dcb.w  4
-        MATERIAL_COL_TGT:   .word   0
-    MgEndUniform
-
-    MgBeginUniform TEXTURING, 4
+    MgBeginUniform TEXTURING, 2
         TEXTURING_SCALE:    .dcb.w  2
         TEXTURING_OFFSET:   .dcb.w  2
     MgEndUniform
 
-    MgBeginUniform MATRICES, 5
+    MgBeginUniform MODES, 3
+        MODES_FLAGS:        .word   0
+    MgEndUniform
+
+    MgBeginUniform MATRICES, 4
         MATRICES_MVP:       .dcb.b  MGFX_MATRIX_SIZE
         MATRICES_MV:        .dcb.b  MGFX_MATRIX_SIZE
         MATRICES_NORMAL:    .dcb.b  MGFX_MATRIX_SIZE
     MgEndUniform
 
-    MgBeginUniform MATRIX_PALETTE, 6
+    MgBeginUniform MATRIX_PALETTE, 5
         MATRIX_PALETTE_PTR: .word 0
     MgEndUniform
 MgEndShaderConstants

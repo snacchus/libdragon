@@ -11,7 +11,6 @@
 
 typedef struct
 {
-    mgfx_modes_t modes;
     mgfx_fog_t fog;
     mgfx_lighting_t lighting;
 } scene_raw_data;
@@ -21,6 +20,7 @@ typedef struct
     mg_resource_set_t *resource_set;
     sprite_t *texture;
     rdpq_texparms_t rdpq_tex_parms;
+    mgfx_modes_t modes;
 } material_data;
 
 typedef struct
@@ -44,7 +44,7 @@ typedef struct
 void init();
 void render();
 void create_scene_resources();
-void material_create(material_data *mat, mgfx_material_parms_t *mat_parms, sprite_t *texture);
+void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms);
 void mesh_create(mesh_data *mesh, const vertex *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count);
 void update_object_matrices(object_data *object);
 
@@ -122,9 +122,12 @@ void init()
     // Create materials
     for (size_t i = 0; i < MATERIAL_COUNT; i++)
     {
-        material_create(&materials[i], &(mgfx_material_parms_t) {
-            .diffuse_color = color_from_packed32(material_diffuse_colors[i]),
-        }, textures[material_texture_indices[i]]);
+        material_create(
+            &materials[i], 
+            textures[material_texture_indices[i]], 
+            &(mgfx_modes_parms_t) {
+                .flags = MGFX_MODES_FLAGS_LIGHTING_ENABLED | MGFX_MODES_FLAGS_NORMALIZATION_ENABLED
+            });
     }
 
     // Create meshes
@@ -178,13 +181,10 @@ void create_scene_resources()
     // 2. Map the buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
     scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer, 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
         // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
-        mgfx_get_modes(&raw_data->modes, &(mgfx_modes_parms_t) {
-            .flags = MGFX_MODES_FLAGS_LIGHTING_ENABLED | MGFX_MODES_FLAGS_NORMALIZATION_ENABLED | MGFX_MODES_FLAGS_TEXTURING_ENABLED | MGFX_MODES_FLAGS_ZBUFFER_ENABLED
-        });
         mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {0});
         mgfx_get_lighting(&raw_data->lighting, &(mgfx_lighting_parms_t) {
             .ambient_color = color_from_packed32(ambient_light_color),
-            .light_count = ARRAY_SIZE(lights),
+            .light_count = ARRAY_COUNT(lights),
             .lights = lights
         });
     mg_buffer_unmap(scene_resource_buffer);
@@ -194,12 +194,6 @@ void create_scene_resources()
     //    Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
     //    the fixed function pipeline.
     mg_resource_binding_t scene_bindings[] = {
-        {
-            .binding = MGFX_BINDING_MODES,
-            .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
-            .buffer = scene_resource_buffer,
-            .offset = offsetof(scene_raw_data, modes)
-        },
         {
             .binding = MGFX_BINDING_FOG,
             .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
@@ -219,12 +213,12 @@ void create_scene_resources()
     // the set can be "bound" with a single function call, which will load all attached resources into DMEM at once.
     scene_resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
         .pipeline = pipeline,
-        .binding_count = ARRAY_SIZE(scene_bindings),
+        .binding_count = ARRAY_COUNT(scene_bindings),
         .bindings = scene_bindings
     });
 }
 
-void material_create(material_data *material, mgfx_material_parms_t *mat_parms, sprite_t *texture)
+void material_create(material_data *material, sprite_t *texture, mgfx_modes_parms_t *mode_parms)
 {
     // Similarly to the scene resources, we will provide materials to the shader via resource sets.
     // We separate the material from scene resources, because they are expected to change during the scene.
@@ -234,26 +228,26 @@ void material_create(material_data *material, mgfx_material_parms_t *mat_parms, 
 
     // 1. Initialize the raw material data by using the functions provided by the fixed function pipeline.
     //    Just as with uniform buffers, the shader expects the data in a format that is optimized for the RSP.
-    mgfx_material_t mat;
     mgfx_texturing_t tex;
-    mgfx_get_material(&mat, mat_parms);
+    mgfx_modes_t modes;
     mgfx_get_texturing(&tex, &(mgfx_texturing_parms_t) {
         .scale[0] = texture->width,
         .scale[1] = texture->height,
     });
+    mgfx_get_modes(&modes, mode_parms);
 
     // 2. Create the resource set. This time, we use the resource type "inline uniform" and set
     //    the "inline_data" pointer to pass in the data we initialized above.
     mg_resource_binding_t bindings[] = {
         {
-            .binding = MGFX_BINDING_MATERIAL,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &mat
-        },
-        {
             .binding = MGFX_BINDING_TEXTURING,
             .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
             .inline_data = &tex
+        },
+        {
+            .binding = MGFX_BINDING_MODES,
+            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
+            .inline_data = &modes
         },
     };
 
@@ -263,7 +257,7 @@ void material_create(material_data *material, mgfx_material_parms_t *mat_parms, 
     // that won't be required anyway.
     material->resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
         .pipeline = pipeline,
-        .binding_count = ARRAY_SIZE(bindings),
+        .binding_count = ARRAY_COUNT(bindings),
         .bindings = bindings,
     });
 
