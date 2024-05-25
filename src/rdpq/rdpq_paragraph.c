@@ -164,10 +164,13 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
     float ycur = builder.y;
     int16_t next_index = -1;
     bool is_space = false;
+    bool is_tab = false;
 
     #define UTF8_DECODE_NEXT() ({ \
         uint32_t codepoint = *utf8_text > 0 ? *utf8_text++ : utf8_decode(&utf8_text); \
-        is_space = (codepoint == ' '); \
+        is_tab = (codepoint == '\t'); \
+        if (is_tab) codepoint = ' '; \
+        is_space = codepoint == ' '; \
         __rdpq_font_glyph(builder.font, codepoint); \
     })
 
@@ -194,7 +197,18 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
 
         float last_pixel = xcur + xoff2 * builder.xscale;
 
-        xcur += xadvance * builder.xscale;
+        if (UNLIKELY(is_tab) && parms->tabstops) {
+            // Go to next tabstop
+            for (int t=0; parms->tabstops[t] != 0; t++) {
+                if (last_pixel < parms->tabstops[t] * builder.xscale) {
+                    xcur = parms->tabstops[t] * builder.xscale;
+                    break;
+                }
+            }
+        } else {
+            // Advance the cursor (rounding to nearest pixel
+            xcur += xadvance * builder.xscale;
+        }
 
         if (UNLIKELY(has_kerning && utf8_text < end)) {
             next_index = UTF8_DECODE_NEXT();
@@ -319,7 +333,7 @@ void __rdpq_paragraph_builder_newline(int ch_newline)
 
         // Do right/center alignment of the row (and adjust extents)
         if (UNLIKELY(builder.parms->width && builder.parms->align)) {
-            float offset = builder.parms->width - (x1 - x0);
+            float offset = builder.parms->width - (x1 + 1 - x0);
             if (builder.parms->align == ALIGN_CENTER) offset *= 0.5f;
 
             int16_t offset_fx = offset;
@@ -327,6 +341,12 @@ void __rdpq_paragraph_builder_newline(int ch_newline)
                 ch->x += offset_fx;
             x0 += offset;
             x1 += offset;
+        }
+        if (UNLIKELY(builder.parms->width && off_x0 < 0 && builder.parms->align == ALIGN_LEFT)) {
+            for (rdpq_paragraph_char_t *ch = ch0; ch <= ch1; ++ch)
+                ch->x += -off_x0;
+            x0 += -off_x0;
+            x1 += -off_x0;
         }
 
         // Update bounding box

@@ -609,17 +609,7 @@ static int __dfs_init(uint32_t base_fs_loc)
     return DFS_EBADFS;
 }
 
-/**
- * @brief Change directories to the specified path.  
- *
- * Supports absolute and relative 
- *
- * @param[in] path
- *            Relative or absolute path to change directories to
- * 
- * @return DFS_ESUCCESS on success or a negative value on error.
- */
-int dfs_chdir(const char * const path)
+static int __dfs_chdir(const char * const path)
 {
     /* Reset directory listing */
     next_entry = 0;
@@ -634,29 +624,27 @@ int dfs_chdir(const char * const path)
 }
 
 /**
- * @brief Find the first file or directory in a directory listing.
+ * @brief Change directories to the specified path.  
  *
- * Supports absolute and relative.  If the path is invalid, returns a negative DFS_errno.  If
- * a file or directory is found, returns the flags of the entry and copies the name into buf.
+ * Supports absolute and relative 
  *
- * @param[in]  path
- *             The path to look for files in
- * @param[out] buf
- *             Buffer to place the name of the file or directory found
- *
- * @return The flags (#FLAGS_FILE, #FLAGS_DIR, #FLAGS_EOF) or a negative value on error.
- *
- * @note This function uses a global context. Do not attempt multiple
- *       directory traversals at the same time. You can use #dir_findfirst
- *       and #dir_findnext to avoid this limitation.
+ * @param[in] path
+ *            Relative or absolute path to change directories to
+ * 
+ * @return DFS_ESUCCESS on success or a negative value on error.
  */
-int dfs_dir_findfirst(const char * const path, char *buf)
+int dfs_chdir(const char * const path)
+{
+    return __dfs_chdir(path);
+}
+
+static int __dfs_findfirst(const char * const path, char *buf, directory_entry_t **next_entry)
 {
     directory_entry_t *dirent;
     int ret = recurse_path(path, WALK_OPEN, &dirent, TYPE_DIR);
 
     /* Ensure that if this fails, they can't call findnext */
-    next_entry = 0;
+    *next_entry = 0;
 
     if(ret != DFS_ESUCCESS)
     {
@@ -674,9 +662,54 @@ int dfs_dir_findfirst(const char * const path, char *buf)
     }
     
     /* Set up directory to point to next entry */
-    next_entry = get_next_entry(&t_node);
+    *next_entry = get_next_entry(&t_node);
 
     return get_flags(&t_node);
+}
+
+static int __dfs_findnext(char *buf, directory_entry_t **next_entry)
+{
+    if(!*next_entry)
+    {
+        /* No file found */
+        return FLAGS_EOF;
+    }
+
+    /* We already calculated the pointer, just grab the information */
+    directory_entry_t t_node;
+    grab_sector(*next_entry, &t_node);
+
+    if(buf)
+    {
+        strcpy(buf, t_node.path);    
+    }
+    
+    /* Set up directory to point to next entry */
+    *next_entry = get_next_entry(&t_node);
+
+    return get_flags(&t_node);
+}
+
+/**
+ * @brief Find the first file or directory in a directory listing.
+ *
+ * Supports absolute and relative.  If the path is invalid, returns a negative DFS_errno.  If
+ * a file or directory is found, returns the flags of the entry and copies the name into buf.
+ *
+ * @param[in]  path
+ *             The path to look for files in
+ * @param[out] buf
+ *             Buffer to place the name of the file or directory found
+ *
+ * @return The flags (#FLAGS_FILE, #FLAGS_DIR, #FLAGS_EOF) or a negative value on error.
+ *
+ * @note This function uses a global context. Do not attempt other filesystem
+ *       operations (eg: opening a file) while a traversal is in progress.
+ *       You can use #dir_findfirst and #dir_findnext to avoid this limitation.
+ */
+int dfs_dir_findfirst(const char * const path, char *buf)
+{
+    return __dfs_findfirst(path, buf, &next_entry);
 }
 
 /**
@@ -691,26 +724,9 @@ int dfs_dir_findfirst(const char * const path, char *buf)
  */
 int dfs_dir_findnext(char *buf)
 {
-    if(!next_entry)
-    {
-        /* No file found */
-        return FLAGS_EOF;
-    }
-
-    /* We already calculated the pointer, just grab the information */
-    directory_entry_t t_node;
-    grab_sector(next_entry, &t_node);
-
-    if(buf)
-    {
-        strcpy(buf, t_node.path);    
-    }
-    
-    /* Set up directory to point to next entry */
-    next_entry = get_next_entry(&t_node);
-
-    return get_flags(&t_node);
+    return __dfs_findnext(buf, &next_entry);
 }
+
 
 /**
  * @brief Open a file given a path
@@ -1077,7 +1093,7 @@ int dfs_eof(uint32_t handle)
 static void *__open( char *name, int flags )
 {
     /* Always want a consistent interface */
-    dfs_chdir("/");
+    __dfs_chdir("/");
 
     /* We disregard flags here */
     int handle = dfs_open( name );
@@ -1187,7 +1203,7 @@ static int __close( void *file )
 static int __findfirst( char *path, dir_t *dir )
 {
     /* Grab first entry, return if bad */
-    int flags = dfs_dir_findfirst( path, dir->d_name );
+    int flags = __dfs_findfirst( path, dir->d_name, (struct directory_entry**)&dir->d_cookie );
     if( flags < 0 ) { return -1; }
 
     if( flags == FLAGS_FILE )
@@ -1219,7 +1235,7 @@ static int __findfirst( char *path, dir_t *dir )
 static int __findnext( dir_t *dir )
 {
     /* Grab first entry, return if bad */
-    int flags = dfs_dir_findnext( dir->d_name );
+    int flags = __dfs_findnext( dir->d_name, (struct directory_entry**)&dir->d_cookie );
     if( flags < 0 ) { return -1; }
 
     if( flags == FLAGS_FILE )

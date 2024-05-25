@@ -462,7 +462,7 @@ void rdpq_init()
     // Initialize the ucode state.
     memset(rdpq_state, 0, sizeof(rdpq_state_t));
     rdpq_state->rdram_state_address = PhysicalAddr(rdpq_state);
-    rdpq_state->rdram_syncpoint_id = PhysicalAddr(&__rspq_syncpoints_done);
+    rdpq_state->rdram_syncpoint_id = PhysicalAddr(&__rspq_syncpoints_done[0]);
     assert((rdpq_state->rdram_state_address & 7) == 0);  // check alignment for DMA
     assert((rdpq_state->rdram_syncpoint_id & 7) == 0);  // check alignment for DMA
     
@@ -571,6 +571,10 @@ static void rdpq_assert_handler(rsp_snapshot_t *state, uint16_t assert_code)
 
     case RDPQ_ASSERT_AUTOTMEM_UNPAIRED:
         printf("incorrect usage of auto-TMEM: unpaired begin/end\n");
+        break;
+
+    case RDPQ_ASSERT_ZCLEAR_INVALID_BUFFER:
+        printf("Z-clear command issued with a too small temporary buffer\n");
         break;
 
     default:
