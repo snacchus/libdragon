@@ -15,16 +15,6 @@ typedef enum
     MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = 0x10,
 } mgfx_modes_flags_t;
 
-typedef enum
-{
-    MGFX_BINDING_FOG                            = 0,
-    MGFX_BINDING_LIGHTING                       = 1,
-    MGFX_BINDING_TEXTURING                      = 2,
-    MGFX_BINDING_MODES                          = 3,
-    MGFX_BINDING_MATRICES                       = 4,
-    MGFX_BINDING_MATRIX_PALETTE                 = 5,
-} mgfx_binding_t;
-
 /* RSP side uniform structs */
 
 typedef struct
@@ -59,8 +49,8 @@ typedef struct
 
 typedef struct
 {
-    int16_t  i[4][4];
-    uint16_t f[4][4];
+    int16_t  i[16];
+    uint16_t f[16];
 } __attribute__((packed, aligned(16))) mgfx_matrix_t;
 
 typedef struct
@@ -94,8 +84,8 @@ typedef struct
 
 typedef struct
 {
-    float scale[2];
-    float offset[2];
+    int16_t scale[2];
+    int16_t offset[2];
 } mgfx_texturing_parms_t;
 
 typedef struct
@@ -126,12 +116,7 @@ extern "C" {
 
 /* Functions */
 
-extern rsp_ucode_t rsp_magma_fixed_function;
-
-inline rsp_ucode_t *mgfx_get_shader_ucode()
-{
-    return &rsp_magma_fixed_function;
-}
+mg_pipeline_t *mgfx_create_pipeline(void);
 
 /* Convert parameter structs to RSP side uniform structs */
 

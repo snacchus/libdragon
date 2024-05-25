@@ -84,7 +84,16 @@ typedef struct
 
 typedef struct
 {
+    uint32_t binding;
+    uint32_t offset;
+    uint32_t size;
+} mg_uniform_t;
+
+typedef struct
+{
     rsp_ucode_t *vertex_shader_ucode;
+    uint32_t uniform_count;
+    mg_uniform_t *uniforms;
 } mg_pipeline_parms_t;
 
 typedef struct

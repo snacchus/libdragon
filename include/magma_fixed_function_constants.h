@@ -1,6 +1,13 @@
 #ifndef __MAGMA_FIXED_FUNCTION_CONSTANTS
 #define __MAGMA_FIXED_FUNCTION_CONSTANTS
 
+#define MGFX_BINDING_FOG                0
+#define MGFX_BINDING_LIGHTING           1
+#define MGFX_BINDING_TEXTURING          2
+#define MGFX_BINDING_MODES              3
+#define MGFX_BINDING_MATRICES           4
+#define MGFX_BINDING_MATRIX_PALETTE     5
+
 #define MGFX_LIGHT_COUNT_MAX    8
 #define MGFX_MATRIX_SIZE        64
 

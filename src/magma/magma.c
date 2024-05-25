@@ -3,13 +3,6 @@
 #include "rspq.h"
 #include "utils.h"
 
-typedef struct
-{
-    uint32_t binding;
-    uint32_t offset;
-    uint32_t size;
-} mg_uniform_t;
-
 typedef struct mg_pipeline_s 
 {
     rsp_ucode_t *shader_ucode;
@@ -65,12 +58,21 @@ mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms)
 {
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
     pipeline->shader_ucode = parms->vertex_shader_ucode;
-    // TODO: uniforms
+
+    // TODO: get uniforms from ucode directly somehow?
+    if (parms->uniform_count > 0) {
+        pipeline->uniforms = calloc(parms->uniform_count, sizeof(mg_uniform_t));
+        memcpy(pipeline->uniforms, parms->uniforms, parms->uniform_count * sizeof(mg_uniform_t));
+    }
+
     return pipeline;
 }
 
 void mg_pipeline_free(mg_pipeline_t *pipeline)
 {
+    if (pipeline->uniforms) {
+        free(pipeline->uniforms);
+    }
     free(pipeline);
 }
 
@@ -189,6 +191,8 @@ mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms)
             break;
         }
     }
+
+    resource_set->block = rspq_block_end();
 
     return resource_set;
 }

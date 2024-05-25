@@ -4,8 +4,12 @@
 #include <stdint.h>
 #include <libdragon.h>
 
+#define VTX_TEX_SHIFT   8
+#define RDP_TEX_SHIFT   5
+#define TEX_SIZE_SHIFT  (VTX_TEX_SHIFT-RDP_TEX_SHIFT)
+
 #define S10_5(v) ((v)*(1<<5))
-#define S8_8(v) ((v)*(1<<8))
+#define S8_8(v) ((v)*(1<<VTX_TEX_SHIFT))
 #define N8(v) ((v)*0x7F)
 
 #define POS(x, y, z) { S10_5(x), S10_5(y), S10_5(z) }

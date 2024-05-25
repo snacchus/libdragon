@@ -103,13 +103,9 @@ void init()
         .cull_mode = MG_CULL_MODE_BACK
     };
 
-    // This function returns the vertex shader of the fixed function pipeline provided by libdragon.
-    rsp_ucode_t *vertex_shader_ucode = mgfx_get_shader_ucode();
-
-    // Create the graphics pipeline. We need to attach the vertex shader and setup some initial state.
-    pipeline = mg_pipeline_create(&(mg_pipeline_parms_t){
-        .vertex_shader_ucode = vertex_shader_ucode
-    });
+    // This function returns the fixed function pipeline provided by libdragon.
+    // When done rendering with it, the pipeline needs to be freed using mg_pipeline_free.
+    pipeline = mgfx_create_pipeline();
 
     create_scene_resources();
 
@@ -231,8 +227,8 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     mgfx_texturing_t tex;
     mgfx_modes_t modes;
     mgfx_get_texturing(&tex, &(mgfx_texturing_parms_t) {
-        .scale[0] = texture->width,
-        .scale[1] = texture->height,
+        .scale[0] = texture->width  >> TEX_SIZE_SHIFT,
+        .scale[1] = texture->height >> TEX_SIZE_SHIFT,
     });
     mgfx_get_modes(&modes, mode_parms);
 
