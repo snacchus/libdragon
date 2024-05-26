@@ -239,7 +239,7 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
     uint32_t aligned_size = ROUND_UP(size, 8);
 
     uint32_t command_id = MG_CMD_PUSH_CONSTANT_MAX;
-    uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE - 4;
+    uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE;
 
     if (aligned_size <= 8) {
         command_id = MG_CMD_PUSH_CONSTANT_8;
@@ -286,8 +286,6 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
     }
 
     rspq_write_end(&w);
-
-    debug_hexdump(ptr, MAGMA_PUSH_CONSTANT_HEADER + command_size);
 }
 
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
