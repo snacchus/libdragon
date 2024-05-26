@@ -38,16 +38,6 @@ MgBeginShaderConstants
     MgEndUniform
 MgEndShaderConstants
 
-    .data
-MGFX_CONSTANTS:     .half   MAGMA_VTX_SIZE, MAGMA_VTX_SIZE - MGFX_VTX_SIZE, 1<<MGFX_VTX_POS_SHIFT, 0, 0, 0, 0, 0
-
-    #############################################################
-    # ARGS:
-    #   a0: Bit 31..24: Command id
-    #       Bit 23..0:  Vertex buffer offset
-    #   a1: Bit 31..16: Cache offset
-    #       Bit 15..0:  Vertex count
-    #############################################################
 MgBeginShader
     #define vtx_out_ptr     s1
     #define vtx_in_ptr      s2
@@ -76,16 +66,19 @@ MgBeginShader
     #define vguard_f        $v20
     #define vtex            $v21
     #define vrgba           $v22
-    #define default_w       vconst.e2
 
     lw s0, %lo(MAGMA_VERTEX_BUFFER)
-    li t0, %lo(MGFX_CONSTANTS)
+    li t0, %lo(MAGMA_CONSTANTS)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER)
     lqv vconst, 0,t0
     llv $v01.e0, -4,t1
 
     sll t0, a0, MGFX_VTX_SIZE_SHIFT
     add s0, t0
+
+    # TODO: this is just a workaround for not being able to define .data segments in shaders
+    li t2, MAGMA_VTX_SIZE - MGFX_VTX_SIZE
+    mtc2 t2, vconst.e1
 
     # cache_offset * MAGMA_VTX_SIZE, vertex_count * (MAGMA_VTX_SIZE - MGFX_VTX_SIZE)
     vmudh $v02, $v01, vconst
@@ -145,7 +138,7 @@ vertex_loop:
 
     # load vertex position (of two vertices)
     # X0 Y0 Z0 1  X1 Y1 Z1 1
-    vcopy vpos_in, default_w
+    vcopy vpos_in, K32
     ldv vpos_in.e0, MGFX_VTX_POS + 0,            vtx_in_ptr
     ldv vpos_in.e4, MGFX_VTX_POS + MGFX_VTX_SIZE,vtx_in_ptr
 

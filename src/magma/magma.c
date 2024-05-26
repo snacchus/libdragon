@@ -36,7 +36,7 @@ inline void mg_cmd_load_vertices(uint32_t count, uint8_t cache_offset, uint32_t 
 {
     assertf(count <= MAGMA_VERTEX_CACHE_COUNT, "too many vertices");
     assertf(cache_offset + count <= MAGMA_VERTEX_CACHE_COUNT, "offset out of range");
-    mg_cmd_write(MG_CMD_LOAD_VERTICES, count, (cache_offset<<24) | buffer_offset);
+    mg_cmd_write(MG_CMD_LOAD_VERTICES, buffer_offset, (cache_offset<<16) | count);
 }
 
 inline void mg_cmd_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
@@ -56,6 +56,8 @@ void mg_close(void)
 
 mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms)
 {
+    // TODO: check for binary compatibility
+
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
     pipeline->shader_ucode = parms->vertex_shader_ucode;
 
@@ -237,7 +239,7 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
     uint32_t aligned_size = ROUND_UP(size, 8);
 
     uint32_t command_id = MG_CMD_PUSH_CONSTANT_MAX;
-    uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE;
+    uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE - 4;
 
     if (aligned_size <= 8) {
         command_id = MG_CMD_PUSH_CONSTANT_8;
@@ -256,14 +258,21 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
         command_size = 128;
     }
 
-    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, MAGMA_PUSH_CONSTANT_HEADER + command_size);
+    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, (MAGMA_PUSH_CONSTANT_HEADER + command_size)/4);
 
-    uint32_t pointer = PhysicalAddr(w.pointer);
+    void *ptr = (void*)(w.pointer - 1);
+
+    // We want to place the payload at an 8-byte aligned address after the end of the command itself
+    // w.pointer is already +1 from the actual start of the command
+    // the command itself is 2 words, so advance it by one more word
+    uint32_t pointer = PhysicalAddr(w.pointer + 1);
     bool aligned = (pointer & 0x7) == 0;
 
-    rspq_write_arg(&w, aligned ? pointer + 8 : pointer + 12);
+    // If the address right after the command is not aligned, advance by another word
+    rspq_write_arg(&w, aligned ? pointer : pointer + 4);
     rspq_write_arg(&w, ((aligned_size-1) << 16) | offset);
 
+    // Write padding for alignment
     if (!aligned) {
         rspq_write_arg(&w, 0);
     }
@@ -277,6 +286,8 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
     }
 
     rspq_write_end(&w);
+
+    debug_hexdump(ptr, MAGMA_PUSH_CONSTANT_HEADER + command_size);
 }
 
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)

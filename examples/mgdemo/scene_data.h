@@ -93,6 +93,6 @@ static const uint32_t ambient_light_color = 0x101010ff;
 static const float camera_fov = 65.0f;
 static const float camera_near_plane = 1.0f;
 static const float camera_far_plane = 100.0f;
-static const float camera_starting_position[3] = { 0.0f, 0.0f, 0.0f };
+static const float camera_starting_position[3] = { 0.0f, 0.0f, 10.0f };
 
 #endif

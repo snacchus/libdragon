@@ -80,6 +80,34 @@ inline void mat4x4_make_rotation_translation(mat4x4_t *d, const float position[3
 inline void mat4x4_make_translation_rotation(mat4x4_t *d, const float position[3], const float rotation[4])
 {
     // TODO
+    float tx = position[0];
+    float ty = position[1];
+    float tz = position[2];
+
+    float qx = rotation[0];
+    float qy = rotation[1];
+    float qz = rotation[2];
+    float qw = rotation[3];
+
+    d->m[0][0] = (1 - 2 * qy*qy - 2 * qz*qz);
+    d->m[0][1] = (2 * qx*qy + 2 * qz*qw);
+    d->m[0][2] = (2 * qx*qz - 2 * qy*qw);
+    d->m[0][3] = 0.f;
+
+    d->m[1][0] = (2 * qx*qy - 2 * qz*qw);
+    d->m[1][1] = (1 - 2 * qx*qx - 2 * qz*qz);
+    d->m[1][2] = (2 * qy*qz + 2 * qx*qw);
+    d->m[1][3] = 0.f;
+
+    d->m[2][0] = (2 * qx*qz + 2 * qy*qw);
+    d->m[2][1] = (2 * qy*qz - 2 * qx*qw);
+    d->m[2][2] = (1 - 2 * qx*qx - 2 * qy*qy);
+    d->m[2][3] = 0.f;
+
+    d->m[3][0] = tx;
+    d->m[3][1] = ty;
+    d->m[3][2] = tz;
+    d->m[3][3] = 1.f;
 }
 
 inline void mat4x4_make_scale_rotation_translation(mat4x4_t *d, const float position[3], const float rotation[4], const float scale[3])

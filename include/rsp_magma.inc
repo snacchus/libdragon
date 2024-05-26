@@ -2,7 +2,7 @@
 #include "magma_constants.h"
 
 .macro MgBeginShaderConstants
-    .data
+    .section .bss.magma_shader_constants
     .align 4
 _MG_VTX_SHADER_CONST:
 .endm
@@ -35,7 +35,7 @@ _MG_BINDING_\binding:
 .endm
 
 .macro MgBeginShader
-    .text
+    .section .text.magma_vertex_shader
     .align 3
 
 _MG_VTX_SHADER:
@@ -54,7 +54,7 @@ _MG_VTX_SHADER_END:
         RSPQ_DefineCommand MgCmd_SetWord,       8
         RSPQ_DefineCommand MgCmd_SetQuad,       20
         RSPQ_DefineCommand MgCmd_SetShader,     12
-        RSPQ_DefineCommand _MG_VTX_SHADER,      8
+        RSPQ_DefineCommand MgCmd_LoadVertices,  8
         RSPQ_DefineCommand MgCmd_DrawIndices,   4
         RSPQ_DefineCommand MgCmd_LoadUniform,   8
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 8
@@ -62,7 +62,7 @@ _MG_VTX_SHADER_END:
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 32
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 64
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 128
-        RSPQ_DefineCommand MgCmd_LoadUniform,   252
+        RSPQ_DefineCommand MgCmd_LoadUniform,   248
 	RSPQ_EndOverlayHeader
 
     .align 4
@@ -100,6 +100,7 @@ MAGMA_STATE:
     #############################################################
     .func MgCmd_SetByte
 MgCmd_SetByte:
+    emux_log_string "set byte\n"
     jr ra
     sb a1, %lo(MAGMA_STATE)(a0)
     .endfunc
@@ -109,6 +110,7 @@ MgCmd_SetByte:
     #############################################################
     .func MgCmd_SetShort
 MgCmd_SetShort:
+    emux_log_string "set short\n"
     jr ra
     sh a1, %lo(MAGMA_STATE)(a0)
     .endfunc
@@ -118,6 +120,7 @@ MgCmd_SetShort:
     #############################################################
     .func MgCmd_SetWord
 MgCmd_SetWord:
+    emux_log_string "set word\n"
     jr ra
     sw a1, %lo(MAGMA_STATE)(a0)
     .endfunc
@@ -127,6 +130,7 @@ MgCmd_SetWord:
     #############################################################
     .func MgCmd_SetQuad
 MgCmd_SetQuad:
+    emux_log_string "set quad\n"
     addi s0, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER)
     lqv $v01, -0x10,s0
     lrv $v01,  0x00,s0
@@ -144,6 +148,7 @@ MgCmd_SetQuad:
     #############################################################
     .func MgCmd_LoadUniform
 MgCmd_LoadUniform:
+    emux_log_string "load uniform\n"
     move s0, a0
     addi s4, a1, %lo(_MG_VTX_SHADER_CONST)
     j DMAIn
@@ -161,6 +166,7 @@ MgCmd_LoadUniform:
     #############################################################
     .func MgCmd_SetShader
 MgCmd_SetShader:
+    emux_log_string "set shader\n"
     sw a0, %lo(MAGMA_SHADER_TEXT)
     sw a1, %lo(MAGMA_SHADER_DATA)
     sw a2, %lo(MAGMA_SHADER_TEXT_SIZE)
@@ -168,21 +174,25 @@ MgCmd_SetShader:
     .endfunc
 
 Mg_LoadShader:
-    move ra2, ra
+    # move ra2, ra
+    emux_log_string "dma shader code\n"
     lw s0, %lo(MAGMA_SHADER_TEXT)
     lh t0, %lo(MAGMA_SHADER_TEXT_SIZE)
     li s4, %lo(_MG_VTX_SHADER)
     add s0, s4
-    jal DMAInAsync
-    sub t0, s4
-
-    lw s0, %lo(MAGMA_SHADER_DATA)
-    lh t0, %lo(MAGMA_SHADER_DATA_SIZE)
-    li s4, %lo(_MG_VTX_SHADER_CONST)
-    add s0, s4
-    sub t0, s4
+    andi t1, s4, 0xFFF
     j DMAIn
-    move ra, ra2
+    sub t0, t1
+
+    # TODO: Shader data not needed?
+    # lw s0, %lo(MAGMA_SHADER_DATA)
+    # lh t0, %lo(MAGMA_SHADER_DATA_SIZE)
+    # li s4, %lo(_MG_VTX_SHADER_CONST)
+    # add s0, s4
+    # sub t0, s4
+    # emux_log_string "dma shader data\n"
+    # j DMAIn
+    # move ra, ra2
 
     #############################################################
     # MgCmd_DrawIndices
@@ -207,6 +217,7 @@ MgCmd_DrawIndices:
     #define trcode2     t7
     #define trcode3     t8
     #define ra3         s8
+    emux_log_string "draw triangle\n"
     li t0, %lo(MAGMA_CONSTANTS)
     lqv vconst, 0,t0
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 3
@@ -239,3 +250,19 @@ MgCmd_DrawIndices:
     .endfunc
 
 #include "rsp_rdpq.inc"
+
+    #############################################################
+    # ARGS:
+    #   a0: Bit 31..24: Command id
+    #       Bit 23..0:  Vertex buffer offset
+    #   a1: Bit 31..16: Cache offset
+    #       Bit 15..0:  Vertex count
+    #############################################################
+MgCmd_LoadVertices:
+    # We can't fall through here because RDPQ_Triangle_Send_Async etc. is always placed after the .text segment
+    # and we therefore need to put the vertex shader into it's own segment to force it being placed at the end.
+    # That means we can't register the command with the shader's address directly because it is not in the .text segment.
+    # TODO: is there a better way?
+    emux_log_string "load vertices\n"
+    j _MG_VTX_SHADER
+    nop
