@@ -9,6 +9,9 @@
 
 #define FB_COUNT    3
 
+#define ENABLE_RDPQ_DEBUG 1
+#define SINGLE_FRAME      1
+
 typedef struct
 {
     mgfx_fog_t fog;
@@ -71,8 +74,19 @@ int main()
 {
     init();
 
-    while (true) {
+#if ENABLE_RDPQ_DEBUG
+    rdpq_debug_start();
+    rdpq_debug_log(true);
+#endif
+
+    while (true) 
+    {
         render();
+
+#if SINGLE_FRAME
+        rspq_wait();
+        break;
+#endif
     }
 }
 
@@ -294,6 +308,7 @@ void render()
 
     // Get framebuffer
     surface_t *disp = display_get();
+    rdpq_debug_log_msg("---> Frame");
     rdpq_attach_clear(disp, &zbuffer);
 
     // Set up render modes with rdpq. This could be set per material, but for simplicity's sake we use the same render mode for all objects in this demo.
@@ -326,6 +341,7 @@ void render()
     // Iterate over all objects
     for (size_t i = 0; i < OBJECT_COUNT; i++)
     {
+        rdpq_debug_log_msg("-----> Object");
         // Recalculate object matrices.
         object = &objects[i];
         update_object_matrices(object);
@@ -334,6 +350,7 @@ void render()
         // To avoid redundant uploads, we keep track of the current material and only make this call when it actually changes.
         // This will be most optimal if the list of objects has been sorted by material.
         if (object->material_id != current_material_id) {
+            rdpq_debug_log_msg("-------> Material");
             current_material_id = object->material_id;
             current_material = &materials[current_material_id];
             mg_bind_resource_set(current_material->resource_set);
@@ -342,6 +359,7 @@ void render()
             if (current_material->texture) {
                 rdpq_sprite_upload(TILE0, current_material->texture, &current_material->rdpq_tex_parms);
             }
+            rdpq_debug_log_msg("<------- Material");
         }
 
         // Swap out the currently bound vertex/index buffers. Similar to materials, we only do this when it changes.
@@ -368,13 +386,19 @@ void render()
 
         // Perform the draw call. This will assemble the triangles from the currently bound vertex/index buffers, process them with the
         // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
+        rdpq_debug_log_msg("-------> Draw");
         mg_draw_indexed(&(mg_input_assembly_parms_t) {
             .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
         }, current_mesh->indices, current_mesh->index_count, 0);
+        rdpq_debug_log_msg("<------- Draw");
+
+        rdpq_debug_log_msg("<----- Object");
     }
 
     // Done. Detach from the framebuffer and present it.
     rdpq_detach_show();
+
+    rdpq_debug_log_msg("<--- Frame");
 }
 
 void update_object_matrices(object_data *object)
