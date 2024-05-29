@@ -12,6 +12,29 @@ typedef struct
 extern "C" {
 #endif
 
+inline void mat4x4_make_identity(mat4x4_t *d)
+{
+    d->m[0][0] = 1;
+    d->m[0][1] = 0;
+    d->m[0][2] = 0;
+    d->m[0][3] = 0;
+
+    d->m[1][0] = 0;
+    d->m[1][1] = 1;
+    d->m[1][2] = 0;
+    d->m[1][3] = 0;
+
+    d->m[2][0] = 0;
+    d->m[2][1] = 0;
+    d->m[2][2] = 1;
+    d->m[2][3] = 0;
+
+    d->m[3][0] = 0;
+    d->m[3][1] = 0;
+    d->m[3][2] = 0;
+    d->m[3][3] = 1;
+}
+
 inline void mat4x4_make_projection(mat4x4_t *d, float fovy, float aspect, float z_near, float z_far)
 {
     assert(fovy != 0.0f);
@@ -30,7 +53,7 @@ inline void mat4x4_make_projection(mat4x4_t *d, float fovy, float aspect, float 
     d->m[0][3] = 0;
 
     d->m[1][0] = 0;
-    d->m[1][1] = cotangent;
+    d->m[1][1] = -cotangent;
     d->m[1][2] = 0;
     d->m[1][3] = 0;
 
@@ -43,6 +66,29 @@ inline void mat4x4_make_projection(mat4x4_t *d, float fovy, float aspect, float 
     d->m[3][1] = 0;
     d->m[3][2] = -2 * z_near * z_far / deltaZ;
     d->m[3][3] = 0;
+}
+
+inline void mat4x4_make_ortho(mat4x4_t *d, float l, float r, float t, float b, float n, float f)
+{
+    d->m[0][0] = 2.0f/(r-l);
+    d->m[0][1] = 0;
+    d->m[0][2] = 0;
+    d->m[0][3] = 0;
+
+    d->m[1][0] = 0;
+    d->m[1][1] = 2.0f/(t-b);
+    d->m[1][2] = 0;
+    d->m[1][3] = 0;
+
+    d->m[2][0] = 0;
+    d->m[2][1] = 0;
+    d->m[2][2] = -2.0f/(f-n);
+    d->m[2][3] = 0;
+
+    d->m[3][0] = -(r+l)/(r-l);
+    d->m[3][1] = -(t+b)/(t-b);
+    d->m[3][2] = -(f+n)/(f-n);
+    d->m[3][3] = 1;
 }
 
 inline void mat4x4_make_rotation_translation(mat4x4_t *d, const float position[3], const float rotation[4])

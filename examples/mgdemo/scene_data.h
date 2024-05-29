@@ -13,7 +13,7 @@
 #define TEXTURE_COUNT   3
 #define MATERIAL_COUNT  5
 #define MESH_COUNT      1
-#define OBJECT_COUNT    10
+#define OBJECT_COUNT    3
 #define LIGHT_COUNT     2
 
 
@@ -62,9 +62,9 @@ static const uint32_t object_mesh_ids[] = {
 };
 static const float object_positions[][3] = {
     { 0.0f, 0.0f, 0.0f },
-    { 0.0f, 0.0f, 2.0f },
-    { 0.0f, 0.0f, 4.0f },
-    { 2.0f, 0.0f, 5.0f },
+    { -10.0f, 0.0f, 0.0f },
+    { 10.0f, 0.0f, 0.0f },
+    { 2.0f, 0.0f, 10.0f },
     { 4.0f, 1.0f, 0.0f },
     { 4.0f, 0.0f, 4.0f },
     { -3.0f, 0.0f, 0.0f },
@@ -72,6 +72,8 @@ static const float object_positions[][3] = {
     { -2.0f, 0.0f, 2.0f },
     { -4.0f, 0.0f, -3.0f },
 };
+
+static float rotation_rate = 1.0f;
 
 
 /* Lights */
@@ -93,6 +95,6 @@ static const uint32_t ambient_light_color = 0x101010ff;
 static const float camera_fov = 65.0f;
 static const float camera_near_plane = 1.0f;
 static const float camera_far_plane = 100.0f;
-static const float camera_starting_position[3] = { 0.0f, 0.0f, 10.0f };
+static const float camera_starting_position[3] = { 0.0f, -5.0f, -30.0f };
 
 #endif

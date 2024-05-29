@@ -76,8 +76,9 @@ MAGMA_CONSTANTS:                .half   MAGMA_VTX_SIZE, 0, 0, 0, 0, 0, 0, 0
     
     .align 3
     MAGMA_VERTEX_CACHE:         .dcb.b  MAGMA_VERTEX_CACHE_COUNT * MAGMA_VTX_SIZE
-    MAGMA_VERTEX_CACHE_END:
+    MAGMA_VERTEX_OVERFLOW:      .dcb.b  MAGMA_VTX_SIZE
 
+    .align 4
 MAGMA_STATE:
     MAGMA_VIEWPORT:
         MAGMA_VIEWPORT_SCALE:   .half   0,0,0,0
@@ -214,9 +215,10 @@ MgCmd_DrawIndices:
     lqv vconst, 0,t0
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 3
     luv vindices, 0,t1
-    li t0, %lo(MAGMA_VERTEX_CACHE)
+    li t0, %lo(MAGMA_VERTEX_CACHE) + MAGMA_VTX_XYZ
     mtc2 t0, vconst.e1
     lhu a0, %lo(MAGMA_TRI_CMD)
+    vsrl vindices, vindices, 7
     vmudh voffsets, vindices, vconst.e0
     vaddc vvertices, voffsets, vconst.e1
     lb v0, %lo(MAGMA_CULL_MODE)

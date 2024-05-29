@@ -165,7 +165,7 @@ inline void mg_set_culling(mg_culling_parms_t *culling);
 inline void mg_set_geometry_flags(mg_geometry_flags_t flags);
 
 /** @brief Set the viewport */
-inline void mg_set_viewport(mg_viewport_t *viewport);
+void mg_set_viewport(mg_viewport_t *viewport);
 
 /** @brief Bind a resource set, uploading the bound resources to DMEM */
 void mg_bind_resource_set(mg_resource_set_t *resource_set);
@@ -285,28 +285,6 @@ inline uint8_t mg_culling_parms_to_rsp_state(mg_culling_parms_t *culling)
     return cull_mode ^ is_front_cw;
 }
 
-inline mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
-{
-    float half_width = viewport->width / 2;
-    float half_height = viewport->height / 2;
-    float depth_diff = viewport->maxDepth - viewport->minDepth;
-    float half_depth = depth_diff / 2;
-    return (mg_rsp_viewport_t) {
-        .scale = {
-            half_width,
-            half_height,
-            half_depth,
-            1.0f
-        },
-        .offset = {
-            viewport->x - half_width,
-            viewport->y - half_height,
-            viewport->minDepth - half_depth,
-            0.0f
-        }
-    };
-}
-
 inline void mg_set_culling(mg_culling_parms_t *culling)
 {
     mg_cmd_set_byte(offsetof(mg_rsp_state_t, cull_mode), mg_culling_parms_to_rsp_state(culling));
@@ -316,16 +294,6 @@ inline void mg_set_geometry_flags(mg_geometry_flags_t flags)
 {
     uint16_t tricmd = 0x8 | (flags&0x7);
     mg_cmd_set_short(offsetof(mg_rsp_state_t, tri_cmd), tricmd << 8);
-}
-
-inline void mg_set_viewport(mg_viewport_t *viewport)
-{
-    mg_rsp_viewport_t rsp_viewport = mg_viewport_to_rsp_state(viewport);
-    uint32_t value0 = (rsp_viewport.scale[0] << 16) | rsp_viewport.scale[1];
-    uint32_t value1 = (rsp_viewport.scale[2] << 16) | rsp_viewport.scale[3];
-    uint32_t value2 = (rsp_viewport.offset[0] << 16) | rsp_viewport.offset[1];
-    uint32_t value3 = (rsp_viewport.offset[2] << 16) | rsp_viewport.offset[3];
-    mg_cmd_set_quad(offsetof(mg_rsp_state_t, viewport), value0, value1, value2, value3);
 }
 /// @endcond
 

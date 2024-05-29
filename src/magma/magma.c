@@ -29,11 +29,13 @@ uint32_t mg_overlay_id;
 
 inline void mg_cmd_load_uniform(const void *buffer, uint32_t size, uint32_t dmem_offset)
 {
+    assertf(size > 0, "size must be greater than 0");
     mg_cmd_write(MG_CMD_LOAD_UNIFORM, PhysicalAddr(buffer), ((size-1) << 16) | dmem_offset);
 }
 
-inline void mg_cmd_load_vertices(uint32_t count, uint8_t cache_offset, uint32_t buffer_offset)
+inline void mg_cmd_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count)
 {
+    assertf(count > 0, "count must be greater than 0");
     assertf(count <= MAGMA_VERTEX_CACHE_COUNT, "too many vertices");
     assertf(cache_offset + count <= MAGMA_VERTEX_CACHE_COUNT, "offset out of range");
     mg_cmd_write(MG_CMD_LOAD_VERTICES, buffer_offset, (cache_offset<<16) | count);
@@ -41,6 +43,9 @@ inline void mg_cmd_load_vertices(uint32_t count, uint8_t cache_offset, uint32_t 
 
 inline void mg_cmd_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
 {
+    assertf(index0 <= MAGMA_VERTEX_CACHE_COUNT, "index0 is out of range");
+    assertf(index1 <= MAGMA_VERTEX_CACHE_COUNT, "index1 is out of range");
+    assertf(index2 <= MAGMA_VERTEX_CACHE_COUNT, "index2 is out of range");
     mg_cmd_write(MG_CMD_DRAW_INDICES, (index0 << 16) | (index1 << 8) | index2);
 }
 
@@ -208,7 +213,7 @@ void mg_resource_set_free(mg_resource_set_t *resource_set)
     free(resource_set);
 }
 
-inline void mg_load_shader(const rsp_ucode_t *shader_ucode)
+void mg_load_shader(const rsp_ucode_t *shader_ucode)
 {
     uint32_t code = PhysicalAddr(shader_ucode->code);
     uint32_t data = PhysicalAddr(shader_ucode->data);
@@ -222,6 +227,39 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
     // TODO: inline?
     mg_load_shader(pipeline->shader_ucode);
+}
+
+mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
+{
+    float half_width = viewport->width / 2;
+    float half_height = viewport->height / 2;
+    float depth_diff = viewport->maxDepth - viewport->minDepth;
+    float half_depth = depth_diff / 2;
+    return (mg_rsp_viewport_t) {
+        .scale = {
+            half_width * 8,
+            half_height * 8,
+            half_depth * 0x7FFF * 2,
+            2
+        },
+        .offset = {
+            (viewport->x + half_width) * 4,
+            (viewport->y + half_height) * 4,
+            (viewport->minDepth - half_depth) * 0x7FFF,
+            0
+        }
+    };
+}
+
+
+void mg_set_viewport(mg_viewport_t *viewport)
+{
+    mg_rsp_viewport_t rsp_viewport = mg_viewport_to_rsp_state(viewport);
+    uint32_t value0 = (rsp_viewport.scale[0] << 16) | rsp_viewport.scale[1];
+    uint32_t value1 = (rsp_viewport.scale[2] << 16) | rsp_viewport.scale[3];
+    uint32_t value2 = (rsp_viewport.offset[0] << 16) | rsp_viewport.offset[1];
+    uint32_t value3 = (rsp_viewport.offset[2] << 16) | rsp_viewport.offset[3];
+    mg_cmd_set_quad(offsetof(mg_rsp_state_t, viewport), value0, value1, value2, value3);
 }
 
 void mg_bind_resource_set(mg_resource_set_t *resource_set)
@@ -259,8 +297,6 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
     }
 
     rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, (MAGMA_PUSH_CONSTANT_HEADER + command_size)/4);
-
-    void *ptr = (void*)(w.pointer - 1);
 
     // We want to place the payload at an 8-byte aligned address after the end of the command itself
     // w.pointer is already +1 from the actual start of the command
@@ -312,7 +348,7 @@ void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_co
     for (uint32_t current_vertex = 0; current_vertex < vertex_count; current_vertex += advance_count)
     {
         uint32_t load_count = MIN(advance_count, vertex_count - current_vertex);
-        mg_cmd_load_vertices(load_count, 0, current_vertex + first_vertex);
+        mg_cmd_load_vertices(current_vertex + first_vertex, 0, load_count);
 
         switch (input_assembly_parms->primitive_topology) {
         case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
@@ -364,7 +400,7 @@ static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
         return false;
     }
 
-    size_t new_block_index = cache->block_count;
+    //size_t new_block_index = cache->block_count;
 
     // Find existing block to insert into
     for (size_t i = 0; i < cache->block_count; i++)
@@ -392,7 +428,7 @@ static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
             // is after the index, we already know that none of the existing blocks
             // will contain the index. The new block we need to create has to be inserted
             // in the current block's place.
-            new_block_index = i;
+            //new_block_index = i;
             break;
         }
     }
@@ -427,11 +463,13 @@ static bool vertex_cache_find(const vertex_cache *cache, uint16_t index, uint8_t
 
 static void vertex_cache_load(const vertex_cache *cache, int32_t offset)
 {
+    debugf("Vertex batch (total %ld):\n", cache->total_count);
     uint32_t cache_offset = 0;
     for (size_t i = 0; i < cache->block_count; i++)
     {
         if (cache->blocks[i].count == 0) continue;
-        mg_cmd_load_vertices(cache->blocks[i].count, cache_offset, cache->blocks[i].start + offset);
+        debugf("block %d: offset %d, count %d\n", i, cache->blocks[i].start, cache->blocks[i].count);
+        mg_cmd_load_vertices(cache->blocks[i].start + offset, cache_offset, cache->blocks[i].count);
         cache_offset += cache->blocks[i].count;
     }
 }
@@ -467,6 +505,7 @@ static void draw_batch(const uint16_t *indices, uint32_t current_index, uint32_t
 
         prim_indices[i%3] = cache_index;
         if (i%3 == 2) {
+            debugf("Triangle: %d, %d, %d\n", prim_indices[0], prim_indices[1], prim_indices[2]);
             mg_cmd_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
         }
     }

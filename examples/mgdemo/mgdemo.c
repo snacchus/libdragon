@@ -9,8 +9,8 @@
 
 #define FB_COUNT    3
 
-#define ENABLE_RDPQ_DEBUG 1
-#define SINGLE_FRAME      1
+#define ENABLE_RDPQ_DEBUG 0
+#define SINGLE_FRAME      0
 
 typedef struct
 {
@@ -24,6 +24,8 @@ typedef struct
     sprite_t *texture;
     rdpq_texparms_t rdpq_tex_parms;
     mgfx_modes_t modes;
+    mg_geometry_flags_t geometry_flags;
+    color_t color;
 } material_data;
 
 typedef struct
@@ -31,6 +33,7 @@ typedef struct
     mg_buffer_t *vertex_buffer;
     const uint16_t *indices;
     uint32_t index_count;
+    rspq_block_t *block;
 } mesh_data;
 
 typedef struct
@@ -45,9 +48,10 @@ typedef struct
 } object_data;
 
 void init();
+void update();
 void render();
 void create_scene_resources();
-void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms);
+void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
 void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count);
 void update_object_matrices(object_data *object);
 
@@ -70,6 +74,10 @@ static mat4x4_t vp_matrix;
 static float camera_position[3];
 static quat_t camera_rotation;
 
+static uint32_t last_frame_ticks;
+
+static float rotation;
+
 int main()
 {
     init();
@@ -81,6 +89,7 @@ int main()
 
     while (true) 
     {
+        update();
         render();
 
 #if SINGLE_FRAME
@@ -106,6 +115,8 @@ void init()
 
     // Initialize viewport
     viewport = (mg_viewport_t) {
+        .x = 0,
+        .y = 0,
         .width = resolution.width,
         .height = resolution.height,
         .minDepth = 0.0f,
@@ -137,7 +148,9 @@ void init()
             textures[material_texture_indices[i]], 
             &(mgfx_modes_parms_t) {
                 .flags = MGFX_MODES_FLAGS_LIGHTING_ENABLED | MGFX_MODES_FLAGS_NORMALIZATION_ENABLED
-            });
+            },
+            MG_GEOMETRY_FLAGS_Z_ENABLED,
+            color_from_packed32(material_diffuse_colors[i]));
     }
 
     // Create meshes
@@ -158,9 +171,12 @@ void init()
     }
 
     // Initialize camera properties
-    mat4x4_make_projection(&projection_matrix, camera_fov, (float)resolution.width / (float)resolution.height, camera_near_plane, camera_far_plane);
+    float aspect_ratio = (float)resolution.width / (float)resolution.height;
+    mat4x4_make_projection(&projection_matrix, camera_fov, aspect_ratio, camera_near_plane, camera_far_plane);
     memcpy(camera_position, camera_starting_position, sizeof(camera_position));
     quat_make_identity(&camera_rotation);
+
+    last_frame_ticks = TICKS_READ();
 }
 
 void create_scene_resources()
@@ -228,7 +244,7 @@ void create_scene_resources()
     });
 }
 
-void material_create(material_data *material, sprite_t *texture, mgfx_modes_parms_t *mode_parms)
+void material_create(material_data *material, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color)
 {
     // Similarly to the scene resources, we will provide materials to the shader via resource sets.
     // We separate the material from scene resources, because they are expected to change during the scene.
@@ -277,6 +293,9 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
         .s.repeats = REPEAT_INFINITE,
         .t.repeats = REPEAT_INFINITE,
     };
+
+    material->geometry_flags = geometry_flags;
+    material->color = color;
 }
 
 void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count)
@@ -298,6 +317,26 @@ void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex
 
     mesh->indices = indices;
     mesh->index_count = index_count;
+
+    rspq_block_begin();
+        mg_draw_indexed(&(mg_input_assembly_parms_t) {
+            .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+        }, mesh->indices, mesh->index_count, 0);
+    mesh->block = rspq_block_end();
+}
+
+void update()
+{
+    // Very basic delta time setup. It's enough for this demo.
+    const uint32_t new_ticks = TICKS_READ();
+    const uint32_t delta_ticks = TICKS_DISTANCE(last_frame_ticks, new_ticks);
+    const float delta_seconds = (float)delta_ticks / TICKS_PER_SECOND;
+    last_frame_ticks = new_ticks;
+
+    const float axis[3] = {0, 1, 0};
+    quat_from_axis_angle(&objects[0].rotation, axis, rotation);
+
+    rotation = wrap_angle(rotation + rotation_rate * delta_seconds);
 }
 
 void render()
@@ -317,13 +356,12 @@ void render()
         rdpq_mode_zbuf(true, true);
         rdpq_mode_antialias(AA_STANDARD);
         rdpq_mode_persp(true);
-        rdpq_mode_combiner(RDPQ_COMBINER_TEX_SHADE);
+        rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
     rdpq_mode_end();
 
     // Set viewport, culling mode and geometry flags
     mg_set_viewport(&viewport);
     mg_set_culling(&culling);
-    //mg_set_geometry_flags(MG_GEOMETRY_FLAGS_SHADE_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED | MG_GEOMETRY_FLAGS_Z_ENABLED);
 
     // All our materials use the same pipeline in this demo, so bind it once for the entire scene
     mg_bind_pipeline(pipeline);
@@ -354,7 +392,9 @@ void render()
             current_material_id = object->material_id;
             current_material = &materials[current_material_id];
             mg_bind_resource_set(current_material->resource_set);
+            mg_set_geometry_flags(current_material->geometry_flags);
 
+            rdpq_set_prim_color(current_material->color);
             // Additionally, upload the material's texture via rdpq, which can be done completely independently from magma.
             if (current_material->texture) {
                 rdpq_sprite_upload(TILE0, current_material->texture, &current_material->rdpq_tex_parms);
@@ -387,9 +427,7 @@ void render()
         // Perform the draw call. This will assemble the triangles from the currently bound vertex/index buffers, process them with the
         // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
         rdpq_debug_log_msg("-------> Draw");
-        mg_draw_indexed(&(mg_input_assembly_parms_t) {
-            .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-        }, current_mesh->indices, current_mesh->index_count, 0);
+        rspq_block_run(current_mesh->block);
         rdpq_debug_log_msg("<------- Draw");
 
         rdpq_debug_log_msg("<----- Object");
