@@ -18,10 +18,10 @@ void assert_block_contents(const uint32_t *expected_commands, uint32_t expected_
         ASSERT_EQUAL_HEX(actual_cmd, expected_cmd, "unexpected block content at word %d", i);
 
         // Check if we need to jump to the next buffer
-        uint32_t cmd = *current_cmd;
-        if ((cmd>>24) == RSPQ_CMD_JUMP) {
-            current_cmd = (const uint32_t*)UncachedAddr(0x80000000 | (cmd & 0xFFFFFF));
-        }
+        // uint32_t cmd = *current_cmd;
+        // if ((cmd>>24) == RSPQ_CMD_JUMP) {
+        //     current_cmd = (const uint32_t*)UncachedAddr(0x80000000 | (cmd & 0xFFFFFF));
+        // }
     }
 
     uint32_t last_cmd = *current_cmd;
@@ -38,8 +38,32 @@ void assert_draw_indexed(const uint32_t *expected_commands, uint32_t expected_co
     assert_block_contents(expected_commands, expected_commands_count, block, ctx);
 }
 
-#define VTX(cnt, off, buf) (mg_overlay_id | (MG_CMD_LOAD_VERTICES<<24) | (cnt)), ((off<<24) | (buf))
+#define VTX(cnt, off, buf) (mg_overlay_id | (MG_CMD_LOAD_VERTICES<<24) | (buf)), ((off<<16) | (cnt))
 #define TRI(i0, i1, i2) (mg_overlay_id | (MG_CMD_DRAW_INDICES<<24) | ((i0)<<16) | ((i1)<<8) | ((i2)<<0))
+
+void test_mg_set_viewport(TestContext *ctx)
+{
+    MG_INIT();
+
+    const uint32_t expected_commands[] = {
+        mg_overlay_id | (MG_CMD_SET_QUAD<<24) | offsetof(mg_rsp_state_t, viewport),
+        (640<<16) | 480,
+        0,
+        (640<<16) | 480,
+        0
+    };
+
+    rspq_block_begin();
+        mg_set_viewport(&(mg_viewport_t) {
+            .x = 0,
+            .y = 0,
+            .width = 320,
+            .height = 240
+        });
+    rspq_block_t *block = rspq_block_end();
+
+    assert_block_contents(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), block, ctx);
+}
 
 void test_mg_draw_indexed_one_tri(TestContext *ctx)
 {
@@ -147,9 +171,9 @@ void test_mg_draw_indexed_holes(TestContext *ctx)
     };
 
     const uint32_t expected_commands[] = {
-        VTX(3, 0, 0),
-        VTX(3, 1, 4),
-        VTX(3, 2, 15),
+        VTX(1, 0, 0),
+        VTX(1, 1, 4),
+        VTX(1, 2, 15),
         TRI(0, 1, 2),
     };
 
@@ -161,12 +185,13 @@ void test_mg_draw_indexed_out_of_order(TestContext *ctx)
     MG_INIT();
 
     const uint16_t indices[] = {
-        2, 0, 1
+        0, 2, 1, 0, 3, 2
     };
 
     const uint32_t expected_commands[] = {
-        VTX(3, 0, 0),
-        TRI(2, 0, 1),
+        VTX(4, 0, 0),
+        TRI(0, 2, 1),
+        TRI(0, 3, 2),
     };
 
     assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);

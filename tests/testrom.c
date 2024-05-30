@@ -342,6 +342,7 @@ static const struct Testsuite
 	// TEST_FUNC(test_dlsym_rtld_default,         0, TEST_FLAGS_NO_BENCHMARK),
 	// TEST_FUNC(test_dlclose,                    0, TEST_FLAGS_NO_BENCHMARK),
 	// TEST_FUNC(test_dl_ctors,                   0, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_mg_set_viewport, 0, TEST_FLAGS_NO_BENCHMARK),
 	TEST_FUNC(test_mg_draw_indexed_one_tri, 0, TEST_FLAGS_NO_BENCHMARK),
 	TEST_FUNC(test_mg_draw_indexed_two_tris, 0, TEST_FLAGS_NO_BENCHMARK),
 	TEST_FUNC(test_mg_draw_indexed_full_cache, 0, TEST_FLAGS_NO_BENCHMARK),
