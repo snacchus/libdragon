@@ -149,7 +149,7 @@ void init()
             &(mgfx_modes_parms_t) {
                 .flags = MGFX_MODES_FLAGS_LIGHTING_ENABLED | MGFX_MODES_FLAGS_NORMALIZATION_ENABLED
             },
-            MG_GEOMETRY_FLAGS_Z_ENABLED,
+            MG_GEOMETRY_FLAGS_Z_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED,
             color_from_packed32(material_diffuse_colors[i]));
     }
 
@@ -259,6 +259,8 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     mgfx_get_texturing(&tex, &(mgfx_texturing_parms_t) {
         .scale[0] = texture->width  >> TEX_SIZE_SHIFT,
         .scale[1] = texture->height >> TEX_SIZE_SHIFT,
+        .offset[0] = -RDP_HALF_TEXEL,
+        .offset[1] = -RDP_HALF_TEXEL
     });
     mgfx_get_modes(&modes, mode_parms);
 
@@ -356,6 +358,7 @@ void render()
         rdpq_mode_zbuf(true, true);
         rdpq_mode_antialias(AA_STANDARD);
         rdpq_mode_persp(true);
+        rdpq_mode_filter(FILTER_BILINEAR);
         rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
     rdpq_mode_end();
 

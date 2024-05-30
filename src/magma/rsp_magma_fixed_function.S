@@ -67,6 +67,9 @@ MgBeginShader
     #define vguard_f        $v20
     #define vtex            $v21
     #define vrgba           $v22
+    #define vnorm           $v23
+    #define vtexscale       $v24
+    #define vtexoffset      $v25
 
     lw s0, %lo(MAGMA_VERTEX_BUFFER)
     li t0, %lo(MAGMA_CONSTANTS)
@@ -120,6 +123,13 @@ MgBeginShader
     ldv vmvp3_f.e0,  0x38,t1
     ldv vmvp3_f.e4,  0x38,t1
 
+    # load texture transform
+    li t1, %lo(TEXTURING)
+    llv vtexscale.e0,  0x0,t1
+    llv vtexscale.e4,  0x0,t1
+    llv vtexoffset.e0, 0x4,t1
+    llv vtexoffset.e4, 0x4,t1
+
     # load viewport
     li t1, %lo(MAGMA_VIEWPORT)
     ldv vviewscale.e0, 0x0,t1
@@ -127,6 +137,7 @@ MgBeginShader
     ldv vviewoff.e0, 0x8,t1
     ldv vviewoff.e4, 0x8,t1
 
+    # load clip factors
     ldv vclip_factors.e0, 0x10,t1
     ldv vclip_factors.e4, 0x10,t1
 
@@ -158,9 +169,15 @@ vertex_loop:
 
     # TODO: load normal
 
-    # TODO: transform texcoords
+    vmudh v___, vtexoffset, K1
+    vmadh vtex, vtex, vtexscale
 
     # TODO: lighting
+
+    # store rgba to vertex cache
+    # CAUTION: this also overwrites the next 4 bytes after the rgba value
+    suv vrgba.e0, MAGMA_VTX_RGBA,vtx_out0_ptr
+    suv vrgba.e4, MAGMA_VTX_RGBA,vtx_out1_ptr
 
     # store texcoords to vertex cache
     slv vtex.e0, MAGMA_VTX_ST,vtx_out0_ptr
@@ -185,11 +202,6 @@ vertex_loop:
     sdv vpos_clip_f.e0,  MAGMA_VTX_CS_POSf,vtx_out0_ptr
     sdv vpos_clip_i.e4,  MAGMA_VTX_CS_POSi,vtx_out1_ptr
     sdv vpos_clip_f.e4,  MAGMA_VTX_CS_POSf,vtx_out1_ptr
-
-    # store rgba to vertex cache
-    # CAUTION: this also overwrites the next 4 bytes after the rgba value
-    suv vrgba.e0, MAGMA_VTX_RGBA,vtx_out0_ptr
-    suv vrgba.e4, MAGMA_VTX_RGBA,vtx_out1_ptr
 
     # store W to vertex cache
     ssv vpos_clip_i.e3, MAGMA_VTX_Wi,vtx_out0_ptr
