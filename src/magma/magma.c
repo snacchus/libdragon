@@ -423,6 +423,14 @@ static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
             return true;
         }
 
+        if (diff == -1) {
+            // Index is the previous one before this block. Grow it backwards by one.
+            block->count++;
+            block->start--;
+            cache->total_count++;
+            return true;
+        }
+
         if (block->start > index) {
             // Blocks are always sorted. That means if the current block's start
             // is after the index, we already know that none of the existing blocks
