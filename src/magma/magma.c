@@ -245,7 +245,7 @@ mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
         .offset = {
             (viewport->x + half_width) * 4,
             (viewport->y + half_height) * 4,
-            (viewport->minDepth - half_depth) * 0x7FFF,
+            (viewport->minDepth + half_depth) * 0x7FFF,
             0
         }
     };

@@ -10,10 +10,7 @@ MgBeginShaderConstants
     MgEndUniform
 
     MgBeginUniform LIGHTING, MGFX_BINDING_LIGHTING
-        LIGHTING_POSITION:  .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
-        LIGHTING_DIFFUSE:   .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
-        LIGHTING_ATT_INT:   .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
-        LIGHTING_ATT_FRAC:  .dcb.w  MGFX_LIGHT_COUNT_MAX * 4
+        LIGHTING_LIGHTS:    .dcb.b  MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX
         LIGHTING_AMBIENT:   .dcb.w  4
         LIGHTING_COUNT:     .word   0
     MgEndUniform
@@ -39,42 +36,40 @@ MgBeginShaderConstants
 MgEndShaderConstants
 
 MgBeginShader
+    #define flags           v0
     #define vtx_in_ptr      s1
     #define vtx_in_end      s2
     #define vtx_out0_ptr    s3
     #define vtx_out1_ptr    s5
     #define v___            $v29
     #define vconst          $v28
-    #define vpos_in         $v01
-    #define vpos_clip_i     $v02
-    #define vpos_clip_f     $v03
-    #define vinvw_i         $v04
-    #define vinvw_f         $v05
-    #define vpos_scr_i      $v06
-    #define vpos_scr_f      $v07
-    #define vmvp0_i         $v08
-    #define vmvp0_f         $v09
-    #define vmvp1_i         $v10
-    #define vmvp1_f         $v11
-    #define vmvp2_i         $v12
-    #define vmvp2_f         $v13
-    #define vmvp3_i         $v14
-    #define vmvp3_f         $v15
-    #define vviewscale      $v16
-    #define vviewoff        $v17
-    #define vclip_factors   $v18
-    #define vguard_i        $v19
-    #define vguard_f        $v20
-    #define vtex            $v21
-    #define vrgba           $v22
-    #define vnorm           $v23
-    #define vtexscale       $v24
-    #define vtexoffset      $v25
 
+    #define vmvp0_i         $v01
+    #define vmvp0_f         $v02
+    #define vmvp1_i         $v03
+    #define vmvp1_f         $v04
+    #define vmvp2_i         $v05
+    #define vmvp2_f         $v06
+    #define vmvp3_i         $v07
+    #define vmvp3_f         $v08
+    #define vviewscale      $v09
+    #define vviewoff        $v10
+    #define vclip_factors   $v11
+    #define vtexscale       $v12
+    #define vtexoffset      $v13
+    #define vnormmask       $v14
+    #define vnormfactor     $v15
+
+    #define vpos_clip_i     $v22
+    #define vpos_clip_f     $v23
+    #define vpos_scr_i      $v24
+    #define vpos_scr_f      $v25
+
+    lw flags, %lo(MODES_FLAGS)
     lw s0, %lo(MAGMA_VERTEX_BUFFER)
-    li t0, %lo(MAGMA_CONSTANTS)
+    li t5, %lo(MAGMA_CONSTANTS)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER)
-    lqv vconst, 0,t0
+    lqv vconst, 0,t5
     llv $v01.e0, -4,t1
 
     sll t0, a0, MGFX_VTX_SIZE_SHIFT
@@ -141,6 +136,11 @@ MgBeginShader
     ldv vclip_factors.e0, 0x10,t1
     ldv vclip_factors.e4, 0x10,t1
 
+    ldv vnormmask.e0,   0x10,t5
+    ldv vnormmask.e4,   0x10,t5
+    ldv vnormfactor.e0, 0x18,t5
+    ldv vnormfactor.e4, 0x18,t5
+
     jal DMAWaitIdle
     nop
 
@@ -149,39 +149,20 @@ vertex_loop:
     bge vtx_in_ptr, vtx_in_end, RSPQ_Loop
     addi vtx_out1_ptr, vtx_out0_ptr, MAGMA_VTX_SIZE
 
+    #define vpos_in $v26
+    #define vnorm   $v27
+
     # load vertex position (of two vertices)
-    # X0 Y0 Z0 1  X1 Y1 Z1 1
     ldv vpos_in.e0, MGFX_VTX_POS + 0,            vtx_in_ptr
     ldv vpos_in.e4, MGFX_VTX_POS + MGFX_VTX_SIZE,vtx_in_ptr
+
+    # Unpack normal
+    vand v___, vnormmask, vpos_in.h3
+    vmudn vnorm, v___, vnormfactor
+
+    # Set W components to 1
     vmov vpos_in.e3, K32
     vmov vpos_in.e7, K32
-
-    # load rgba (of two vertices)
-    # shuffle values around so they can be loaded in a single luv op
-    llv vrgba.e0, MGFX_VTX_RGBA + 0,             vtx_in_ptr
-    llv vrgba.e2, MGFX_VTX_RGBA + MGFX_VTX_SIZE, vtx_in_ptr
-    sdv vrgba.e0, 0,vtx_out0_ptr
-    luv vrgba.e0, 0,vtx_out0_ptr
-
-    # load texcoords (of two vertices)
-    llv vtex.e0, MGFX_VTX_TEX + 0,            vtx_in_ptr
-    llv vtex.e4, MGFX_VTX_TEX + MGFX_VTX_SIZE,vtx_in_ptr
-
-    # TODO: load normal
-
-    vmudh v___, vtexoffset, K1
-    vmadh vtex, vtex, vtexscale
-
-    # TODO: lighting
-
-    # store rgba to vertex cache
-    # CAUTION: this also overwrites the next 4 bytes after the rgba value
-    suv vrgba.e0, MAGMA_VTX_RGBA,vtx_out0_ptr
-    suv vrgba.e4, MAGMA_VTX_RGBA,vtx_out1_ptr
-
-    # store texcoords to vertex cache
-    slv vtex.e0, MAGMA_VTX_ST,vtx_out0_ptr
-    slv vtex.e4, MAGMA_VTX_ST,vtx_out1_ptr
 
     # transform vertex position into clip space
     vmudn v___,        vmvp0_f, vpos_in.h0
@@ -192,6 +173,147 @@ vertex_loop:
     vmadh v___,        vmvp2_i, vpos_in.h2
     vmadn vpos_clip_f, vmvp3_f, vpos_in.h3
     vmadh vpos_clip_i, vmvp3_i, vpos_in.h3
+
+    #undef vpos_in
+
+    #define vmn0_i $v16
+    #define vmn0_f $v17
+    #define vmn1_i $v18
+    #define vmn1_f $v19
+    #define vmn2_i $v20
+    #define vmn2_f $v21
+
+    # transform normal
+    li t1, %lo(MATRICES_NORMAL)
+    ldv vmn0_i.e0, 0x00,t1
+    ldv vmn0_i.e4, 0x00,t1
+    ldv vmn1_i.e0, 0x08,t1
+    ldv vmn1_i.e4, 0x08,t1
+    ldv vmn2_i.e0, 0x10,t1
+    ldv vmn2_i.e4, 0x10,t1
+    ldv vmn0_f.e0, 0x20,t1
+    ldv vmn0_f.e4, 0x20,t1
+    ldv vmn1_f.e0, 0x28,t1
+    ldv vmn1_f.e4, 0x28,t1
+    ldv vmn2_f.e0, 0x30,t1
+    ldv vmn2_f.e4, 0x30,t1
+
+    vmudn v___,        vmn0_f, vnorm.h0
+    vmadh v___,        vmn0_i, vnorm.h0
+    vmadn v___,        vmn1_f, vnorm.h1
+    vmadh v___,        vmn1_i, vnorm.h1
+    vmadn v___,        vmn2_f, vnorm.h2
+    vmadh vnorm,       vmn2_i, vnorm.h2
+
+    #undef vmn0_i
+    #undef vmn0_f
+    #undef vmn1_i
+    #undef vmn1_f
+    #undef vmn2_i
+    #undef vmn2_f
+
+    #define vsqdist_i   $v16
+    #define vsqdist_f   $v17
+    #define vinvdist_i  $v18
+    #define vinvdist_f  $v19
+
+    # re-normalize normal
+    vmudh v___, vnorm, vnorm
+    vsar  vsqdist_f, COP2_ACC_MD
+    vsar  vsqdist_i, COP2_ACC_HI
+    vaddc vinvdist_f, vsqdist_f, vsqdist_f.h1
+    vadd  vinvdist_i, vsqdist_i, vsqdist_i.h1
+    vaddc vsqdist_f, vinvdist_f, vsqdist_f.h2
+    vadd  vsqdist_i, vinvdist_i, vsqdist_i.h2
+
+    vrsqh v___.e0,       vsqdist_i.e0
+    vrsql vinvdist_f.e0, vsqdist_f.e0
+    vrsqh vinvdist_i.e0, vsqdist_i.e4
+    vrsql vinvdist_f.e4, vsqdist_f.e4
+    vrsqh vinvdist_i.e4, vzero.e0
+
+    vmudm v___,  vnorm, vinvdist_f.h0
+    vmadh vnorm, vnorm, vinvdist_i.h0
+
+    #undef vsqdist_i
+    #undef vsqdist_f
+    #undef vinvdist_i
+    #undef vinvdist_f
+
+    #define vlight $v26
+
+    # compute lighting
+    li s0, %lo(LIGHTING_LIGHTS)
+    ldv vlight.e0, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
+    ldv vlight.e4, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
+
+    lw t6, %lo(LIGHTING_COUNT)
+light_loop:
+    #define vlpos   $v16
+    #define vlcol   $v17
+    #define vndl    $v18
+    ldv vlpos.e0, MGFX_LIGHT_POSITION,s0
+    ldv vlpos.e4, MGFX_LIGHT_POSITION,s0
+    ldv vlcol.e0, MGFX_LIGHT_COLOR,s0
+    ldv vlcol.e4, MGFX_LIGHT_COLOR,s0
+
+    # TODO: point lights
+
+    vmulf vndl, vnorm, vlpos,
+    vaddc v___, vndl, vndl.h1
+    vaddc vndl, v___, vndl.h2
+    vge   vndl, vzero
+
+    vmulf vlcol, vndl.h0
+    vaddc vlight, vlcol
+
+    addi t6, -1
+    bnez t6, light_loop
+    addi s0, MGFX_LIGHT_SIZE
+    #undef vlpos
+    #undef vlcol
+    #undef vndl
+
+    #undef vnorm
+
+    #define vrgba $v27
+
+    # load rgba (of two vertices)
+    # shuffle values around so they can be loaded in a single luv op
+    llv vrgba.e0, MGFX_VTX_RGBA + 0,             vtx_in_ptr
+    llv vrgba.e2, MGFX_VTX_RGBA + MGFX_VTX_SIZE, vtx_in_ptr
+    sdv vrgba.e0, 0,vtx_out0_ptr
+    luv vrgba.e0, 0,vtx_out0_ptr
+
+    # multiply vertex color by accumulated light color
+    vmulf vrgba, vlight
+
+    #undef vlight
+
+    # TODO: Fog
+
+    # store rgba to vertex cache
+    # CAUTION: this also overwrites the next 4 bytes after the rgba value
+    suv vrgba.e0, MAGMA_VTX_RGBA,vtx_out0_ptr
+    suv vrgba.e4, MAGMA_VTX_RGBA,vtx_out1_ptr
+
+    #undef vrgba
+
+    #define vtex $v26
+
+    # load texcoords (of two vertices)
+    llv vtex.e0, MGFX_VTX_TEX + 0,            vtx_in_ptr
+    llv vtex.e4, MGFX_VTX_TEX + MGFX_VTX_SIZE,vtx_in_ptr
+
+    # transform texcoords
+    vmudh v___, vtexoffset, K1
+    vmadh vtex, vtex, vtexscale
+
+    # store texcoords to vertex cache
+    slv vtex.e0, MAGMA_VTX_ST,vtx_out0_ptr
+    slv vtex.e4, MAGMA_VTX_ST,vtx_out1_ptr
+
+    #undef vtex
 
     # 32-bit right shift by 5, to keep the clip space coordinates unscaled
     vmudm vpos_clip_i, vpos_clip_i, vshift8.e4
@@ -208,6 +330,9 @@ vertex_loop:
     ssv vpos_clip_f.e3, MAGMA_VTX_Wf,vtx_out0_ptr
     ssv vpos_clip_i.e7, MAGMA_VTX_Wi,vtx_out1_ptr
     ssv vpos_clip_f.e7, MAGMA_VTX_Wf,vtx_out1_ptr
+
+    #define vinvw_i $v26
+    #define vinvw_f $v27
 
     # perspective division
     vrcph v___.e3,    vpos_clip_i.e3
@@ -227,6 +352,9 @@ vertex_loop:
     vmadn vpos_scr_f, vpos_clip_f, vinvw_i.h3
     vmadh vpos_scr_i, vpos_clip_i, vinvw_i.h3
 
+    #undef vinvw_i
+    #undef vinvw_f
+
     # transform to screen space
     vmudh v___, vviewoff, K1
     vmadn vpos_scr_f, vpos_scr_f, vviewscale
@@ -235,6 +363,9 @@ vertex_loop:
     # store screen space position to vertex cache
     sdv vpos_scr_i.e0,  MAGMA_VTX_XYZ,vtx_out0_ptr
     sdv vpos_scr_i.e4,  MAGMA_VTX_XYZ,vtx_out1_ptr
+
+    #define vguard_i        $v26
+    #define vguard_f        $v27
 
     # calculate clipping codes
     vmudn vguard_f, vpos_clip_f, vclip_factors
@@ -249,6 +380,9 @@ vertex_loop:
     srl t3, t2, 5
     or t0, t1
     or t2, t3
+
+    #undef vguard_i
+    #undef vguard_f
 
     # store clip codes to vertex cache
     sb t0, MAGMA_VTX_CLIP_CODE(vtx_out0_ptr)

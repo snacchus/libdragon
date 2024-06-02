@@ -67,6 +67,7 @@ static sprite_t *textures[TEXTURE_COUNT];
 static material_data materials[MATERIAL_COUNT];
 static mesh_data meshes[MESH_COUNT];
 static object_data objects[OBJECT_COUNT];
+static mgfx_light_parms_t lights[LIGHT_COUNT];
 
 static mat4x4_t projection_matrix;
 static mat4x4_t view_matrix;
@@ -147,9 +148,9 @@ void init()
             &materials[i], 
             textures[material_texture_indices[i]], 
             &(mgfx_modes_parms_t) {
-                .flags = MGFX_MODES_FLAGS_LIGHTING_ENABLED | MGFX_MODES_FLAGS_NORMALIZATION_ENABLED
+                .flags = 0
             },
-            MG_GEOMETRY_FLAGS_Z_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED,
+            MG_GEOMETRY_FLAGS_Z_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED | MG_GEOMETRY_FLAGS_SHADE_ENABLED,
             color_from_packed32(material_diffuse_colors[i]));
     }
 
@@ -185,40 +186,27 @@ void create_scene_resources()
     // These will be provided to the shader by writing the data to a uniform buffer, and attaching that buffer
     // to a resource set. By using a resource set, uploading the data to DMEM during rendering will be 
     // automatically optimized for us. Using uniform buffers also allows us to modify the buffer contents dynamically,
-    // for example to update lighting (which we aren't doing for now in this demo).
+    // for example to update lighting.
 
-    // 1. Create the uniform buffer. It's important that the buffer contents need to be in a format that is optimized for
-    //    access by the RSP. This is what the scene_raw_data struct is, which itself contains the predefined structs
-    //    provided by the fixed function pipeline.
+    // Create the uniform buffer. It's important that the buffer contents need to be in a format that is optimized for
+    // access by the RSP. This is what the scene_raw_data struct is, which itself contains the predefined structs
+    // provided by the fixed function pipeline.
     scene_resource_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
         .size = sizeof(scene_raw_data),
         .flags = MG_BUFFER_FLAGS_USAGE_UNIFORM
     });
 
     // Lighting parameters
-    mgfx_light_t lights[LIGHT_COUNT];
     for (size_t i = 0; i < LIGHT_COUNT; i++)
     {
-        lights[i].diffuse_color = color_from_packed32(light_colors[i]);
+        lights[i].color = color_from_packed32(light_colors[i]);
         lights[i].radius = light_radii[i];
-        memcpy(lights[i].position, light_positions[i], sizeof(lights[i].position));
     }
 
-    // 2. Map the buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
-    scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer, 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
-        // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
-        mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {0});
-        mgfx_get_lighting(&raw_data->lighting, &(mgfx_lighting_parms_t) {
-            .ambient_color = color_from_packed32(ambient_light_color),
-            .light_count = ARRAY_COUNT(lights),
-            .lights = lights
-        });
-    mg_buffer_unmap(scene_resource_buffer);
-
-    // 3. Create the resource set. A resource set contains a number of resource bindings.
-    //    Each resource binding describes the type of resource, where to copy it from, and which binding location to copy it to.
-    //    Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
-    //    the fixed function pipeline.
+    // Create the resource set. A resource set contains a number of resource bindings.
+    // Each resource binding describes the type of resource, where to copy it from, and which binding location to copy it to.
+    // Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
+    // the fixed function pipeline.
     mg_resource_binding_t scene_bindings[] = {
         {
             .binding = MGFX_BINDING_FOG,
@@ -341,11 +329,50 @@ void update()
     rotation = wrap_angle(rotation + rotation_rate * delta_seconds);
 }
 
-void render()
+void update_camera()
 {
     // Update camera matrices. Note that the camera position and rotation need to be inverted for this to work.
-    mat4x4_make_translation_rotation(&view_matrix, camera_position, camera_rotation.v);
+    const float up[3] = {0, 1, 0};
+    const float target[3] = {0, 0, 0};
+    mat4x4_make_lookat(&view_matrix, camera_position, up, target);
     mat4x4_mult(&vp_matrix, &projection_matrix, &view_matrix);
+}
+
+void update_lights()
+{
+    for (size_t i = 0; i < LIGHT_COUNT; i++)
+    {
+        // Transform light position into eye space
+        mat4x4_mult_vec(lights[i].position, &view_matrix, light_positions[i]);
+    }
+
+    // TODO: synchronize
+    // Map the buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
+    scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer, 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
+        // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
+        mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {0});
+        mgfx_get_lighting(&raw_data->lighting, &(mgfx_lighting_parms_t) {
+            .ambient_color = color_from_packed32(ambient_light_color),
+            .light_count = ARRAY_COUNT(lights),
+            .lights = lights
+        });
+    mg_buffer_unmap(scene_resource_buffer);
+}
+
+void update_object_matrices(object_data *object)
+{
+    // TODO: Do (parts of) this on RSP instead
+    mat4x4_t model_matrix;
+    mat4x4_make_rotation_translation(&model_matrix, object->position, object->rotation.v);
+    mat4x4_mult(&object->mvp_matrix, &vp_matrix, &model_matrix);
+    mat4x4_mult(&object->mv_matrix, &view_matrix, &model_matrix);
+    mat4x4_transpose_inverse(&object->n_matrix, &object->mv_matrix);
+}
+
+void render()
+{
+    update_camera();
+    update_lights();
 
     // Get framebuffer
     surface_t *disp = display_get();
@@ -359,7 +386,7 @@ void render()
         rdpq_mode_antialias(AA_STANDARD);
         rdpq_mode_persp(true);
         rdpq_mode_filter(FILTER_BILINEAR);
-        rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
+        rdpq_mode_combiner(RDPQ_COMBINER2((TEX0,0,SHADE,0), (TEX0,0,SHADE,0), (COMBINED,0,PRIM,0), (COMBINED,0,PRIM,0)));
     rdpq_mode_end();
 
     // Set viewport, culling mode and geometry flags
@@ -368,6 +395,8 @@ void render()
 
     // All our materials use the same pipeline in this demo, so bind it once for the entire scene
     mg_bind_pipeline(pipeline);
+
+    // TODO: Transform lights into eye space
 
     // Bind resources that stay constant for the entire scene (for example lighting)
     mg_bind_resource_set(scene_resource_set);
@@ -405,13 +434,12 @@ void render()
             rdpq_debug_log_msg("<------- Material");
         }
 
-        // Swap out the currently bound vertex/index buffers. Similar to materials, we only do this when it changes.
+        // Swap out the currently bound vertex buffer. Similar to materials, we only do this when it changes.
         // Since swapping buffers is very quick, objects should be sorted by material first, and then by mesh.
         if (object->mesh_id != current_mesh_id) {
             current_mesh_id = object->mesh_id;
             current_mesh = &meshes[current_mesh_id];
             mg_bind_vertex_buffer(current_mesh->vertex_buffer, 0);
-            //mg_bind_index_buffer(current_mesh->index_buffer, 0);
         }
 
         // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
@@ -422,7 +450,7 @@ void render()
         mgfx_set_matrices_inline(&(mgfx_matrices_parms_t) {
             .model_view_projection = object->mvp_matrix.m[0],
             .model_view = object->mv_matrix.m[0],
-            .normal = object->n_matrix.m[0],
+            .normal = object->mv_matrix.m[0],
         });
 
         assert(current_mesh != NULL);
@@ -440,14 +468,4 @@ void render()
     rdpq_detach_show();
 
     rdpq_debug_log_msg("<--- Frame");
-}
-
-void update_object_matrices(object_data *object)
-{
-    // TODO: Do (parts of) this on RSP instead
-    mat4x4_t model_matrix;
-    mat4x4_make_rotation_translation(&model_matrix, object->position, object->rotation.v);
-    mat4x4_mult(&object->mvp_matrix, &vp_matrix, &model_matrix);
-    mat4x4_mult(&object->mv_matrix, &view_matrix, &model_matrix);
-    mat4x4_transpose_inverse(&object->n_matrix, &object->mv_matrix);
 }

@@ -2,6 +2,7 @@
 #define MATRIX_H
 
 #include "fmath.h"
+#include "utility.h"
 
 typedef struct
 {
@@ -126,34 +127,40 @@ inline void mat4x4_make_rotation_translation(mat4x4_t *d, const float position[3
 inline void mat4x4_make_translation_rotation(mat4x4_t *d, const float position[3], const float rotation[4])
 {
     // TODO
-    float tx = position[0];
-    float ty = position[1];
-    float tz = position[2];
+}
 
-    float qx = rotation[0];
-    float qy = rotation[1];
-    float qz = rotation[2];
-    float qw = rotation[3];
+inline void mat4x4_make_lookat(mat4x4_t *d, const float eye[3], const float up[3], const float target[3])
+{
+    float f[3] = {target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]};
+    float s[3];
+    float u[3];
 
-    d->m[0][0] = (1 - 2 * qy*qy - 2 * qz*qz);
-    d->m[0][1] = (2 * qx*qy + 2 * qz*qw);
-    d->m[0][2] = (2 * qx*qz - 2 * qy*qw);
-    d->m[0][3] = 0.f;
+    vec3_normalize(f, f);
 
-    d->m[1][0] = (2 * qx*qy - 2 * qz*qw);
-    d->m[1][1] = (1 - 2 * qx*qx - 2 * qz*qz);
-    d->m[1][2] = (2 * qy*qz + 2 * qx*qw);
-    d->m[1][3] = 0.f;
+    vec3_cross(s, f, up);
+    vec3_normalize(s, s);
 
-    d->m[2][0] = (2 * qx*qz + 2 * qy*qw);
-    d->m[2][1] = (2 * qy*qz - 2 * qx*qw);
-    d->m[2][2] = (1 - 2 * qx*qx - 2 * qy*qy);
-    d->m[2][3] = 0.f;
+    vec3_cross(u, s, f);
+    
+    d->m[0][0] = s[0];
+    d->m[0][1] = u[0];
+    d->m[0][2] = -f[0];
+    d->m[0][3] = 0;
 
-    d->m[3][0] = tx;
-    d->m[3][1] = ty;
-    d->m[3][2] = tz;
-    d->m[3][3] = 1.f;
+    d->m[1][0] = s[1];
+    d->m[1][1] = u[1];
+    d->m[1][2] = -f[1];
+    d->m[1][3] = 0;
+
+    d->m[2][0] = s[2];
+    d->m[2][1] = u[2];
+    d->m[2][2] = -f[2];
+    d->m[2][3] = 0;
+
+    d->m[3][0] = -vec3_dot(s, eye);
+    d->m[3][1] = -vec3_dot(u, eye);
+    d->m[3][2] = vec3_dot(f, eye);
+    d->m[3][3] = 1;
 }
 
 inline void mat4x4_make_scale_rotation_translation(mat4x4_t *d, const float position[3], const float rotation[4], const float scale[3])
@@ -208,9 +215,43 @@ inline void mat4x4_mult(mat4x4_t *d, const mat4x4_t *l, const mat4x4_t *r)
     mat4x4_mult_vec(d->m[3], l, r->m[3]);
 }
 
-inline void mat4x4_transpose_inverse(mat4x4_t *d, const mat4x4_t *m)
+inline void mat4x4_transpose_inverse(mat4x4_t *dst, const mat4x4_t *m)
 {
-    // TODO
+    // NOTE: This only computes the transpose inverse of the upper left 3x3 part of the input matrix
+    float det;
+    float a = m->m[0][0], b = m->m[0][1], c = m->m[0][2],
+        d = m->m[1][0], e = m->m[1][1], f = m->m[1][2],
+        g = m->m[2][0], h = m->m[2][1], i = m->m[2][2];
+
+    dst->m[0][0] =   e * i - f * h;
+    dst->m[0][1] = -(b * i - h * c);
+    dst->m[0][2] =   b * f - e * c;
+    dst->m[0][3] =   0;
+    dst->m[1][0] = -(d * i - g * f);
+    dst->m[1][1] =   a * i - c * g;
+    dst->m[1][2] = -(a * f - d * c);
+    dst->m[1][3] =   0;
+    dst->m[2][0] =   d * h - g * e;
+    dst->m[2][1] = -(a * h - g * b);
+    dst->m[2][2] =   a * e - b * d;
+    dst->m[2][3] =   0;
+    dst->m[3][0] =   0;
+    dst->m[3][1] =   0;
+    dst->m[3][2] =   0;
+    dst->m[3][3] =   1;
+
+    det = 1.0f / (a * dst->m[0][0] + b * dst->m[1][0] + c * dst->m[2][0]);
+
+    // note that this also transposes the 3x3 part
+    dst->m[0][0] = dst->m[0][0] * det;
+    dst->m[0][1] = dst->m[1][0] * det;
+    dst->m[0][2] = dst->m[2][0] * det;
+    dst->m[1][0] = dst->m[0][1] * det;
+    dst->m[1][1] = dst->m[1][1] * det;
+    dst->m[1][2] = dst->m[2][1] * det;
+    dst->m[2][0] = dst->m[0][2] * det;
+    dst->m[2][1] = dst->m[1][2] * det;
+    dst->m[2][2] = dst->m[2][2] * det;
 }
 
 #ifdef __cplusplus

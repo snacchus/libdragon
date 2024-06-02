@@ -5,40 +5,40 @@
 
 static const mgfx_vertex_t cube_vertices[] = {
     // +X
-    VERTEX( 3.0f, -3.0f, -3.0f, 0.f, 0.f, 1.f,  0.f,  0.f, 0xFF0000FF),
-    VERTEX( 3.0f,  3.0f, -3.0f, 1.f, 0.f, 1.f,  0.f,  0.f, 0xFFFF00FF),
-    VERTEX( 3.0f,  3.0f,  3.0f, 1.f, 1.f, 1.f,  0.f,  0.f, 0xFFFFFFFF),
-    VERTEX( 3.0f, -3.0f,  3.0f, 0.f, 1.f, 1.f,  0.f,  0.f, 0xFF00FFFF),
+    VERTEX( 3.0f, -3.0f, -3.0f, 0.f, 0.f, 0x0F, 0x00, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f,  3.0f, -3.0f, 1.f, 0.f, 0x0F, 0x00, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f,  3.0f,  3.0f, 1.f, 1.f, 0x0F, 0x00, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f, -3.0f,  3.0f, 0.f, 1.f, 0x0F, 0x00, 0x00, 0xFFFFFFFF),
 
     // -X
-    VERTEX(-3.0f, -3.0f, -3.0f, 0.f, 0.f, 1.f,  0.f,  0.f, 0x000000FF),
-    VERTEX(-3.0f, -3.0f,  3.0f, 0.f, 1.f, 1.f,  0.f,  0.f, 0x0000FFFF),
-    VERTEX(-3.0f,  3.0f,  3.0f, 1.f, 1.f, 1.f,  0.f,  0.f, 0x00FFFFFF),
-    VERTEX(-3.0f,  3.0f, -3.0f, 1.f, 0.f, 1.f,  0.f,  0.f, 0x00FF00FF),
+    VERTEX(-3.0f, -3.0f, -3.0f, 0.f, 0.f, 0x1F, 0x00, 0x00, 0xFFFFFFFF),
+    VERTEX(-3.0f, -3.0f,  3.0f, 0.f, 1.f, 0x1F, 0x00, 0x00, 0xFFFFFFFF),
+    VERTEX(-3.0f,  3.0f,  3.0f, 1.f, 1.f, 0x1F, 0x00, 0x00, 0xFFFFFFFF),
+    VERTEX(-3.0f,  3.0f, -3.0f, 1.f, 0.f, 0x1F, 0x00, 0x00, 0xFFFFFFFF),
     
     // +Y
-    VERTEX(-3.0f,  3.0f, -3.0f, 0.f, 0.f, 0.f,  1.f,  0.f, 0x00FF00FF),
-    VERTEX(-3.0f,  3.0f,  3.0f, 0.f, 1.f, 0.f,  1.f,  0.f, 0x00FFFFFF),
-    VERTEX( 3.0f,  3.0f,  3.0f, 1.f, 1.f, 0.f,  1.f,  0.f, 0xFFFFFFFF),
-    VERTEX( 3.0f,  3.0f, -3.0f, 1.f, 0.f, 0.f,  1.f,  0.f, 0xFFFF00FF),
+    VERTEX(-3.0f,  3.0f, -3.0f, 0.f, 0.f, 0x00, 0x1F, 0x00, 0xFFFFFFFF),
+    VERTEX(-3.0f,  3.0f,  3.0f, 0.f, 1.f, 0x00, 0x1F, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f,  3.0f,  3.0f, 1.f, 1.f, 0x00, 0x1F, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f,  3.0f, -3.0f, 1.f, 0.f, 0x00, 0x1F, 0x00, 0xFFFFFFFF),
     
     // -Y
-    VERTEX(-3.0f, -3.0f, -3.0f, 0.f, 0.f, 0.f, -1.f,  0.f, 0x000000FF),
-    VERTEX( 3.0f, -3.0f, -3.0f, 1.f, 0.f, 0.f, -1.f,  0.f, 0xFF0000FF),
-    VERTEX( 3.0f, -3.0f,  3.0f, 1.f, 1.f, 0.f, -1.f,  0.f, 0xFF00FFFF),
-    VERTEX(-3.0f, -3.0f,  3.0f, 0.f, 1.f, 0.f, -1.f,  0.f, 0x0000FFFF),
+    VERTEX(-3.0f, -3.0f, -3.0f, 0.f, 0.f, 0x00, 0x3F, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f, -3.0f, -3.0f, 1.f, 0.f, 0x00, 0x3F, 0x00, 0xFFFFFFFF),
+    VERTEX( 3.0f, -3.0f,  3.0f, 1.f, 1.f, 0x00, 0x3F, 0x00, 0xFFFFFFFF),
+    VERTEX(-3.0f, -3.0f,  3.0f, 0.f, 1.f, 0x00, 0x3F, 0x00, 0xFFFFFFFF),
     
     // +Z
-    VERTEX(-3.0f, -3.0f,  3.0f, 0.f, 0.f, 0.f,  0.f,  1.f, 0x0000FFFF),
-    VERTEX( 3.0f, -3.0f,  3.0f, 1.f, 0.f, 0.f,  0.f,  1.f, 0xFF00FFFF),
-    VERTEX( 3.0f,  3.0f,  3.0f, 1.f, 1.f, 0.f,  0.f,  1.f, 0xFFFFFFFF),
-    VERTEX(-3.0f,  3.0f,  3.0f, 0.f, 1.f, 0.f,  0.f,  1.f, 0x00FFFFFF),
+    VERTEX(-3.0f, -3.0f,  3.0f, 0.f, 0.f, 0x00, 0x00, 0x0F, 0xFFFFFFFF),
+    VERTEX( 3.0f, -3.0f,  3.0f, 1.f, 0.f, 0x00, 0x00, 0x0F, 0xFFFFFFFF),
+    VERTEX( 3.0f,  3.0f,  3.0f, 1.f, 1.f, 0x00, 0x00, 0x0F, 0xFFFFFFFF),
+    VERTEX(-3.0f,  3.0f,  3.0f, 0.f, 1.f, 0x00, 0x00, 0x0F, 0xFFFFFFFF),
     
     // -Z
-    VERTEX(-3.0f, -3.0f, -3.0f, 0.f, 0.f, 0.f,  0.f, -1.f, 0x000000FF),
-    VERTEX(-3.0f,  3.0f, -3.0f, 0.f, 1.f, 0.f,  0.f, -1.f, 0x00FF00FF),
-    VERTEX( 3.0f,  3.0f, -3.0f, 1.f, 1.f, 0.f,  0.f, -1.f, 0xFFFF00FF),
-    VERTEX( 3.0f, -3.0f, -3.0f, 1.f, 0.f, 0.f,  0.f, -1.f, 0xFF0000FF),
+    VERTEX(-3.0f, -3.0f, -3.0f, 0.f, 0.f, 0x00, 0x00, 0x1F, 0xFFFFFFFF),
+    VERTEX(-3.0f,  3.0f, -3.0f, 0.f, 1.f, 0x00, 0x00, 0x1F, 0xFFFFFFFF),
+    VERTEX( 3.0f,  3.0f, -3.0f, 1.f, 1.f, 0x00, 0x00, 0x1F, 0xFFFFFFFF),
+    VERTEX( 3.0f, -3.0f, -3.0f, 1.f, 0.f, 0x00, 0x00, 0x1F, 0xFFFFFFFF),
 };
 
 static const uint16_t cube_indices[] = {

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <libdragon.h>
+#include <math.h>
 
 #define VTX_TEX_SHIFT   8
 #define RDP_TEX_SHIFT   5
@@ -15,7 +16,9 @@
 
 #define POS(x, y, z) { S10_5(x), S10_5(y), S10_5(z) }
 #define TEX(s, t) { S8_8(s), S8_8(t) }
-#define NRM(x, y, z) (((int)((x)*0xF)<<11) | ((int)((y)*0x1F)<<5) | ((int)((z)*0xF)))
+#define NRM(x, y, z) ((((x) & 0x1F)<<11) | \
+                      (((y) & 0x3F)<<5)  | \
+                      (((z) & 0x1F)<<0))
 
 #define VERTEX(x, y, z, s, t, nx, ny, nz, c) { .position = POS((x), (y), (z)), .texcoord = TEX((s), (t)), .packed_normal = NRM((nx), (ny), (nz)), .color = (c) }
 

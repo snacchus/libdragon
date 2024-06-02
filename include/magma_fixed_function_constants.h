@@ -9,6 +9,13 @@
 #define MGFX_BINDING_MATRIX_PALETTE     5
 
 #define MGFX_LIGHT_COUNT_MAX    8
+
+#define MGFX_LIGHT_POSITION     0
+#define MGFX_LIGHT_COLOR        8
+#define MGFX_LIGHT_ATT_INT      16
+#define MGFX_LIGHT_ATT_FRAC     24
+#define MGFX_LIGHT_SIZE         32
+
 #define MGFX_MATRIX_SIZE        64
 
 #define MGFX_VTX_SIZE_SHIFT     4

@@ -8,11 +8,9 @@
 
 typedef enum
 {
-    MGFX_MODES_FLAGS_MATRIX_PALETTE_ENABLED     = 0x01,
-    MGFX_MODES_FLAGS_LIGHTING_ENABLED           = 0x02,
-    MGFX_MODES_FLAGS_NORMALIZATION_ENABLED      = 0x04,
-    MGFX_MODES_FLAGS_FOG_ENABLED                = 0x08,
-    MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = 0x10,
+    MGFX_MODES_FLAGS_FOG_ENABLED                = 0x01,
+    MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = 0x02,
+    MGFX_MODES_FLAGS_MATRIX_PALETTE_ENABLED     = 0x04,
 } mgfx_modes_flags_t;
 
 /* RSP side uniform structs */
@@ -27,13 +25,17 @@ typedef struct
 
 typedef struct
 {
-    int16_t position[MGFX_LIGHT_COUNT_MAX][4];
-    int16_t diffuse[MGFX_LIGHT_COUNT_MAX][4];
-    int16_t attenuation_int[MGFX_LIGHT_COUNT_MAX][4];
-    uint16_t attenuation_frac[MGFX_LIGHT_COUNT_MAX][4];
+    int16_t position[4];
+    int16_t color[4];
+    int16_t attenuation_int[4];
+    uint16_t attenuation_frac[4];
+} __attribute__((packed, aligned(16))) mgfx_light_t;
+
+typedef struct
+{
+    mgfx_light_t lights[MGFX_LIGHT_COUNT_MAX];
     int16_t ambient[4];
     uint32_t count;
-
 } __attribute__((packed, aligned(16))) mgfx_lighting_t;
 
 typedef struct
@@ -71,14 +73,14 @@ typedef struct
 typedef struct
 {
     float position[4];
-    color_t diffuse_color;
+    color_t color;
     float radius;
-} mgfx_light_t;
+} mgfx_light_parms_t;
 
 typedef struct
 {
     color_t ambient_color;
-    mgfx_light_t *lights;
+    mgfx_light_parms_t *lights;
     uint32_t light_count;
 } mgfx_lighting_parms_t;
 

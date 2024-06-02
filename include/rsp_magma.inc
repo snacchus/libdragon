@@ -71,6 +71,7 @@ _MG_VTX_SHADER_END:
 
     .align 4
 MAGMA_CONSTANTS:                .half   MAGMA_VTX_SIZE, 0, 0, 0, 0, 0, 0, 0
+MAGMA_NORMAL_MASK:              .half   0xF800, 0x07E0, 0x001F, 0, 1, 1<<5, 1<<11, 0
 
     RSPQ_BeginSavedState
     
