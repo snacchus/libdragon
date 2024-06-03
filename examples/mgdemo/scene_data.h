@@ -14,7 +14,7 @@
 #define MATERIAL_COUNT  5
 #define MESH_COUNT      1
 #define OBJECT_COUNT    10
-#define LIGHT_COUNT     1
+#define LIGHT_COUNT     2
 
 
 /* Textures */
@@ -78,7 +78,7 @@ static float rotation_rate = 1.0f;
 
 /* Lights */
 static const uint32_t light_colors[] = {
-    0xffffffff,
+    0x868686ff,
     0xdbbc72ff
 };
 static const float light_positions[][4] = {
@@ -87,9 +87,9 @@ static const float light_positions[][4] = {
 };
 static const float light_radii[] = {
     0.0f,
-    30.0f
+    50.0f
 };
-static const uint32_t ambient_light_color = 0x181818ff;
+static const uint32_t ambient_light_color = 0x101010ff;
 
 /* Camera */
 static const float camera_fov = 65.0f;

@@ -126,7 +126,7 @@ void mgfx_get_light(mgfx_light_t *dst, const mgfx_light_parms_t *parms)
         dst->attenuation_frac[0] = const_att_fx & 0xFFFF;
         dst->attenuation_frac[1] = linear_att_fx & 0xFFFF;
         dst->attenuation_frac[2] = quad_att_fx & 0xFFFF;
-        dst->attenuation_frac[0] = 0;
+        dst->attenuation_frac[3] = 0;
     }
 }
 
