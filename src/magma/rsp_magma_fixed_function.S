@@ -136,9 +136,11 @@ vertex_loop:
     bge vtx_in_ptr, vtx_in_end, RSPQ_Loop
     addi vtx_out1_ptr, vtx_out0_ptr, MAGMA_VTX_SIZE
 
-    #define vpos_eye $v25
-    #define vpos_in  $v26
-    #define vnorm    $v27
+    #define vpos_clip_i     $v23
+    #define vpos_clip_f     $v24
+    #define vpos_in         $v25
+    #define vpos_eye        $v26
+    #define vnorm           $v27
 
     # load vertex position (of two vertices)
     ldv vpos_in.e0, MGFX_VTX_POS + 0,            vtx_in_ptr
@@ -198,9 +200,6 @@ vertex_loop:
     #undef vmmv3_i
     #undef vmmv3_f
 
-    #define vpos_clip_i     $v23
-    #define vpos_clip_f     $v24
-
     # transform vertex position into clip space
     vmudn v___,        vmvp0_f, vpos_in.h0
     vmadh v___,        vmvp0_i, vpos_in.h0
@@ -216,109 +215,6 @@ vertex_loop:
     # 32-bit right shift by 5, to keep the clip space coordinates unscaled
     vmudm vpos_clip_i, vpos_clip_i, vshift8.e4
     vmadl vpos_clip_f, vpos_clip_f, vshift8.e4
-
-    # store clip space position to vertex cache
-    sdv vpos_clip_i.e0,  MAGMA_VTX_CS_POSi,vtx_out0_ptr
-    sdv vpos_clip_f.e0,  MAGMA_VTX_CS_POSf,vtx_out0_ptr
-    sdv vpos_clip_i.e4,  MAGMA_VTX_CS_POSi,vtx_out1_ptr
-    sdv vpos_clip_f.e4,  MAGMA_VTX_CS_POSf,vtx_out1_ptr
-
-    # store W to vertex cache
-    ssv vpos_clip_i.e3, MAGMA_VTX_Wi,vtx_out0_ptr
-    ssv vpos_clip_f.e3, MAGMA_VTX_Wf,vtx_out0_ptr
-    ssv vpos_clip_i.e7, MAGMA_VTX_Wi,vtx_out1_ptr
-    ssv vpos_clip_f.e7, MAGMA_VTX_Wf,vtx_out1_ptr
-
-    #define vinvw_i     $v14
-    #define vinvw_f     $v15
-    #define vpos_scr_i  $v16
-    #define vpos_scr_f  $v17
-    #define vviewscale  $v18
-    #define vviewoff    $v19
-
-    # perspective division
-    vrcph v___.e3,    vpos_clip_i.e3
-    vrcpl vinvw_f.e3, vpos_clip_f.e3
-    vrcph vinvw_i.e3, vpos_clip_i.e7
-    vrcpl vinvw_f.e7, vpos_clip_f.e7
-    vrcph vinvw_i.e7, vzero.e0
-
-    # store inverse W to vertex cache
-    ssv vinvw_i.e3, MAGMA_VTX_INVWi,vtx_out0_ptr
-    ssv vinvw_f.e3, MAGMA_VTX_INVWf,vtx_out0_ptr
-    ssv vinvw_i.e7, MAGMA_VTX_INVWi,vtx_out1_ptr
-    ssv vinvw_f.e7, MAGMA_VTX_INVWf,vtx_out1_ptr
-
-    vmudl v___,       vpos_clip_f, vinvw_f.h3
-    vmadm v___,       vpos_clip_i, vinvw_f.h3
-    vmadn vpos_scr_f, vpos_clip_f, vinvw_i.h3
-    vmadh vpos_scr_i, vpos_clip_i, vinvw_i.h3
-
-    # load viewport
-    li t1, %lo(MAGMA_VIEWPORT)
-    ldv vviewscale.e0, 0x0,t1
-    ldv vviewscale.e4, 0x0,t1
-    ldv vviewoff.e0,   0x8,t1
-    ldv vviewoff.e4,   0x8,t1
-
-    # transform to screen space
-    vmudh v___, vviewoff, K1
-    vmadn vpos_scr_f, vviewscale
-    vmadh vpos_scr_i, vviewscale
-
-    # store screen space position to vertex cache
-    sdv vpos_scr_i.e0,  MAGMA_VTX_XYZ,vtx_out0_ptr
-    sdv vpos_scr_i.e4,  MAGMA_VTX_XYZ,vtx_out1_ptr
-
-    #undef vinvw_i
-    #undef vinvw_f
-    #undef vpos_scr_i
-    #undef vpos_scr_f
-    #undef vviewscale
-    #undef vviewoff
-
-    #define vguard_i        $v14
-    #define vguard_f        $v15
-
-    # calculate clipping codes
-    vmudn vguard_f, vpos_clip_f, vclip_factors
-    vmadh vguard_i, vpos_clip_i, vclip_factors
-    vch v___, vguard_i, vguard_i.h3
-    vcl v___, vguard_f, vguard_f.h3
-    cfc2 t0, COP2_CTRL_VCC
-    srl t2, t0, 4
-    andi t0, 0x707
-    andi t2, 0x707
-    srl t1, t0, 5
-    srl t3, t2, 5
-    or t0, t1
-    or t2, t3
-
-    #undef vguard_i
-    #undef vguard_f
-
-    # store clip codes to vertex cache
-    sb t0, MAGMA_VTX_CLIP_CODE(vtx_out0_ptr)
-    sb t2, MAGMA_VTX_CLIP_CODE(vtx_out1_ptr)
-
-    # calculate inverted trivial rejection codes
-    vch v___, vpos_clip_i, vpos_clip_i.h3
-    vcl v___, vpos_clip_f, vpos_clip_f.h3
-    cfc2 t0, COP2_CTRL_VCC
-    srl t2, t0, 4
-    andi t0, 0x707
-    andi t2, 0x707
-    srl t1, t0, 5
-    srl t3, t2, 5
-    or t0, t1
-    or t2, t3
-
-    # store trivial rejection codes to vertex cache
-    sb t0, MAGMA_VTX_TR_CODE(vtx_out0_ptr)
-    sb t2, MAGMA_VTX_TR_CODE(vtx_out1_ptr)
-
-    #undef vpos_clip_i
-    #undef vpos_clip_f
 
     #define vmn0_i $v14
     #define vmn0_f $v15
@@ -386,7 +282,7 @@ vertex_loop:
 
     # compute lighting
 
-    #define vlight $v26
+    #define vlight      $v25
     #define vinvdist_i  $v21
     #define vinvdist_f  $v22
 
@@ -584,6 +480,109 @@ light_loop_end:
     slv vtex.e4, MAGMA_VTX_ST,vtx_out1_ptr
 
     #undef vtex
+
+    # store clip space position to vertex cache
+    sdv vpos_clip_i.e0,  MAGMA_VTX_CS_POSi,vtx_out0_ptr
+    sdv vpos_clip_f.e0,  MAGMA_VTX_CS_POSf,vtx_out0_ptr
+    sdv vpos_clip_i.e4,  MAGMA_VTX_CS_POSi,vtx_out1_ptr
+    sdv vpos_clip_f.e4,  MAGMA_VTX_CS_POSf,vtx_out1_ptr
+
+    # store W to vertex cache
+    ssv vpos_clip_i.e3, MAGMA_VTX_Wi,vtx_out0_ptr
+    ssv vpos_clip_f.e3, MAGMA_VTX_Wf,vtx_out0_ptr
+    ssv vpos_clip_i.e7, MAGMA_VTX_Wi,vtx_out1_ptr
+    ssv vpos_clip_f.e7, MAGMA_VTX_Wf,vtx_out1_ptr
+
+    #define vinvw_i     $v14
+    #define vinvw_f     $v15
+    #define vpos_scr_i  $v16
+    #define vpos_scr_f  $v17
+    #define vviewscale  $v18
+    #define vviewoff    $v19
+
+    # perspective division
+    vrcph v___.e3,    vpos_clip_i.e3
+    vrcpl vinvw_f.e3, vpos_clip_f.e3
+    vrcph vinvw_i.e3, vpos_clip_i.e7
+    vrcpl vinvw_f.e7, vpos_clip_f.e7
+    vrcph vinvw_i.e7, vzero.e0
+
+    # store inverse W to vertex cache
+    ssv vinvw_i.e3, MAGMA_VTX_INVWi,vtx_out0_ptr
+    ssv vinvw_f.e3, MAGMA_VTX_INVWf,vtx_out0_ptr
+    ssv vinvw_i.e7, MAGMA_VTX_INVWi,vtx_out1_ptr
+    ssv vinvw_f.e7, MAGMA_VTX_INVWf,vtx_out1_ptr
+
+    vmudl v___,       vpos_clip_f, vinvw_f.h3
+    vmadm v___,       vpos_clip_i, vinvw_f.h3
+    vmadn vpos_scr_f, vpos_clip_f, vinvw_i.h3
+    vmadh vpos_scr_i, vpos_clip_i, vinvw_i.h3
+
+    # load viewport
+    li t1, %lo(MAGMA_VIEWPORT)
+    ldv vviewscale.e0, 0x0,t1
+    ldv vviewscale.e4, 0x0,t1
+    ldv vviewoff.e0,   0x8,t1
+    ldv vviewoff.e4,   0x8,t1
+
+    # transform to screen space
+    vmudh v___, vviewoff, K1
+    vmadn vpos_scr_f, vviewscale
+    vmadh vpos_scr_i, vviewscale
+
+    # store screen space position to vertex cache
+    sdv vpos_scr_i.e0,  MAGMA_VTX_XYZ,vtx_out0_ptr
+    sdv vpos_scr_i.e4,  MAGMA_VTX_XYZ,vtx_out1_ptr
+
+    #undef vinvw_i
+    #undef vinvw_f
+    #undef vpos_scr_i
+    #undef vpos_scr_f
+    #undef vviewscale
+    #undef vviewoff
+
+    #define vguard_i        $v14
+    #define vguard_f        $v15
+
+    # calculate clipping codes
+    vmudn vguard_f, vpos_clip_f, vclip_factors
+    vmadh vguard_i, vpos_clip_i, vclip_factors
+    vch v___, vguard_i, vguard_i.h3
+    vcl v___, vguard_f, vguard_f.h3
+    cfc2 t0, COP2_CTRL_VCC
+    srl t2, t0, 4
+    andi t0, 0x707
+    andi t2, 0x707
+    srl t1, t0, 5
+    srl t3, t2, 5
+    or t0, t1
+    or t2, t3
+
+    #undef vguard_i
+    #undef vguard_f
+
+    # store clip codes to vertex cache
+    sb t0, MAGMA_VTX_CLIP_CODE(vtx_out0_ptr)
+    sb t2, MAGMA_VTX_CLIP_CODE(vtx_out1_ptr)
+
+    # calculate inverted trivial rejection codes
+    vch v___, vpos_clip_i, vpos_clip_i.h3
+    vcl v___, vpos_clip_f, vpos_clip_f.h3
+    cfc2 t0, COP2_CTRL_VCC
+    srl t2, t0, 4
+    andi t0, 0x707
+    andi t2, 0x707
+    srl t1, t0, 5
+    srl t3, t2, 5
+    or t0, t1
+    or t2, t3
+
+    # store trivial rejection codes to vertex cache
+    sb t0, MAGMA_VTX_TR_CODE(vtx_out0_ptr)
+    sb t2, MAGMA_VTX_TR_CODE(vtx_out1_ptr)
+
+    #undef vpos_clip_i
+    #undef vpos_clip_f
     
     addi vtx_out0_ptr, MAGMA_VTX_SIZE*2
     b vertex_loop

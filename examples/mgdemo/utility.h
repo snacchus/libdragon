@@ -5,10 +5,12 @@
 
 #define ARRAY_COUNT(a) (sizeof(a)/sizeof(a[0]))
 
+#define RAND_FLT() ((float)rand()/RAND_MAX)
+
 inline float wrap_angle(float angle)
 {
-    float a = fmodf(angle, 360.0f);
-    return a < 0.0f ? a + 360.0f : a;
+    float a = fmodf(angle, M_TWOPI);
+    return a < 0.0f ? a + M_TWOPI : a;
 }
 
 inline float vec3_dot(const float *va, const float *vb)

@@ -43,6 +43,9 @@ typedef struct
     mat4x4_t n_matrix;
     quat_t rotation;
     float position[3];
+    float rotation_axis[3];
+    float rotation_angle;
+    float rotation_rate;
     uint32_t material_id;
     uint32_t mesh_id;
 } object_data;
@@ -76,8 +79,6 @@ static float camera_position[3];
 static quat_t camera_rotation;
 
 static uint32_t last_frame_ticks;
-
-static float rotation;
 
 int main()
 {
@@ -169,6 +170,15 @@ void init()
         };
         memcpy(objects[i].position, object_positions[i], sizeof(objects[i].position));
         quat_make_identity(&objects[i].rotation);
+
+        // Create a random rotation axis (just an approximation, not actually uniformly distributed)
+        objects[i].rotation_axis[0] = RAND_FLT() * 2.0f - 1.0f;
+        objects[i].rotation_axis[1] = RAND_FLT() * 2.0f - 1.0f;
+        objects[i].rotation_axis[2] = RAND_FLT() * 2.0f - 1.0f;
+        vec3_normalize(objects[i].rotation_axis, objects[i].rotation_axis);
+
+        objects[i].rotation_rate = RAND_FLT() * 5.0f;
+        objects[i].rotation_angle = RAND_FLT() * M_TWOPI;
     }
 
     // Initialize camera properties
@@ -323,10 +333,11 @@ void update()
     const float delta_seconds = (float)delta_ticks / TICKS_PER_SECOND;
     last_frame_ticks = new_ticks;
 
-    const float axis[3] = {0, 1, 0};
-    quat_from_axis_angle(&objects[0].rotation, axis, rotation);
-
-    rotation = wrap_angle(rotation + rotation_rate * delta_seconds);
+    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    {
+        quat_from_axis_angle(&objects[i].rotation, objects[i].rotation_axis, objects[i].rotation_angle);
+        objects[i].rotation_angle = wrap_angle(objects[i].rotation_angle + objects[i].rotation_rate * delta_seconds);
+    }
 }
 
 void update_camera()

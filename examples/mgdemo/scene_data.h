@@ -73,8 +73,6 @@ static const float object_positions[][3] = {
     { -4.0f, 16.0f, 0.0f },
 };
 
-static float rotation_rate = 1.0f;
-
 
 /* Lights */
 static const uint32_t light_colors[] = {
