@@ -434,7 +434,6 @@ light_loop:
     #undef vatt_f
 
     #undef vnorm
-    #undef vpos_eye
 
 light_loop_end:
 
@@ -456,13 +455,56 @@ light_loop_end:
 
     #undef vlight
 
-    # TODO: Fog
+    #define vtmp    $v15
+    #define vfog_i  $v16
+    #define vfog_f  $v17
+    andi t0, flags, MGFX_FLAG_FOG
+    beqz t0, 1f
+    li t1, %lo(FOG)
+    llv vfog_i.e0, 0,t1
+    llv vfog_i.e4, 0,t1
+    llv vfog_f.e0, 4,t1
+    llv vfog_f.e4, 4,t1
+
+    # Shade alpha = 0 means no fog.
+    # Shade alpha = 1 means full fog.
+    # Therefore, we need to compute the following formula:
+    # (abs(veyepos.z) - fog_start) / (fog_end - fog_start)
+
+    # Compute abs(veyepos.z).
+    # abs(veyepos.z) is an approximation for the distance between the
+    # vertex and the origin in eye space, as recommended by the GL spec.
+    vsubc vtmp, vzero, vpos_eye.h2
+    vge vtmp, vpos_eye.h2
+
+    # vtmp.e0 = abs(veyepos.z) - fog_start
+    # Note that fog_start might be negative. In practice this would
+    # rarely be the case, but it is not forbidden by the GL spec.
+    vsubc vtmp, vfog_i.h1
+
+    # vtmp.e0 = (abs(veyepos.z) - fog_start) / (fog_end - fog_start)
+    # The factor is premultiplied so that combined with VTX_SHIFT
+    # the product will be in 1.15 precision and saturated to 0x7FFF.
+    vmudm v___, vtmp, vfog_f.h0
+    vmadh vtmp, vtmp, vfog_i.h0
+
+    # Clamp negative values to 0
+    vge vtmp, vzero
+
+    # Save the alpha factor in the vertex color, overwriting the alpha component.
+    vmov vrgba.e3, vtmp.e0
+    vmov vrgba.e7, vtmp.e4
+    #undef vtmp
+    #undef vfog_i
+    #undef vfog_f
+1:
 
     # store rgba to vertex cache
     # CAUTION: this also overwrites the next 4 bytes after the rgba value
     suv vrgba.e0, MAGMA_VTX_RGBA,vtx_out0_ptr
     suv vrgba.e4, MAGMA_VTX_RGBA,vtx_out1_ptr
 
+    #undef vpos_eye
     #undef vrgba
 
     #define vtex $v14

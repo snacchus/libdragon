@@ -1,5 +1,6 @@
 #include "magma_fixed_function.h"
 #include <math.h>
+#include <float.h>
 #include "utils.h"
 
 _Static_assert(sizeof(mgfx_matrix_t) == MGFX_MATRIX_SIZE);
@@ -76,7 +77,22 @@ mg_pipeline_t *mgfx_create_pipeline(void)
 
 void mgfx_get_fog(mgfx_fog_t *dst, const mgfx_fog_parms_t *parms)
 {
-    // TODO
+    float diff = parms->end - parms->start;
+    // start == end is undefined, so disable fog by setting the factor to 0
+    float factor = fabsf(diff) < FLT_MIN ? 0.0f : 1.0f / diff;
+    float offset = parms->start;
+
+    // Convert to s15.16 and premultiply with 1.15 conversion factor
+    int32_t factor_fx = factor * (1<<(16 + 7 + (8 - MGFX_VTX_POS_SHIFT)));
+    int16_t offset_fx = offset * (1<<MGFX_VTX_POS_SHIFT);
+
+    int16_t factor_i = factor_fx >> 16;
+    uint16_t factor_f = factor_fx & 0xFFFF;
+
+    dst->factor_int = factor_i;
+    dst->offset_int = offset_fx;
+    dst->factor_frac = factor_f;
+    dst->offset_frac = 0;
 }
 
 inline void color_to_i16(int16_t *dst, color_t color)

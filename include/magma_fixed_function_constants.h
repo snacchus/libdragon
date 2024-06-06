@@ -8,6 +8,10 @@
 #define MGFX_BINDING_MATRICES           4
 #define MGFX_BINDING_MATRIX_PALETTE     5
 
+#define MGFX_FLAG_FOG               (1<<0)
+#define MGFX_FLAG_ENV_MAP           (1<<1)
+#define MGFX_FLAG_MATRIX_PALLETE    (1<<2)
+
 #define MGFX_LIGHT_COUNT_MAX    8
 
 #define MGFX_LIGHT_POSITION     0

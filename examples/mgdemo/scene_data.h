@@ -89,6 +89,11 @@ static const float light_radii[] = {
 };
 static const uint32_t ambient_light_color = 0x101010ff;
 
+/* Environment */
+static const uint32_t fog_color = 0x000000ff;
+static const float fog_start = 25.0f;
+static const float fog_end = 50.0f;
+
 /* Camera */
 static const float camera_fov = 65.0f;
 static const float camera_near_plane = 1.0f;

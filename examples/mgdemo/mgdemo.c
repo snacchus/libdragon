@@ -149,7 +149,7 @@ void init()
             &materials[i], 
             textures[material_texture_indices[i]], 
             &(mgfx_modes_parms_t) {
-                .flags = 0
+                .flags = MGFX_MODES_FLAGS_FOG_ENABLED
             },
             MG_GEOMETRY_FLAGS_Z_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED | MG_GEOMETRY_FLAGS_SHADE_ENABLED,
             color_from_packed32(material_diffuse_colors[i]));
@@ -361,7 +361,10 @@ void update_lights()
     // Map the buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
     scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer, 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
         // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
-        mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {0});
+        mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {
+            .start = fog_start,
+            .end = fog_end
+        });
         mgfx_get_lighting(&raw_data->lighting, &(mgfx_lighting_parms_t) {
             .ambient_color = color_from_packed32(ambient_light_color),
             .light_count = ARRAY_COUNT(lights),
@@ -393,12 +396,16 @@ void render()
     // Set up render modes with rdpq. This could be set per material, but for simplicity's sake we use the same render mode for all objects in this demo.
     rdpq_mode_begin();
         rdpq_set_mode_standard();
+        rdpq_mode_dithering(DITHER_SQUARE_SQUARE);
         rdpq_mode_zbuf(true, true);
         rdpq_mode_antialias(AA_STANDARD);
         rdpq_mode_persp(true);
         rdpq_mode_filter(FILTER_BILINEAR);
         rdpq_mode_combiner(RDPQ_COMBINER2((TEX0,0,SHADE,0), (TEX0,0,SHADE,0), (COMBINED,0,PRIM,0), (COMBINED,0,PRIM,0)));
+        rdpq_mode_fog(RDPQ_BLENDER((FOG_RGB, SHADE_ALPHA, IN_RGB, INV_MUX_ALPHA)));
     rdpq_mode_end();
+
+    rdpq_set_fog_color(color_from_packed32(fog_color));
 
     // Set viewport, culling mode and geometry flags
     mg_set_viewport(&viewport);

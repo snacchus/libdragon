@@ -8,9 +8,9 @@
 
 typedef enum
 {
-    MGFX_MODES_FLAGS_FOG_ENABLED                = 0x01,
-    MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = 0x02,
-    MGFX_MODES_FLAGS_MATRIX_PALETTE_ENABLED     = 0x04,
+    MGFX_MODES_FLAGS_FOG_ENABLED                = MGFX_FLAG_FOG,
+    MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = MGFX_FLAG_ENV_MAP,
+    MGFX_MODES_FLAGS_MATRIX_PALETTE_ENABLED     = MGFX_FLAG_MATRIX_PALLETE,
 } mgfx_modes_flags_t;
 
 /* RSP side uniform structs */
