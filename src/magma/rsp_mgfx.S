@@ -1,5 +1,5 @@
 #include <rsp_magma.inc>
-#include <magma_fixed_function_constants.h>
+#include <mgfx_constants.h>
 
 MgBeginShaderConstants
     MgBeginUniform FOG, MGFX_BINDING_FOG

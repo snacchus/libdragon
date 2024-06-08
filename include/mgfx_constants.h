@@ -1,5 +1,5 @@
-#ifndef __MAGMA_FIXED_FUNCTION_CONSTANTS
-#define __MAGMA_FIXED_FUNCTION_CONSTANTS
+#ifndef __MGFX_CONSTANTS
+#define __MGFX_CONSTANTS
 
 #define MGFX_BINDING_FOG                0
 #define MGFX_BINDING_LIGHTING           1

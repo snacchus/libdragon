@@ -1,8 +1,8 @@
-#ifndef __LIBDRAGON_MAGMA_FIXED_FUNCTION_H
-#define __LIBDRAGON_MAGMA_FIXED_FUNCTION_H
+#ifndef __LIBDRAGON_MGFX_H
+#define __LIBDRAGON_MGFX_H
 
 #include <magma.h>
-#include <magma_fixed_function_constants.h>
+#include <mgfx_constants.h>
 
 /* Enums */
 

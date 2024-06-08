@@ -78,6 +78,6 @@
 #include "nand.h"
 #include "bbfs.h"
 #include "magma.h"
-#include "magma_fixed_function.h"
+#include "mgfx.h"
 
 #endif

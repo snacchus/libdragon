@@ -1,4 +1,4 @@
-#include "magma_fixed_function.h"
+#include "mgfx.h"
 #include <math.h>
 #include <float.h>
 #include "utils.h"
@@ -21,7 +21,7 @@ _Static_assert(sizeof(mgfx_light_t) == MGFX_LIGHT_SIZE);
 #define FLOAT_TO_S10_5(x) ((x) * (1<<5))
 #define FLOAT_TO_I16(x) (CLAMP(x, -1.f, 1.f) * 0x7FFF)
 
-DEFINE_RSP_UCODE(rsp_magma_fixed_function);
+DEFINE_RSP_UCODE(rsp_mgfx);
 
 typedef struct 
 {
@@ -69,7 +69,7 @@ mg_pipeline_t *mgfx_create_pipeline(void)
     };
 
     return mg_pipeline_create(&(mg_pipeline_parms_t) {
-        .vertex_shader_ucode = &rsp_magma_fixed_function,
+        .vertex_shader_ucode = &rsp_mgfx,
         .uniform_count = sizeof(uniforms)/sizeof(uniforms[0]),
         .uniforms = uniforms
     });

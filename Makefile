@@ -68,8 +68,8 @@ LIBDRAGON_OBJS += \
 			 $(BUILD_DIR)/GL/cpu_pipeline.o $(BUILD_DIR)/GL/rsp_pipeline.o \
 			 $(BUILD_DIR)/dlfcn.o $(BUILD_DIR)/model64.o \
 			 $(BUILD_DIR)/bb/skc.o $(BUILD_DIR)/bb/nand.o $(BUILD_DIR)/bb/bbfs.o \
-			 $(BUILD_DIR)/magma/magma.o $(BUILD_DIR)/magma/magma_fixed_function.o \
-			 $(BUILD_DIR)/magma/rsp_magma.o $(BUILD_DIR)/magma/rsp_magma_fixed_function.o
+			 $(BUILD_DIR)/magma/magma.o $(BUILD_DIR)/magma/mgfx.o \
+			 $(BUILD_DIR)/magma/rsp_magma.o $(BUILD_DIR)/magma/rsp_mgfx.o
 
 include $(SOURCE_DIR)/audio/libdragon.mk
 
@@ -196,8 +196,8 @@ install: install-mk libdragon
 	install -Cv -m 0644 include/magma.h $(INSTALLDIR)/mips64-elf/include/magma.h
 	install -Cv -m 0644 include/magma_constants.h $(INSTALLDIR)/mips64-elf/include/magma_constants.h
 	install -Cv -m 0644 include/rsp_magma.inc $(INSTALLDIR)/mips64-elf/include/rsp_magma.inc
-	install -Cv -m 0644 include/magma_fixed_function.h $(INSTALLDIR)/mips64-elf/include/magma_fixed_function.h
-	install -Cv -m 0644 include/magma_fixed_function_constants.h $(INSTALLDIR)/mips64-elf/include/magma_fixed_function_constants.h
+	install -Cv -m 0644 include/mgfx.h $(INSTALLDIR)/mips64-elf/include/mgfx.h
+	install -Cv -m 0644 include/mgfx_constants.h $(INSTALLDIR)/mips64-elf/include/mgfx_constants.h
 	mkdir -p $(INSTALLDIR)/mips64-elf/include/libcart
 	install -Cv -m 0644 src/libcart/cart.h $(INSTALLDIR)/mips64-elf/include/libcart/cart.h
 	mkdir -p $(INSTALLDIR)/mips64-elf/include/fatfs
