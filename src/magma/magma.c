@@ -371,6 +371,8 @@ void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_co
         }
         }
     }
+
+    mg_cmd_draw_end();
 }
 
 #define SPECIAL_INDEX UINT16_MAX
@@ -471,12 +473,12 @@ static bool vertex_cache_find(const vertex_cache *cache, uint16_t index, uint8_t
 
 static void vertex_cache_load(const vertex_cache *cache, int32_t offset)
 {
-    debugf("Vertex batch (total %ld):\n", cache->total_count);
+    //debugf("Vertex batch (total %ld):\n", cache->total_count);
     uint32_t cache_offset = 0;
     for (size_t i = 0; i < cache->block_count; i++)
     {
         if (cache->blocks[i].count == 0) continue;
-        debugf("block %d: offset %d, count %d\n", i, cache->blocks[i].start, cache->blocks[i].count);
+        //debugf("block %d: offset %d, count %d\n", i, cache->blocks[i].start, cache->blocks[i].count);
         mg_cmd_load_vertices(cache->blocks[i].start + offset, cache_offset, cache->blocks[i].count);
         cache_offset += cache->blocks[i].count;
     }
@@ -513,7 +515,7 @@ static void draw_batch(const uint16_t *indices, uint32_t current_index, uint32_t
 
         prim_indices[i%3] = cache_index;
         if (i%3 == 2) {
-            debugf("Triangle: %d, %d, %d\n", prim_indices[0], prim_indices[1], prim_indices[2]);
+            //debugf("Triangle: %d, %d, %d\n", prim_indices[0], prim_indices[1], prim_indices[2]);
             mg_cmd_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
         }
     }
@@ -531,4 +533,6 @@ void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, const uint
         
         current_index += batch_index_count;
     }
+
+    mg_cmd_draw_end();
 }

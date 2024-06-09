@@ -1,6 +1,8 @@
 #include <rsp_queue.inc>
 #include "magma_constants.h"
 
+#define TRIANGLE_SIZE 0xB0
+
 .macro MgBeginShaderConstants
     .section .bss.magma_shader_constants
     .align 4
@@ -56,6 +58,7 @@ _MG_VTX_SHADER_END:
         RSPQ_DefineCommand MgCmd_SetShader,     12
         RSPQ_DefineCommand MgCmd_LoadVertices,  8
         RSPQ_DefineCommand MgCmd_DrawIndices,   4
+        RSPQ_DefineCommand MgCmd_DrawEnd,       4
         RSPQ_DefineCommand MgCmd_LoadUniform,   8
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 8
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 16
@@ -92,8 +95,13 @@ MAGMA_STATE:
     MAGMA_VERTEX_BUFFER:        .word   0    
     MAGMA_TRI_CMD:              .half   0x800
     MAGMA_CULL_MODE:            .byte   0
+    MAGMA_OUTPUT_OFFSET:        .byte   0    
 
     RSPQ_EndSavedState
+
+    .bss
+    .align 3
+MAGMA_OUTPUT_BUFFER:            .dcb.b  TRIANGLE_SIZE * 2
 
     .text
 
@@ -208,10 +216,6 @@ MgCmd_DrawIndices:
     #define vtx1        a1
     #define vtx2        a2
     #define vtx3        a3
-    #define trcode1     t6
-    #define trcode2     t7
-    #define trcode3     t8
-    #define ra3         s8
     li t0, %lo(MAGMA_CONSTANTS)
     lqv vconst, 0,t0
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 3
@@ -225,11 +229,21 @@ MgCmd_DrawIndices:
     lb v0, %lo(MAGMA_CULL_MODE)
     mfc2 vtx1, vvertices.e0
     mfc2 vtx2, vvertices.e1
-    # TODO: clipping
-    li s3, %lo(RDPQ_CMD_STAGING)
-    jal RDPQ_Triangle_Send_Async
     mfc2 vtx3, vvertices.e2
-    jal_and_j RDPQ_Triangle_Send_End, RSPQ_Loop
+    lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
+    li t8, %lo(MAGMA_OUTPUT_BUFFER)
+    add t8, t7
+    jal RDPQ_Triangle_Send_Async
+    move s3, t8
+
+    # TODO: clipping
+    
+    # Check if RDPQ_Triangle_Send_Async emitted a triangle:
+    beq s3, t8, RSPQ_Loop
+    xor t7, TRIANGLE_SIZE
+    # If it did, swap the output buffer
+    j RSPQ_Loop
+    sb t7, %lo(MAGMA_OUTPUT_OFFSET)
     #undef v___
     #undef vconst
     #undef vindices
@@ -238,11 +252,11 @@ MgCmd_DrawIndices:
     #undef vtx1
     #undef vtx2
     #undef vtx3
-    #undef trcode1
-    #undef trcode2
-    #undef trcode3
-    #undef ra3
     .endfunc
+
+MgCmd_DrawEnd:
+    j RDPQ_Triangle_Send_End
+    sb zero, %lo(MAGMA_OUTPUT_OFFSET)
 
 #include "rsp_rdpq.inc"
 

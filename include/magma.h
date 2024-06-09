@@ -202,13 +202,14 @@ enum
     MG_CMD_SET_SHADER           = 0x4,
     MG_CMD_LOAD_VERTICES        = 0x5,
     MG_CMD_DRAW_INDICES         = 0x6,
-    MG_CMD_LOAD_UNIFORM         = 0x7,
-    MG_CMD_PUSH_CONSTANT_8      = 0x8,
-    MG_CMD_PUSH_CONSTANT_16     = 0x9,
-    MG_CMD_PUSH_CONSTANT_32     = 0xA,
-    MG_CMD_PUSH_CONSTANT_64     = 0xB,
-    MG_CMD_PUSH_CONSTANT_128    = 0xC,
-    MG_CMD_PUSH_CONSTANT_MAX    = 0xD,
+    MG_CMD_DRAW_END             = 0x7,
+    MG_CMD_LOAD_UNIFORM         = 0x8,
+    MG_CMD_PUSH_CONSTANT_8      = 0x9,
+    MG_CMD_PUSH_CONSTANT_16     = 0xA,
+    MG_CMD_PUSH_CONSTANT_32     = 0xB,
+    MG_CMD_PUSH_CONSTANT_64     = 0xC,
+    MG_CMD_PUSH_CONSTANT_128    = 0xD,
+    MG_CMD_PUSH_CONSTANT_MAX    = 0xE,
 };
 
 typedef struct
@@ -228,6 +229,7 @@ typedef struct
     uint32_t vertex_buffer;
     uint16_t tri_cmd;
     uint8_t cull_mode;
+    uint8_t output_offset;
 } __attribute__((packed)) mg_rsp_state_t;
 
 inline void mg_cmd_set_byte(uint32_t offset, uint8_t value)
@@ -248,6 +250,11 @@ inline void mg_cmd_set_word(uint32_t offset, uint32_t value)
 inline void mg_cmd_set_quad(uint32_t offset, uint32_t value0, uint32_t value1, uint32_t value2, uint32_t value3)
 {
     mg_cmd_write(MG_CMD_SET_QUAD, offset, value0, value1, value2, value3);
+}
+
+inline void mg_cmd_draw_end()
+{
+    mg_cmd_write(MG_CMD_DRAW_END);
 }
 
 inline uint8_t mg_culling_parms_to_rsp_state(mg_culling_parms_t *culling)

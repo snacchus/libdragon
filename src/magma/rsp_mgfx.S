@@ -444,11 +444,10 @@ light_loop_end:
 
     # load rgba (of two vertices)
     # shuffle values around so they can be loaded in a single luv op
-    li t1, %lo(RDPQ_CMD_STAGING)
     llv vrgba.e0, MGFX_VTX_RGBA + 0,             vtx_in_ptr
     llv vrgba.e2, MGFX_VTX_RGBA + MGFX_VTX_SIZE, vtx_in_ptr
-    sdv vrgba.e0, 0,t1
-    luv vrgba.e0, 0,t1
+    sdv vrgba.e0, 0,vtx_out0_ptr
+    luv vrgba.e0, 0,vtx_out0_ptr
 
     # multiply vertex color by accumulated final light color
     vmulf vrgba, vlight
