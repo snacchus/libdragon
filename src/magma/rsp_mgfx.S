@@ -72,6 +72,10 @@ MgBeginShader
     li t2, MAGMA_VTX_SIZE - MGFX_VTX_SIZE
     mtc2 t2, vconst.e1
 
+    # clear VCO_LO 
+    # TODO: Is this necessary?
+    vadd v___, vzero, vzero
+
     # cache_offset * MAGMA_VTX_SIZE, vertex_count * (MAGMA_VTX_SIZE - MGFX_VTX_SIZE)
     vmudh $v02, $v01, vconst
     # cache_offset * MAGMA_VTX_SIZE + vertex_count * (MAGMA_VTX_SIZE - MGFX_VTX_SIZE)
@@ -136,8 +140,8 @@ vertex_loop:
     bge vtx_in_ptr, vtx_in_end, RSPQ_Loop
     addi vtx_out1_ptr, vtx_out0_ptr, MAGMA_VTX_SIZE
 
-    #define vpos_clip_i     $v23
-    #define vpos_clip_f     $v24
+    #define vpos_clip_f     $v23
+    #define vpos_clip_i     $v24
     #define vpos_in         $v25
     #define vpos_eye        $v26
     #define vnorm           $v27

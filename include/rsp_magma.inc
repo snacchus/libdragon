@@ -225,7 +225,10 @@ MgCmd_DrawIndices:
     lhu a0, %lo(MAGMA_TRI_CMD)
     vsrl vindices, vindices, 7
     vmudh voffsets, vindices, vconst.e0
-    vaddc vvertices, voffsets, vconst.e1
+    # clear VCO_LO 
+    # TODO: Is this necessary?
+    vadd v___, vzero, vzero
+    vadd vvertices, voffsets, vconst.e1
     lb v0, %lo(MAGMA_CULL_MODE)
     mfc2 vtx1, vvertices.e0
     mfc2 vtx2, vvertices.e1
