@@ -8,17 +8,17 @@
 
 #define MAGMA_DEFAULT_GUARD_BAND        2       
 
-#define MAGMA_VTX_CS_POSi               0
-#define MAGMA_VTX_CS_POSf               8
-#define MAGMA_VTX_XYZ                   16
-#define MAGMA_VTX_CLIP_CODE             22
-#define MAGMA_VTX_TR_CODE               23
-#define MAGMA_VTX_RGBA                  24
-#define MAGMA_VTX_ST                    28
-#define MAGMA_VTX_Wi                    32
-#define MAGMA_VTX_Wf                    34
-#define MAGMA_VTX_INVWi                 36
-#define MAGMA_VTX_INVWf                 38
+#define MAGMA_VTX_XYZ                   0
+#define MAGMA_VTX_CLIP_CODE             6
+#define MAGMA_VTX_TR_CODE               7
+#define MAGMA_VTX_RGBA                  8
+#define MAGMA_VTX_ST                    12
+#define MAGMA_VTX_Wi                    16
+#define MAGMA_VTX_Wf                    18
+#define MAGMA_VTX_INVWi                 20
+#define MAGMA_VTX_INVWf                 22
+#define MAGMA_VTX_CS_POSi               24
+#define MAGMA_VTX_CS_POSf               32
 #define MAGMA_VTX_SIZE                  40
 
 #endif
