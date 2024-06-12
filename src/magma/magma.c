@@ -1,7 +1,9 @@
 #include "magma.h"
 #include "magma_constants.h"
 #include "rspq.h"
+#include "rdpq.h"
 #include "utils.h"
+#include "../rdpq/rdpq_internal.h"
 
 typedef struct mg_pipeline_s 
 {
@@ -46,6 +48,7 @@ inline void mg_cmd_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
     assertf(index0 <= MAGMA_VERTEX_CACHE_COUNT, "index0 is out of range");
     assertf(index1 <= MAGMA_VERTEX_CACHE_COUNT, "index1 is out of range");
     assertf(index2 <= MAGMA_VERTEX_CACHE_COUNT, "index2 is out of range");
+    __rdpq_autosync_use(AUTOSYNC_PIPE | AUTOSYNC_TILES | AUTOSYNC_TMEMS);
     mg_cmd_write(MG_CMD_DRAW_INDICES, (index0 << 16) | (index1 << 8) | index2);
 }
 
