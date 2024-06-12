@@ -6,7 +6,11 @@
 
 #define MAGMA_VERTEX_CACHE_COUNT        32
 
-#define MAGMA_DEFAULT_GUARD_BAND        2       
+#define MAGMA_DEFAULT_GUARD_BAND        2
+
+#define MAGMA_CLIP_PLANE_COUNT          6
+#define MAGMA_CLIP_PLANE_SIZE           8
+#define MAGMA_CLIP_CACHE_SIZE           9
 
 #define MAGMA_VTX_XYZ                   0
 #define MAGMA_VTX_CLIP_CODE             6
