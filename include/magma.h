@@ -167,6 +167,9 @@ inline void mg_set_geometry_flags(mg_geometry_flags_t flags);
 /** @brief Set the viewport */
 void mg_set_viewport(mg_viewport_t *viewport);
 
+/** @brief Set the clipping guard factor */
+inline void mg_set_clip_factor(uint32_t factor);
+
 /** @brief Bind a resource set, uploading the bound resources to DMEM */
 void mg_bind_resource_set(mg_resource_set_t *resource_set);
 
@@ -301,6 +304,11 @@ inline void mg_set_geometry_flags(mg_geometry_flags_t flags)
 {
     uint16_t tricmd = 0x8 | (flags&0x7);
     mg_cmd_set_short(offsetof(mg_rsp_state_t, tri_cmd), tricmd << 8);
+}
+
+inline void mg_set_clip_factor(uint32_t factor)
+{
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, clip_factors) + sizeof(uint16_t)*2, (factor<<16) | factor);
 }
 /// @endcond
 
