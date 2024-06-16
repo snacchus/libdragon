@@ -29,13 +29,23 @@ DEFINE_RSP_UCODE(rsp_magma);
 
 uint32_t mg_overlay_id;
 
-inline void mg_cmd_load_uniform(const void *buffer, uint32_t size, uint32_t dmem_offset)
+void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data)
 {
     assertf(size > 0, "size must be greater than 0");
-    mg_cmd_write(MG_CMD_LOAD_UNIFORM, PhysicalAddr(buffer), ((size-1) << 16) | dmem_offset);
+    mg_cmd_write(MG_CMD_LOAD_UNIFORM, PhysicalAddr(data), ((size-1) << 16) | offset);
 }
 
-inline void mg_cmd_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count)
+void mg_draw_begin(void)
+{
+    __rdpq_autosync_use(AUTOSYNC_PIPE | AUTOSYNC_TILES | AUTOSYNC_TMEMS);
+}
+
+void mg_draw_end(void)
+{
+    mg_cmd_write(MG_CMD_DRAW_END);
+}
+
+void mg_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count)
 {
     assertf(count > 0, "count must be greater than 0");
     assertf(count <= MAGMA_VERTEX_CACHE_COUNT, "too many vertices");
@@ -43,12 +53,11 @@ inline void mg_cmd_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, u
     mg_cmd_write(MG_CMD_LOAD_VERTICES, buffer_offset, (cache_offset<<16) | count);
 }
 
-inline void mg_cmd_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
+void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
 {
     assertf(index0 <= MAGMA_VERTEX_CACHE_COUNT, "index0 is out of range");
     assertf(index1 <= MAGMA_VERTEX_CACHE_COUNT, "index1 is out of range");
     assertf(index2 <= MAGMA_VERTEX_CACHE_COUNT, "index2 is out of range");
-    __rdpq_autosync_use(AUTOSYNC_PIPE | AUTOSYNC_TILES | AUTOSYNC_TMEMS);
     mg_cmd_write(MG_CMD_DRAW_INDICES, (index0 << 16) | (index1 << 8) | index2);
 }
 
@@ -62,7 +71,7 @@ void mg_close(void)
     rspq_overlay_unregister(mg_overlay_id);
 }
 
-mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms)
+mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 {
     // TODO: check for binary compatibility
 
@@ -86,7 +95,7 @@ void mg_pipeline_free(mg_pipeline_t *pipeline)
     free(pipeline);
 }
 
-mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
+const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
 {
     for (uint32_t i = 0; i < pipeline->uniform_count; i++)
     {
@@ -98,7 +107,7 @@ mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
     assertf(0, "Uniform with binding number %ld was not found", binding);
 }
 
-mg_buffer_t *mg_buffer_create(mg_buffer_parms_t *parms)
+mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms)
 {
     mg_buffer_t *buffer = malloc(sizeof(mg_buffer_t));
     buffer->memory = malloc_uncached(parms->size);
@@ -142,7 +151,7 @@ void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const 
     memcpy((uint8_t*)buffer->memory + offset, data, size);
 }
 
-mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms)
+mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
 {
     mg_resource_set_t *resource_set = malloc(sizeof(mg_resource_set_t));
 
@@ -152,10 +161,10 @@ mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms)
 
     for (uint32_t i = 0; i < parms->binding_count; i++)
     {
-        mg_resource_binding_t *binding = &parms->bindings[i];
+        const mg_resource_binding_t *binding = &parms->bindings[i];
         switch (binding->type) {
         case MG_RESOURCE_TYPE_INLINE_UNIFORM:
-            mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
+            const mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
             inline_data_size += uniform->size;
             break;
 
@@ -177,19 +186,19 @@ mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms)
     rspq_block_begin();
     for (uint32_t i = 0; i < parms->binding_count; i++)
     {
-        mg_resource_binding_t *binding = &parms->bindings[i];
-        mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
+        const mg_resource_binding_t *binding = &parms->bindings[i];
+        const mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
 
         switch (binding->type) {
         case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
             uint8_t *uniform_data = (uint8_t*)binding->buffer->memory + binding->offset;
-            mg_cmd_load_uniform(uniform_data, uniform->size, uniform->offset);
+            mg_load_uniform(uniform, uniform_data);
             break;
 
         case MG_RESOURCE_TYPE_STORAGE_BUFFER:
             assertf(uniform->size == 8, "Uniform at binding %ld can't be used as a storage buffer", uniform->binding);
             uint32_t storage_data[2] = { PhysicalAddr(binding->buffer->memory), 0 };
-            mg_push_constants(uniform->offset, 8, storage_data);
+            mg_inline_uniform_raw(uniform->offset, 8, storage_data);
             break;
 
         case MG_RESOURCE_TYPE_INLINE_UNIFORM:
@@ -197,7 +206,7 @@ mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms)
             assertf(((uint32_t)inline_data&0x7) == 0, "Uniform pointer not aligned to 8 bytes");
             memcpy(inline_data, binding->inline_data, uniform->size);
             inline_data_size += uniform->size;
-            mg_cmd_load_uniform(inline_data, uniform->size, uniform->offset);
+            mg_load_uniform(uniform, inline_data);
             break;
         }
     }
@@ -232,7 +241,7 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline)
     mg_load_shader(pipeline->shader_ucode);
 }
 
-mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
+mg_rsp_viewport_t mg_viewport_to_rsp_state(const mg_viewport_t *viewport)
 {
     float half_width = viewport->width / 2;
     float half_height = viewport->height / 2;
@@ -255,7 +264,7 @@ mg_rsp_viewport_t mg_viewport_to_rsp_state(mg_viewport_t *viewport)
 }
 
 
-void mg_set_viewport(mg_viewport_t *viewport)
+void mg_set_viewport(const mg_viewport_t *viewport)
 {
     mg_rsp_viewport_t rsp_viewport = mg_viewport_to_rsp_state(viewport);
     uint32_t value0 = (rsp_viewport.scale[0] << 16) | rsp_viewport.scale[1];
@@ -271,7 +280,7 @@ void mg_bind_resource_set(mg_resource_set_t *resource_set)
     rspq_block_run(resource_set->block);
 }
 
-void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
+void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
 {
     assertf((offset&7) == 0, "offset must be a multiple of 8");
     assertf((size&3) == 0, "size must be a multiple of 4");
@@ -279,27 +288,27 @@ void mg_push_constants(uint32_t offset, uint32_t size, const void *data)
 
     uint32_t aligned_size = ROUND_UP(size, 8);
 
-    uint32_t command_id = MG_CMD_PUSH_CONSTANT_MAX;
+    uint32_t command_id = MG_CMD_INLINE_UNIFORM_MAX;
     uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE;
 
     if (aligned_size <= 8) {
-        command_id = MG_CMD_PUSH_CONSTANT_8;
+        command_id = MG_CMD_INLINE_UNIFORM_8;
         command_size = 8;
     } else if (aligned_size <= 16) {
-        command_id = MG_CMD_PUSH_CONSTANT_16;
+        command_id = MG_CMD_INLINE_UNIFORM_16;
         command_size = 16;
     } else if (aligned_size <= 32) {
-        command_id = MG_CMD_PUSH_CONSTANT_32;
+        command_id = MG_CMD_INLINE_UNIFORM_32;
         command_size = 32;
     } else if (aligned_size <= 64) {
-        command_id = MG_CMD_PUSH_CONSTANT_64;
+        command_id = MG_CMD_INLINE_UNIFORM_64;
         command_size = 64;
     } else if (aligned_size <= 128) {
-        command_id = MG_CMD_PUSH_CONSTANT_128;
+        command_id = MG_CMD_INLINE_UNIFORM_128;
         command_size = 128;
     }
 
-    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, (MAGMA_PUSH_CONSTANT_HEADER + command_size)/4);
+    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, (MAGMA_INLINE_UNIFORM_HEADER + command_size)/4);
 
     // We want to place the payload at an 8-byte aligned address after the end of the command itself
     // w.pointer is already +1 from the actual start of the command
@@ -335,7 +344,7 @@ void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
 
 #define TRI_LIST_ADVANCE_COUNT ROUND_DOWN(MAGMA_VERTEX_CACHE_COUNT, 3)
 
-void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex)
+void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex)
 {
     uint32_t advance_count = 0;
     switch (input_assembly_parms->primitive_topology) {
@@ -351,31 +360,29 @@ void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_co
     for (uint32_t current_vertex = 0; current_vertex < vertex_count; current_vertex += advance_count)
     {
         uint32_t load_count = MIN(advance_count, vertex_count - current_vertex);
-        mg_cmd_load_vertices(current_vertex + first_vertex, 0, load_count);
+        mg_load_vertices(current_vertex + first_vertex, 0, load_count);
 
         switch (input_assembly_parms->primitive_topology) {
         case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
         {
             size_t prim_count = load_count / 3;
-            for (size_t i = 0; i < prim_count; i++) mg_cmd_draw_indices(3*i, 3*i+1, 3*i+2);
+            for (size_t i = 0; i < prim_count; i++) mg_draw_indices(3*i, 3*i+1, 3*i+2);
             break;
         }
         case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
         {
             size_t prim_count = MAX(0, load_count - 2);
-            for (size_t i = 0; i < prim_count; i++) mg_cmd_draw_indices(i, i + 1 + i%2, i + 2 - i%2);
+            for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i, i + 1 + i%2, i + 2 - i%2);
             break;
         }
         case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
         {
             size_t prim_count = MAX(0, load_count - 2);
-            for (size_t i = 0; i < prim_count; i++) mg_cmd_draw_indices(i+1, i+2, 0);
+            for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i+1, i+2, 0);
             break;
         }
         }
     }
-
-    mg_cmd_draw_end();
 }
 
 #define SPECIAL_INDEX UINT16_MAX
@@ -482,7 +489,7 @@ static void vertex_cache_load(const vertex_cache *cache, int32_t offset)
     {
         if (cache->blocks[i].count == 0) continue;
         //debugf("block %d: offset %d, count %d\n", i, cache->blocks[i].start, cache->blocks[i].count);
-        mg_cmd_load_vertices(cache->blocks[i].start + offset, cache_offset, cache->blocks[i].count);
+        mg_load_vertices(cache->blocks[i].start + offset, cache_offset, cache->blocks[i].count);
         cache_offset += cache->blocks[i].count;
     }
 }
@@ -519,12 +526,12 @@ static void draw_batch(const uint16_t *indices, uint32_t current_index, uint32_t
         prim_indices[i%3] = cache_index;
         if (i%3 == 2) {
             //debugf("Triangle: %d, %d, %d\n", prim_indices[0], prim_indices[1], prim_indices[2]);
-            mg_cmd_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
+            mg_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
         }
     }
 }
 
-void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t index_count, int32_t vertex_offset)
+void mg_draw_indexed(const mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t index_count, int32_t vertex_offset)
 {
     vertex_cache cache;
     uint32_t current_index = 0;
@@ -536,6 +543,4 @@ void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, const uint
         
         current_index += batch_index_count;
     }
-
-    mg_cmd_draw_end();
 }

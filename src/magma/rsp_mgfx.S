@@ -1,7 +1,7 @@
 #include <rsp_magma.inc>
 #include <mgfx_constants.h>
 
-MgBeginShaderConstants
+MgBeginShaderUniforms
     MgBeginUniform FOG, MGFX_BINDING_FOG
         FOG_FACTOR_INT:     .half   0
         FOG_OFFSET_INT:     .half   0
@@ -33,7 +33,7 @@ MgBeginShaderConstants
     MgBeginUniform MATRIX_PALETTE, MGFX_BINDING_MATRIX_PALETTE
         MATRIX_PALETTE_PTR: .word 0
     MgEndUniform
-MgEndShaderConstants
+MgEndShaderUniforms
 
 MgBeginShader
     #define flags           v0

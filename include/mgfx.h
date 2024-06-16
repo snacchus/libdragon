@@ -128,7 +128,7 @@ void mgfx_get_texturing(mgfx_texturing_t *dst, const mgfx_texturing_parms_t *par
 void mgfx_get_modes(mgfx_modes_t *dst, const mgfx_modes_parms_t *parms);
 void mgfx_get_matrices(mgfx_matrices_t *dst, const mgfx_matrices_parms_t *parms);
 
-/* Set uniforms directly via push constants */
+/* Set uniforms directly inline */
 
 void mgfx_set_fog_inline(const mgfx_fog_parms_t *parms);
 void mgfx_set_lighting_inline(const mgfx_lighting_parms_t *parms);

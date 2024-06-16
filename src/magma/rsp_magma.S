@@ -1,7 +1,7 @@
 #include <rsp_magma.inc>
 
-MgBeginShaderConstants
-MgEndShaderConstants
+MgBeginShaderUniforms
+MgEndShaderUniforms
 
 MgBeginShader
     # Bootstrap shader code and data

@@ -93,7 +93,7 @@ typedef struct
 {
     rsp_ucode_t *vertex_shader_ucode;
     uint32_t uniform_count;
-    mg_uniform_t *uniforms;
+    const mg_uniform_t *uniforms;
 } mg_pipeline_parms_t;
 
 typedef struct
@@ -122,7 +122,7 @@ typedef struct
 {
     mg_pipeline_t *pipeline;
     uint32_t binding_count;
-    mg_resource_binding_t *bindings;
+    const mg_resource_binding_t *bindings;
 } mg_resource_set_parms_t;
 
 #ifdef __cplusplus
@@ -136,12 +136,13 @@ void mg_close(void);
 
 /* Pipelines */
 
-mg_pipeline_t *mg_pipeline_create(mg_pipeline_parms_t *parms);
+mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
+const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding);
 
 /* Buffers */
 
-mg_buffer_t *mg_buffer_create(mg_buffer_parms_t *parms);
+mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms);
 void mg_buffer_free(mg_buffer_t *buffer);
 void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags);
 void mg_buffer_unmap(mg_buffer_t *buffer);
@@ -149,7 +150,7 @@ void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const 
 
 /* Resources */
 
-mg_resource_set_t *mg_resource_set_create(mg_resource_set_parms_t *parms);
+mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms);
 void mg_resource_set_free(mg_resource_set_t *resource_set);
 
 
@@ -158,32 +159,51 @@ void mg_resource_set_free(mg_resource_set_t *resource_set);
 /** @brief Bind the pipeline for subsequent use, uploading the attached shader to IMEM */
 void mg_bind_pipeline(mg_pipeline_t *pipeline);
 
+/** @brief Upload raw data to shader uniforms */
+void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data);
+
+inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data);
+
 /** @brief Set culling flags */
-inline void mg_set_culling(mg_culling_parms_t *culling);
+inline void mg_set_culling(const mg_culling_parms_t *culling);
 
 /** @brief Set culling flags */
 inline void mg_set_geometry_flags(mg_geometry_flags_t flags);
 
 /** @brief Set the viewport */
-void mg_set_viewport(mg_viewport_t *viewport);
+void mg_set_viewport(const mg_viewport_t *viewport);
 
 /** @brief Set the clipping guard factor */
 inline void mg_set_clip_factor(uint32_t factor);
 
-/** @brief Bind a resource set, uploading the bound resources to DMEM */
+/** @brief Bind a resource set, uploading the bound resources to shader uniforms */
 void mg_bind_resource_set(mg_resource_set_t *resource_set);
 
 /** @brief Push a block of data directly to DMEM, embedding the data in the command */
-void mg_push_constants(uint32_t offset, uint32_t size, const void *data);
+void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
+
+inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data);
 
 /** @brief Bind a vertex buffer to be used by subsequent drawing commands */
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset);
 
+/** @brief Begin a batch of drawing primitives */
+void mg_draw_begin(void);
+
+/** @brief End a batch of drawing primitives */
+void mg_draw_end(void);
+
+/** @brief Load vertices from the vertex buffer into the internal cache */
+void mg_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count);
+
+/** @brief Draw a triangle with vertices from the internal cache at the specified indices */
+void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2);
+
 /** @brief Draw primitives */
-void mg_draw(mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex);
+void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex);
 
 /** @brief Draw indexed primitives */
-void mg_draw_indexed(mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t index_count, int32_t vertex_offset);
+void mg_draw_indexed(const mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t index_count, int32_t vertex_offset);
 
 // TODO: Instanced draw calls?
 // TODO: Indirect draw calls?
@@ -207,12 +227,12 @@ enum
     MG_CMD_DRAW_INDICES         = 0x6,
     MG_CMD_DRAW_END             = 0x7,
     MG_CMD_LOAD_UNIFORM         = 0x8,
-    MG_CMD_PUSH_CONSTANT_8      = 0x9,
-    MG_CMD_PUSH_CONSTANT_16     = 0xA,
-    MG_CMD_PUSH_CONSTANT_32     = 0xB,
-    MG_CMD_PUSH_CONSTANT_64     = 0xC,
-    MG_CMD_PUSH_CONSTANT_128    = 0xD,
-    MG_CMD_PUSH_CONSTANT_MAX    = 0xE,
+    MG_CMD_INLINE_UNIFORM_8     = 0x9,
+    MG_CMD_INLINE_UNIFORM_16    = 0xA,
+    MG_CMD_INLINE_UNIFORM_32    = 0xB,
+    MG_CMD_INLINE_UNIFORM_64    = 0xC,
+    MG_CMD_INLINE_UNIFORM_128   = 0xD,
+    MG_CMD_INLINE_UNIFORM_MAX   = 0xE,
 };
 
 typedef struct
@@ -255,12 +275,7 @@ inline void mg_cmd_set_quad(uint32_t offset, uint32_t value0, uint32_t value1, u
     mg_cmd_write(MG_CMD_SET_QUAD, offset, value0, value1, value2, value3);
 }
 
-inline void mg_cmd_draw_end()
-{
-    mg_cmd_write(MG_CMD_DRAW_END);
-}
-
-inline uint8_t mg_culling_parms_to_rsp_state(mg_culling_parms_t *culling)
+inline uint8_t mg_culling_parms_to_rsp_state(const mg_culling_parms_t *culling)
 {
     uint8_t cull_mode;
     uint8_t is_front_cw;
@@ -295,7 +310,7 @@ inline uint8_t mg_culling_parms_to_rsp_state(mg_culling_parms_t *culling)
     return cull_mode ^ is_front_cw;
 }
 
-inline void mg_set_culling(mg_culling_parms_t *culling)
+inline void mg_set_culling(const mg_culling_parms_t *culling)
 {
     mg_cmd_set_byte(offsetof(mg_rsp_state_t, cull_mode), mg_culling_parms_to_rsp_state(culling));
 }
@@ -309,6 +324,16 @@ inline void mg_set_geometry_flags(mg_geometry_flags_t flags)
 inline void mg_set_clip_factor(uint32_t factor)
 {
     mg_cmd_set_word(offsetof(mg_rsp_state_t, clip_factors) + sizeof(uint16_t)*2, (factor<<16) | factor);
+}
+
+inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data)
+{
+    mg_load_uniform_raw(uniform->offset, uniform->size, data);
+}
+
+inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data)
+{
+    mg_inline_uniform_raw(uniform->offset, uniform->size, data);
 }
 /// @endcond
 

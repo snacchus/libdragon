@@ -3,15 +3,15 @@
 
 #define TRIANGLE_SIZE 0xB0
 
-.macro MgBeginShaderConstants
-    .section .bss.magma_shader_constants
+.macro MgBeginShaderUniforms
+    .section .bss.magma_shader_uniforms
     .align 4
-_MG_VTX_SHADER_CONST:
+_MG_VTX_SHADER_UNIFORMS:
 .endm
 
-.macro MgEndShaderConstants
+.macro MgEndShaderUniforms
     .align 3
-_MG_VTX_SHADER_CONST_END:
+_MG_VTX_SHADER_UNIFORMS_END:
 .endm
 
 .equ _mg_defining_uniform, 0
@@ -60,11 +60,11 @@ _MG_VTX_SHADER_END:
         RSPQ_DefineCommand MgCmd_DrawIndices,   4
         RSPQ_DefineCommand MgCmd_DrawEnd,       4
         RSPQ_DefineCommand MgCmd_LoadUniform,   8
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 8
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 16
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 32
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 64
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_PUSH_CONSTANT_HEADER + 128
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 8
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 16
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 32
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 64
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 128
         RSPQ_DefineCommand MgCmd_LoadUniform,   248 # TODO: get rid of magic number
 	RSPQ_EndOverlayHeader
 
@@ -167,12 +167,12 @@ MgCmd_SetQuad:
     # ARGS:
     #   a0: RDRAM pointer
     #   a1: Bit 31..16: Size
-    #       Bit 15..0: Offset into _MG_VTX_SHADER_CONST
+    #       Bit 15..0: Offset into _MG_VTX_SHADER_UNIFORMS
     #############################################################
     .func MgCmd_LoadUniform
 MgCmd_LoadUniform:
     move s0, a0
-    addi s4, a1, %lo(_MG_VTX_SHADER_CONST)
+    addi s4, a1, %lo(_MG_VTX_SHADER_UNIFORMS)
     j DMAIn
     srl t0, a1, 16
     
@@ -208,7 +208,7 @@ Mg_LoadShader:
     # TODO: Shader data not needed?
     # lw s0, %lo(MAGMA_SHADER_DATA)
     # lh t0, %lo(MAGMA_SHADER_DATA_SIZE)
-    # li s4, %lo(_MG_VTX_SHADER_CONST)
+    # li s4, %lo(_MG_VTX_SHADER_UNIFORMS)
     # add s0, s4
     # sub t0, s4
     # emux_log_string "dma shader data\n"
@@ -267,7 +267,6 @@ MgCmd_DrawIndices:
     # TODO: Is this necessary?
     vadd v___, vzero, vzero
     vadd vvertices, voffsets, vconst.e1
-    # TODO: refactoring (store vertices in clip list straight away)
     li s1, %lo(MAGMA_CLIP_LIST0)
     move s2, s1
     sdv vvertices.e0, 0,s1

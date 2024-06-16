@@ -467,7 +467,7 @@ void render()
         // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
         // If we were to use resource sets for matrices as well, we would have to manually synchronize updating them on the CPU.
         // TODO: an example how to do manual synchronization
-        // This function uses "mg_push_constants" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
+        // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
         mgfx_set_matrices_inline(&(mgfx_matrices_parms_t) {
             .model_view_projection = object->mvp_matrix.m[0],
             .model_view = object->mv_matrix.m[0],
@@ -479,7 +479,9 @@ void render()
         // Perform the draw call. This will assemble the triangles from the currently bound vertex/index buffers, process them with the
         // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
         rdpq_debug_log_msg("-------> Draw");
+        mg_draw_begin();
         rspq_block_run(current_mesh->block);
+        mg_draw_end();
         rdpq_debug_log_msg("<------- Draw");
 
         rdpq_debug_log_msg("<----- Object");
