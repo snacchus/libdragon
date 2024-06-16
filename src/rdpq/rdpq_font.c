@@ -17,8 +17,10 @@
 #include "rdpq_internal.h"
 #include "asset.h"
 #include "fmath.h"
+#include "utils.h"
 
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+// Include the built-in font data
+#include "rdpq_font_builtin.c"
 
 #define MAX_STYLES   256
 
@@ -29,32 +31,73 @@ _Static_assert(sizeof(kerning_t) == 3, "kerning_t size is wrong");
 #define PTR_DECODE(font, ptr)    ((void*)(((uint8_t*)(font)) + (uint32_t)(ptr)))
 #define PTR_ENCODE(font, ptr)    ((void*)(((uint8_t*)(ptr)) - (uint32_t)(font)))
 
-static void recalc_style(style_t *s, tex_format_t fmt)
+static void recalc_style(int font_type, style_t *s)
 {
     if (s->block)
         rdpq_call_deferred((void (*)(void*))rspq_block_free, s->block);
 
     rspq_block_begin();
-        rdpq_mode_begin();
-            switch (fmt) {
-            case FMT_I4: case FMT_I8:
-                rdpq_set_mode_standard();
-                rdpq_mode_combiner(RDPQ_COMBINER1((0,0,0,PRIM), (TEX0,0,PRIM,0)));
-                rdpq_mode_alphacompare(1);
-                rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+            switch (font_type) {
+            case FONT_TYPE_ALIASED:
+                rdpq_mode_begin();
+                    rdpq_set_mode_standard();
+                    rdpq_mode_combiner(RDPQ_COMBINER1((0,0,0,PRIM), (TEX0,0,PRIM,0)));
+                    rdpq_mode_alphacompare(1);
+                    rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+                rdpq_mode_end();
                 rdpq_set_prim_color(s->color);
                 break;
-            case FMT_CI4: case FMT_CI8:
-                rdpq_set_mode_standard();
-                rdpq_mode_combiner(RDPQ_COMBINER1((0,0,0,PRIM), (TEX0,0,PRIM,0)));
-                rdpq_mode_alphacompare(1);
-                rdpq_mode_tlut(TLUT_RGBA16);
+            case FONT_TYPE_MONO:
+                rdpq_mode_begin();
+                    rdpq_set_mode_standard();
+                    rdpq_mode_combiner(RDPQ_COMBINER1((0,0,0,PRIM), (TEX0,0,PRIM,0)));
+                    rdpq_mode_alphacompare(1);
+                    rdpq_mode_tlut(TLUT_RGBA16);
+                rdpq_mode_end();
                 rdpq_set_prim_color(s->color);
+                break;
+            case FONT_TYPE_MONO_OUTLINE:
+                // Mono-outline fonts are CI4 with IA16 palettes. Each texel is
+                // a IA16 color as follows: 0x0000=transparent, 0xFFFF=fill, 0x00FF=outline
+                // So TEX will become either 0x00 or 0xFF, and TEX_ALPHA will be 0x20 (or 0 for transparent)
+                // We set a combiner that does PRIM*TEX + ENV*(1-TEX), so that we can
+                // select between the fill and the outline color, in PRIM and ENV respectively.
+                // Unfortunately, we can't use alpha compare with a two-stage combiner because of
+                // a RDP bug; so we simulate it using SOM_BLALPHA_CVG_TIMES_CC which multiplies
+                // the alpha by the coverage (which should be full on all pixels) before hitting
+                // the blender, and this causes a similar transparent effect.
+                // to turn on AA for this to work (for unknown reasons).
+                rdpq_mode_begin();
+                    rdpq_set_mode_standard();
+                    rdpq_mode_combiner(RDPQ_COMBINER2(
+                        (ONE,TEX1,ENV,0),       (0,0,0,TEX1),
+                        (TEX1,0,PRIM,COMBINED), (0,0,0,COMBINED)
+                    ));
+                    rdpq_mode_antialias(AA_REDUCED);
+                    rdpq_mode_tlut(TLUT_IA16);
+                rdpq_mode_end();
+                rdpq_change_other_modes_raw(SOM_BLALPHA_MASK, SOM_BLALPHA_CVG_TIMES_CC);
+                rdpq_set_prim_color(s->color);
+                rdpq_set_env_color(s->outline_color);
+                break;
+            case FONT_TYPE_ALIASED_OUTLINE:
+                // Atlases are IA8, where I modulates between the fill color and the outline color.
+                rdpq_mode_begin();
+                    rdpq_set_mode_standard();
+                    rdpq_mode_combiner(RDPQ_COMBINER2(
+                        (ONE,TEX1,ENV,0),       (0,0,0,TEX1),
+                        (TEX1,0,PRIM,COMBINED), (0,0,0,COMBINED)
+                    ));
+                    rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+                rdpq_mode_end();
+                rdpq_change_other_modes_raw(SOM_BLALPHA_MASK, SOM_BLALPHA_CVG_TIMES_CC);
+                rdpq_set_prim_color(s->color);
+                rdpq_set_env_color(s->outline_color);
                 break;
             default:
                 assert(0);
             }
-        rdpq_mode_end();
+
     s->block = rspq_block_end();
 }
 
@@ -65,18 +108,20 @@ rdpq_font_t* rdpq_font_load_buf(void *buf, int sz)
     assertf(sz >= sizeof(rdpq_font_t), "Font buffer too small (sz=%d)", sz);
     assertf(memcmp(fnt->magic, FONT_MAGIC_LOADED, 3), "Trying to load already loaded font data (buf=%p, sz=%08x)", buf, sz);
     assertf(!memcmp(fnt->magic, FONT_MAGIC, 3), "invalid font data (magic: %c%c%c)", fnt->magic[0], fnt->magic[1], fnt->magic[2]);
-    assertf(fnt->version == 4, "unsupported font version: %d\nPlease regenerate fonts with an updated mkfont tool", fnt->version);
+    assertf(fnt->version == 6, "unsupported font version: %d\nPlease regenerate fonts with an updated mkfont tool", fnt->version);
     fnt->ranges = PTR_DECODE(fnt, fnt->ranges);
     fnt->glyphs = PTR_DECODE(fnt, fnt->glyphs);
     fnt->atlases = PTR_DECODE(fnt, fnt->atlases);
     fnt->kerning = PTR_DECODE(fnt, fnt->kerning);
-    fnt->styles = PTR_DECODE(fnt, fnt->styles);
+    fnt->styles = &fnt->builtin_style;
+    fnt->num_styles = 1;
     for (int i = 0; i < fnt->num_atlases; i++) {
         void *buf = PTR_DECODE(fnt, fnt->atlases[i].sprite);
         fnt->atlases[i].sprite = sprite_load_buf(buf, fnt->atlases[i].size);
         rspq_block_begin();
-            switch (sprite_get_format(fnt->atlases[i].sprite)) {
-            case FMT_CI4:
+            int font_type = fnt->flags & FONT_FLAG_TYPE_MASK;
+            switch (font_type) {
+            case FONT_TYPE_MONO: {
                 surface_t surf = sprite_get_pixels(fnt->atlases[i].sprite);
                 rdpq_tex_multi_begin();
                 rdpq_tex_upload(TILE0, &surf, NULL);
@@ -84,9 +129,24 @@ rdpq_font_t* rdpq_font_load_buf(void *buf, int sz)
                 rdpq_tex_reuse(TILE2, &(rdpq_texparms_t){ .palette = 2 });
                 rdpq_tex_reuse(TILE3, &(rdpq_texparms_t){ .palette = 3 });
                 rdpq_tex_multi_end();
-                rdpq_tex_upload_tlut(sprite_get_palette(fnt->atlases[i].sprite), 0, 64);
+                rdpq_tex_upload_tlut(sprite_get_palette(fnt->atlases[i].sprite), 0, font_type == FONT_TYPE_MONO ? 64 : 32);
                 break;
-
+            }
+            case FONT_TYPE_MONO_OUTLINE: {
+                surface_t surf = sprite_get_pixels(fnt->atlases[i].sprite);
+                rdpq_tex_multi_begin();
+                // Outline font uses only TILE1 and TILE2 because the combiner only uses
+                // TEX1 and never TEX0 (see recalc_style).
+                rdpq_tex_upload(TILE1, &surf, NULL);
+                rdpq_tex_reuse(TILE2, &(rdpq_texparms_t){ .palette = 1 });
+                rdpq_tex_multi_end();
+                rdpq_tex_upload_tlut(sprite_get_palette(fnt->atlases[i].sprite), 0, font_type == FONT_TYPE_MONO ? 64 : 32);
+                break;
+            }
+            case FONT_TYPE_ALIASED_OUTLINE:
+                rdpq_sprite_upload(TILE1, fnt->atlases[i].sprite, NULL);
+                break;
+            case FONT_TYPE_ALIASED:
             default:
                 rdpq_sprite_upload(TILE0, fnt->atlases[i].sprite, NULL);
                 break;
@@ -95,9 +155,8 @@ rdpq_font_t* rdpq_font_load_buf(void *buf, int sz)
         fnt->atlases[i].up = rspq_block_end();
     }
 
-    tex_format_t fmt = sprite_get_format(fnt->atlases[0].sprite);
     for (int i = 0; i < fnt->num_styles; i++)
-        recalc_style(&fnt->styles[i], fmt);
+        recalc_style(fnt->flags & FONT_FLAG_TYPE_MASK, &fnt->styles[i]);
     memcpy(fnt->magic, FONT_MAGIC_LOADED, 3);
     data_cache_hit_writeback(fnt, sz);
     return fnt;
@@ -119,17 +178,21 @@ static void font_unload(rdpq_font_t *fnt)
         rspq_block_free(fnt->atlases[i].up); fnt->atlases[i].up = NULL;
         fnt->atlases[i].sprite = PTR_ENCODE(fnt, fnt->atlases[i].sprite);
     }
-    for (int i = 0; i < MAX_STYLES; i++) {
+    for (int i = 0; i < fnt->num_styles; i++) {
         if (fnt->styles[i].block) {
             rspq_block_free(fnt->styles[i].block);
             fnt->styles[i].block = NULL;
         }
     }
+    if (fnt->num_styles > 1) {
+        free(fnt->styles);
+        fnt->styles = &fnt->builtin_style;
+        fnt->num_styles = 1;
+    }
     fnt->ranges = PTR_ENCODE(fnt, fnt->ranges);
     fnt->glyphs = PTR_ENCODE(fnt, fnt->glyphs);
     fnt->atlases = PTR_ENCODE(fnt, fnt->atlases);
     fnt->kerning = PTR_ENCODE(fnt, fnt->kerning);
-    fnt->styles = PTR_ENCODE(fnt, fnt->styles);
     memcpy(fnt->magic, FONT_MAGIC, 3);
 }
 
@@ -184,12 +247,26 @@ float __rdpq_font_kerning(const rdpq_font_t *fnt, int16_t glyph1, int16_t glyph2
 
 void rdpq_font_style(rdpq_font_t *fnt, uint8_t style_id, const rdpq_fontstyle_t *style)
 {
-    // NOTE: fnt->num_styles refer to how many styles have been defined at
-    // mkfont time. The font always contain room for 256 styles (all zeroed).
+    if (style_id >= fnt->num_styles) {
+        assertf(style_id < MAX_STYLES, "style_id %d exceeds maximum %d", style_id, MAX_STYLES);
+
+        if (fnt->num_styles == 1) {
+            fnt->num_styles = 16;
+            fnt->styles = calloc(16, sizeof(style_t));
+            memcpy(&fnt->styles[0], &fnt->builtin_style, sizeof(style_t));
+            fnt->builtin_style.block = NULL;
+        } else {
+            int old_styles = fnt->num_styles;
+            fnt->num_styles = MAX(fnt->num_styles*2, MAX_STYLES);
+            fnt->styles = realloc(fnt->styles, fnt->num_styles * sizeof(style_t));
+            memset(&fnt->styles[old_styles], 0, (fnt->num_styles - old_styles) * sizeof(style_t));
+        }
+    }
+
     style_t *s = &fnt->styles[style_id];
     s->color = style->color;
-    tex_format_t fmt = sprite_get_format(fnt->atlases[0].sprite);
-    recalc_style(s, fmt);
+    s->outline_color = style->outline_color;
+    recalc_style(fnt->flags & FONT_FLAG_TYPE_MASK, s);
 }
 
 int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char_t *chars, float x0, float y0)
@@ -202,7 +279,8 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
     while (ch->font_id == font_id) {
         const glyph_t *g = &fnt->glyphs[ch->glyph];
         if (UNLIKELY(ch->style_id != cur_style)) {
-            assertf(fnt->styles[ch->style_id].block, "style %d not defined in this font", ch->style_id);
+            assertf(ch->style_id < fnt->num_styles && fnt->styles[ch->style_id].block,
+                 "style %d not defined in this font", ch->style_id);
             rspq_block_run(fnt->styles[ch->style_id].block);
             cur_style = ch->style_id;
         }
@@ -231,5 +309,17 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
     return ch - chars;
 }
 
-// extern inline void rdpq_font_print(rdpq_font_t *fnt, const char *text, const rdpq_parparms_t *parms);
+rdpq_font_t *__rdpq_font_load_builtin_0(void)
+{
+    return rdpq_font_load_buf((void*)__fontdb_monogram, __fontdb_monogram_len);
+}
+
+rdpq_font_t *__rdpq_font_load_builtin_1(void)
+{
+    return rdpq_font_load_buf((void*)__fontdb_at01, __fontdb_at01_len);
+}
+
+
 extern inline void __rdpq_font_glyph_metrics(const rdpq_font_t *fnt, int16_t index, float *xadvance, int8_t *xoff, int8_t *xoff2, bool *has_kerning, uint8_t *sort_key);
+extern inline rdpq_font_t* rdpq_font_load_builtin(rdpq_font_builtin_t font);
+
