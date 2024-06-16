@@ -1,4 +1,5 @@
 #include <libdragon.h>
+#include <rspq_profile.h>
 
 #include "matrix.h"
 #include "quat.h"
@@ -80,6 +81,8 @@ static quat_t camera_rotation;
 
 static uint32_t last_frame_ticks;
 
+static uint64_t frames = 0;
+
 int main()
 {
     init();
@@ -88,6 +91,8 @@ int main()
     rdpq_debug_start();
     rdpq_debug_log(true);
 #endif
+
+    rspq_profile_start();
 
     while (true) 
     {
@@ -414,8 +419,6 @@ void render()
     // All our materials use the same pipeline in this demo, so bind it once for the entire scene
     mg_bind_pipeline(pipeline);
 
-    // TODO: Transform lights into eye space
-
     // Bind resources that stay constant for the entire scene (for example lighting)
     mg_bind_resource_set(scene_resource_set);
 
@@ -486,4 +489,11 @@ void render()
     rdpq_detach_show();
 
     rdpq_debug_log_msg("<--- Frame");
+
+    rspq_profile_next_frame();
+
+    if (((frames++) % 60) == 0) {
+        rspq_profile_dump();
+        rspq_profile_reset();
+    }
 }
