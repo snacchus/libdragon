@@ -80,7 +80,7 @@ typedef struct
 typedef struct
 {
     color_t ambient_color;
-    mgfx_light_parms_t *lights;
+    const mgfx_light_parms_t *lights;
     uint32_t light_count;
 } mgfx_lighting_parms_t;
 
@@ -97,9 +97,9 @@ typedef struct
 
 typedef struct
 {
-    float *model_view_projection;
-    float *model_view;
-    float *normal;
+    const float *model_view_projection;
+    const float *model_view;
+    const float *normal;
 } mgfx_matrices_parms_t;
 
 /* Vertex struct */
@@ -111,6 +111,22 @@ typedef struct
     uint32_t color;
     int16_t texcoord[2];
 } __attribute__((packed)) mgfx_vertex_t;
+
+#define MGFX_S10_5(v)       ((v)*(1<<5))
+#define MGFX_S8_8(v)        ((v)*(1<<8))
+
+#define MGFX_POS(x, y, z)   { MGFX_S10_5(x), MGFX_S10_5(y), MGFX_S10_5(z) }
+#define MGFX_TEX(s, t)      { MGFX_S8_8(s), MGFX_S8_8(t) }
+#define MGFX_NRM(x, y, z)   ((((x) & 0x1F)<<11) | \
+                             (((y) & 0x3F)<<5)  | \
+                             (((z) & 0x1F)<<0))
+
+#define MGFX_VERTEX(x, y, z, s, t, nx, ny, nz, c) (mgfx_vertex_t) {\
+    .position = MGFX_POS((x), (y), (z)), \
+    .texcoord = MGFX_TEX((s), (t)), \
+    .packed_normal = MGFX_NRM((nx), (ny), (nz)), \
+    .color = (c) \
+}
 
 #ifdef __cplusplus
 extern "C" {

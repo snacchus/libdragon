@@ -136,6 +136,7 @@ MgBeginShader
     nop
 
     # TODO: prevent second vertex from being stored on the last iteration if vertex count is odd
+    #       Might be ok if vertices are always loaded sequentially?
 vertex_loop:
     bge vtx_in_ptr, vtx_in_end, RSPQ_Loop
     addi vtx_out1_ptr, vtx_out0_ptr, MAGMA_VTX_SIZE
@@ -157,6 +158,8 @@ vertex_loop:
     # Set W components to 1
     vmov vpos_in.e3, K32
     vmov vpos_in.e7, K32
+
+    # TODO: Matrix palette
 
     #define vmmv0_i $v14
     #define vmmv0_f $v15
@@ -515,6 +518,8 @@ light_loop_end:
     # load texcoords (of two vertices)
     llv vtex.e0, MGFX_VTX_TEX + 0,            vtx_in_ptr
     llv vtex.e4, MGFX_VTX_TEX + MGFX_VTX_SIZE,vtx_in_ptr
+
+    # TODO: Generate texcoords
 
     # transform texcoords
     vmudh v___, vtexoffset, K1

@@ -4,7 +4,6 @@
 #include "matrix.h"
 #include "quat.h"
 #include "utility.h"
-#include "vertex.h"
 #include "cube_mesh.h"
 #include "scene_data.h"
 
@@ -12,6 +11,11 @@
 
 #define ENABLE_RDPQ_DEBUG 0
 #define SINGLE_FRAME      0
+
+#define VTX_TEX_SHIFT   8
+#define RDP_TEX_SHIFT   5
+#define TEX_SIZE_SHIFT  (VTX_TEX_SHIFT-RDP_TEX_SHIFT)
+#define RDP_HALF_TEXEL  (1<<(RDP_TEX_SHIFT-1))
 
 typedef struct
 {
