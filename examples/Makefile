@@ -12,6 +12,7 @@ EXAMPLES += gldemo
 EXAMPLES += joypadtest
 EXAMPLES += loadspritefromsd
 EXAMPLES += mgdemo
+EXAMPLES += mghello
 EXAMPLES += micro-ui
 EXAMPLES += mixertest
 EXAMPLES += cpaktest
