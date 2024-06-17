@@ -63,7 +63,7 @@ typedef enum
 {
     MG_RESOURCE_TYPE_UNIFORM_BUFFER         = 0,
     MG_RESOURCE_TYPE_STORAGE_BUFFER         = 1,
-    MG_RESOURCE_TYPE_INLINE_UNIFORM         = 2,
+    MG_RESOURCE_TYPE_EMBEDDED_UNIFORM       = 2,
 } mg_resource_type_t;
 
 typedef struct
@@ -114,7 +114,7 @@ typedef struct
     uint32_t binding;
     mg_resource_type_t type;
     mg_buffer_t *buffer;
-    const void *inline_data;
+    const void *embedded_data;
     uint32_t offset;
 } mg_resource_binding_t;
 

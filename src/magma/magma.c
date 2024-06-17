@@ -22,7 +22,7 @@ typedef struct mg_buffer_s
 typedef struct mg_resource_set_s 
 {
     rspq_block_t *block;
-    void *inline_data;
+    void *embedded_data;
 } mg_resource_set_t;
 
 DEFINE_RSP_UCODE(rsp_magma);
@@ -157,15 +157,15 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
 
     // Preprocessing
 
-    uint32_t inline_data_size = 0;
+    uint32_t embedded_data_size = 0;
 
     for (uint32_t i = 0; i < parms->binding_count; i++)
     {
         const mg_resource_binding_t *binding = &parms->bindings[i];
         switch (binding->type) {
-        case MG_RESOURCE_TYPE_INLINE_UNIFORM:
+        case MG_RESOURCE_TYPE_EMBEDDED_UNIFORM:
             const mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
-            inline_data_size += uniform->size;
+            embedded_data_size += uniform->size;
             break;
 
         case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
@@ -174,14 +174,14 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
         }
     }
 
-    if (inline_data_size > 0) {
-        resource_set->inline_data = malloc_uncached(inline_data_size);
+    if (embedded_data_size > 0) {
+        resource_set->embedded_data = malloc_uncached(embedded_data_size);
     }
 
     // Record block
     // TODO: optimize
 
-    inline_data_size = 0;
+    embedded_data_size = 0;
 
     rspq_block_begin();
     for (uint32_t i = 0; i < parms->binding_count; i++)
@@ -201,12 +201,12 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
             mg_inline_uniform_raw(uniform->offset, 8, storage_data);
             break;
 
-        case MG_RESOURCE_TYPE_INLINE_UNIFORM:
-            uint8_t *inline_data = (uint8_t*)resource_set->inline_data + inline_data_size;
-            assertf(((uint32_t)inline_data&0x7) == 0, "Uniform pointer not aligned to 8 bytes");
-            memcpy(inline_data, binding->inline_data, uniform->size);
-            inline_data_size += uniform->size;
-            mg_load_uniform(uniform, inline_data);
+        case MG_RESOURCE_TYPE_EMBEDDED_UNIFORM:
+            uint8_t *embedded_data = (uint8_t*)resource_set->embedded_data + embedded_data_size;
+            assertf(((uint32_t)embedded_data&0x7) == 0, "Uniform pointer not aligned to 8 bytes");
+            memcpy(embedded_data, binding->embedded_data, uniform->size);
+            embedded_data_size += uniform->size;
+            mg_load_uniform(uniform, embedded_data);
             break;
         }
     }
@@ -219,8 +219,8 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
 void mg_resource_set_free(mg_resource_set_t *resource_set)
 {
     rspq_block_free(resource_set->block);
-    if (resource_set->inline_data) {
-        free_uncached(resource_set->inline_data);
+    if (resource_set->embedded_data) {
+        free_uncached(resource_set->embedded_data);
     }
     free(resource_set);
 }

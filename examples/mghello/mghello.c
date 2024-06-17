@@ -42,34 +42,34 @@ int main()
 
     // Create the resource set. Since we're never changing any of the uniforms,
     // just embed everything into the resource set itself by using the binding type
-    // "MG_RESOURCE_TYPE_INLINE_UNIFORM". This will internally allocate some memory,
-    // and copy the data from "initial_data" when mg_resource_set_create is called. 
+    // "MG_RESOURCE_TYPE_EMBEDDED_UNIFORM". This will internally allocate some memory,
+    // and copy the data from "embedded_data" when mg_resource_set_create is called. 
     // We can safely throw away the input afterwards.
     mg_resource_binding_t resource_bindings[] = {
         {
             .binding = MGFX_BINDING_FOG,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &fog
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &fog
         },
         {
             .binding = MGFX_BINDING_LIGHTING,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &lighting
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &lighting
         },
         {
             .binding = MGFX_BINDING_TEXTURING,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &texturing,
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &texturing,
         },
         {
             .binding = MGFX_BINDING_MODES,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &modes,
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &modes,
         },
         {
             .binding = MGFX_BINDING_MATRICES,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &matrices,
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &matrices,
         }
     };
     mg_resource_set_t *resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {

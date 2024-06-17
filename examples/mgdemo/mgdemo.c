@@ -139,11 +139,18 @@ void init()
         .cull_mode = MG_CULL_MODE_BACK
     };
 
-    // This function returns the fixed function pipeline provided by libdragon.
+    // This function returns the builtin pipeline provided by libdragon.
     // When done rendering with it, the pipeline needs to be freed using mg_pipeline_free.
     pipeline = mgfx_create_pipeline();
 
     create_scene_resources();
+
+    // Initialize lighting parameters
+    for (size_t i = 0; i < LIGHT_COUNT; i++)
+    {
+        lights[i].color = color_from_packed32(light_colors[i]);
+        lights[i].radius = light_radii[i];
+    }
 
     // Load textures
     for (size_t i = 0; i < TEXTURE_COUNT; i++)
@@ -215,13 +222,6 @@ void create_scene_resources()
         .flags = MG_BUFFER_FLAGS_USAGE_UNIFORM
     });
 
-    // Lighting parameters
-    for (size_t i = 0; i < LIGHT_COUNT; i++)
-    {
-        lights[i].color = color_from_packed32(light_colors[i]);
-        lights[i].radius = light_radii[i];
-    }
-
     // Create the resource set. A resource set contains a number of resource bindings.
     // Each resource binding describes the type of resource, where to copy it from, and which binding location to copy it to.
     // Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
@@ -249,6 +249,9 @@ void create_scene_resources()
         .binding_count = ARRAY_COUNT(scene_bindings),
         .bindings = scene_bindings
     });
+
+    // Note that even though we've created the resource set above by pointing it towards a buffer, we haven't actually initialised
+    // any of the contents yet. This will be done at beginning of each frame.
 }
 
 void material_create(material_data *material, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color)
@@ -257,7 +260,7 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     // We separate the material from scene resources, because they are expected to change during the scene.
     // Not all objects will have the same material after all. To show off all features of magma in this demo,
     // we will make the assumption that the materials themselves will stay constant. Therefore we won't store
-    // this data inside buffers, but attach it to the resource set directly via so called "inline uniforms".
+    // this data inside buffers, but attach it to the resource set directly via so called "embedded uniforms".
 
     // 1. Initialize the raw material data by using the functions provided by the fixed function pipeline.
     //    Just as with uniform buffers, the shader expects the data in a format that is optimized for the RSP.
@@ -271,22 +274,22 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     });
     mgfx_get_modes(&modes, mode_parms);
 
-    // 2. Create the resource set. This time, we use the resource type "inline uniform" and set
-    //    the "inline_data" pointer to pass in the data we initialized above.
+    // 2. Create the resource set. This time, we use the resource type "embedded uniform" and set
+    //    the "embedded_data" pointer to pass in the data we initialized above.
     mg_resource_binding_t bindings[] = {
         {
             .binding = MGFX_BINDING_TEXTURING,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &tex
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &tex
         },
         {
             .binding = MGFX_BINDING_MODES,
-            .type = MG_RESOURCE_TYPE_INLINE_UNIFORM,
-            .inline_data = &modes
+            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
+            .embedded_data = &modes
         },
     };
 
-    // When this call returns, the "inline_data" has been consumed and a copy embedded inside the resource set itself.
+    // When this call returns, the "embedded_data" has been consumed and a copy embedded inside the resource set itself.
     // This effectively does the same as a uniform buffer, but there is one less object to manage. The drawback is that 
     // once the resource set has been created, there is no way to modify the embedded data. But due to the assumption we made,
     // that won't be required anyway.
@@ -312,22 +315,22 @@ void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex
     // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
     // By setting "initial_data", the buffer will already contain this data after creation, so we don't 
     // need to map it and manually copy the data in.
-    // Additionally, if the "MG_BUFFER_FLAGS_LAZY_ALLOC" flag is set, magma will use the pointer in "initial_data"
-    // as the buffer's actual backing memory for as long as possible, which avoids an extra memory allocation.
-    // Extra care must be taken when using this flag, as the passed pointer will be accessed by magma internally, so
-    // it must stay valid for as long as the buffer is used, and the user is responsible of handling data cache.
-    // However, the flag doesn't guarantee that no extra memory will ever be allocated. When and if it happens is up to the implementation.
 
     mesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
         .size = sizeof(mgfx_vertex_t) * vertex_count,
         .initial_data = vertices,
-        .flags = MG_BUFFER_FLAGS_USAGE_VERTEX | MG_BUFFER_FLAGS_LAZY_ALLOC
+        .flags = MG_BUFFER_FLAGS_USAGE_VERTEX
     });
 
     mesh->indices = indices;
     mesh->index_count = index_count;
 
+    // To increase performance, we can record the drawing command into a block, since the topology of the mesh doesn't change in this case.
+    // Note that we could still modify the vertices themselves if we wanted, by writing to the vertex buffer. This would require some manual
+    // synchronisation, however.
     rspq_block_begin();
+        // This function internally just reads the list of indices and emits a sequence of calls to mg_load_vertices and mg_draw_indices.
+        // Those function can also be called manually, if more customisation of the mesh layout is desired.
         mg_draw_indexed(&(mg_input_assembly_parms_t) {
             .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
         }, mesh->indices, mesh->index_count, 0);
@@ -351,7 +354,7 @@ void update()
 
 void update_camera()
 {
-    // Update camera matrices. Note that the camera position and rotation need to be inverted for this to work.
+    // Update camera matrices.
     const float up[3] = {0, 1, 0};
     const float target[3] = {0, 0, 0};
     mat4x4_make_lookat(&view_matrix, camera_position, up, target);
@@ -360,6 +363,10 @@ void update_camera()
 
 void update_lights()
 {
+    // Here we are updating the contents of the scene resources that we created during initialisation above.
+
+    // Because lighting is computed in eye space and we specify light positions/directions in world space,
+    // we need to manually transform the lights into eye space each frame and update the corresponding uniform.
     for (size_t i = 0; i < LIGHT_COUNT; i++)
     {
         // Transform light position into eye space
@@ -384,6 +391,8 @@ void update_lights()
 
 void update_object_matrices(object_data *object)
 {
+    // Update object matrices from its current transform.
+
     // TODO: Do (parts of) this on RSP instead
     mat4x4_t model_matrix;
     mat4x4_make_rotation_translation(&model_matrix, object->position, object->rotation.v);
@@ -394,6 +403,7 @@ void update_object_matrices(object_data *object)
 
 void render()
 {
+    // Update frame specific data
     update_camera();
     update_lights();
 
@@ -449,10 +459,12 @@ void render()
             current_material_id = object->material_id;
             current_material = &materials[current_material_id];
             mg_bind_resource_set(current_material->resource_set);
+
+            // Also set the geometry flags, which determine the type of triangle to be drawn.
             mg_set_geometry_flags(current_material->geometry_flags);
 
+            // Additionally, upload the material's texture and change the material color via rdpq, which can be done completely independently from magma.
             rdpq_set_prim_color(current_material->color);
-            // Additionally, upload the material's texture via rdpq, which can be done completely independently from magma.
             if (current_material->texture) {
                 rdpq_sprite_upload(TILE0, current_material->texture, &current_material->rdpq_tex_parms);
             }
@@ -483,9 +495,12 @@ void render()
         // Perform the draw call. This will assemble the triangles from the currently bound vertex/index buffers, process them with the
         // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
         rdpq_debug_log_msg("-------> Draw");
+
+        // Even when drawing commands are recorded into a block, we need to put them into a drawing batch to ensure proper synchronisation with rdpq.
         mg_draw_begin();
-        rspq_block_run(current_mesh->block);
+            rspq_block_run(current_mesh->block);
         mg_draw_end();
+
         rdpq_debug_log_msg("<------- Draw");
 
         rdpq_debug_log_msg("<----- Object");
