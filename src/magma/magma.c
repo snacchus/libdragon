@@ -387,23 +387,84 @@ void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t ver
 
 #define SPECIAL_INDEX UINT16_MAX
 
-typedef struct
+typedef struct vertex_cache_block_s vertex_cache_block;
+
+typedef struct vertex_cache_block_s
 {
     uint16_t start;
     uint16_t count;
+    vertex_cache_block *next;
 } vertex_cache_block;
 
 typedef struct 
 {
     vertex_cache_block blocks[MAGMA_VERTEX_CACHE_COUNT];
-    uint32_t block_count;
+    vertex_cache_block *head;
+    vertex_cache_block *unused;
     uint32_t total_count;
+
 } vertex_cache;
 
 static void vertex_cache_clear(vertex_cache *cache)
 {
-    cache->block_count = 0;
     cache->total_count = 0;
+    for (size_t i = 0; i < MAGMA_VERTEX_CACHE_COUNT-1; i++)
+    {
+        cache->blocks[i].next = &cache->blocks[i+1];
+    }
+    cache->blocks[MAGMA_VERTEX_CACHE_COUNT-1].next = NULL;
+    cache->unused = &cache->blocks[0];
+    cache->head = NULL;
+}
+
+static vertex_cache_block* vertex_cache_insert_after(vertex_cache *cache, vertex_cache_block *block)
+{
+    // Make sure there are still unused blocks remaining!
+    assertf(cache->unused, "Maximum number of blocks reached! This is a bug within magma.");
+
+    // Remove an entry from the list of unused blocks and use it as the new one
+    vertex_cache_block *new_block = cache->unused;
+    cache->unused = new_block->next;
+
+    if (block) {
+        // If block is set, insert after it
+        new_block->next = block->next;
+        block->next = new_block;
+    } else {
+        // Otherwise insert at the start of the list
+        new_block->next = cache->head;
+        cache->head = new_block;
+    }
+
+    return new_block;
+}
+
+static void vertex_cache_merge_with_next(vertex_cache *cache, vertex_cache_block *block)
+{
+    vertex_cache_block *next = block->next;
+    if (!next) {
+        // Nothing to do if there is no next block
+        return;
+    }
+
+    // Check if the two blocks are exactly bordering each other.
+    // This is suffient since blocks can normally only grow by one at a time.
+    uint16_t block_end = block->start + block->count;
+
+    if (block_end == next->start) {
+        // Grow this block to encompass the next one
+        block->count += next->count;
+
+        // Remove the next block from the list
+        block->next = next->next;
+
+        // Return it to the list of unused blocks
+        next->next = cache->unused;
+        cache->unused = next;
+    } else {
+        // Check invariant
+        assertf(block_end < next->start, "Blocks are overlapping! This is a bug within magma.");
+    }
 }
 
 static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
@@ -412,52 +473,57 @@ static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
         return false;
     }
 
-    //size_t new_block_index = cache->block_count;
-
     // Find existing block to insert into
-    for (size_t i = 0; i < cache->block_count; i++)
+    vertex_cache_block *block = cache->head;
+    vertex_cache_block *prev = NULL;
+    while (block)
     {
-        vertex_cache_block *block = &cache->blocks[i];
-        if (block->count == 0) {
-            continue;
+        if (block->count > 0) {
+            uint16_t block_end = block->start + block->count;
+            if (index >= block->start && index < block_end) {
+                // Index is already contained in this block
+                return true;
+            }
+
+            if (index == block_end) {
+                // Index is the next one after this block. Grow it by one.
+                block->count++;
+                cache->total_count++;
+
+                // Try to merge with the next block in case they are now bordering
+                vertex_cache_merge_with_next(cache, block);
+
+                return true;
+            }
+
+            if (block->start - index == 1) {
+                // Index is the previous one before this block. Grow it backwards by one.
+                block->count++;
+                block->start--;
+                cache->total_count++;
+
+                // Try to merge with the previous block in case they are now bordering
+                vertex_cache_merge_with_next(cache, prev);
+
+                return true;
+            }
+
+            if (block->start > index) {
+                // Blocks are always sorted. That means if the current block's start
+                // is after the index, we already know that none of the following blocks
+                // will contain the index. The new block we need to create has to be inserted
+                // before the current block.
+                break;
+            }
         }
 
-        uint16_t diff = index - block->start;
-        if (diff < block->count) {
-            // Index is already contained in this block
-            return true;
-        }
-        if (diff == block->count) {
-            // Index is the next one after this block. Grow it by one.
-            block->count++;
-            cache->total_count++;
-            // TODO: coalesce blocks
-            return true;
-        }
-
-        if (diff == -1) {
-            // Index is the previous one before this block. Grow it backwards by one.
-            block->count++;
-            block->start--;
-            cache->total_count++;
-            return true;
-        }
-
-        if (block->start > index) {
-            // Blocks are always sorted. That means if the current block's start
-            // is after the index, we already know that none of the existing blocks
-            // will contain the index. The new block we need to create has to be inserted
-            // in the current block's place.
-            //new_block_index = i;
-            break;
-        }
+        prev = block;
+        block = block->next;
     }
 
-    // Create new block
-    assertf(cache->block_count < MAGMA_VERTEX_CACHE_COUNT, "Maximum number of blocks reached! This is a bug within magma.");
-
-    // TODO: Insert at 
-    vertex_cache_block *new_block = &cache->blocks[cache->block_count++];
+    // If no existing block contained the index, insert new block after "prev". 
+    // If prev is null, there are no blocks yet and this will create the new block at the start of the list.
+    vertex_cache_block *new_block = vertex_cache_insert_after(cache, prev);
     new_block->start = index;
     new_block->count = 1;
     cache->total_count++;
@@ -467,67 +533,202 @@ static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
 static bool vertex_cache_find(const vertex_cache *cache, uint16_t index, uint8_t *cache_index)
 {
     uint16_t cur_offset = 0;
-    for (size_t i = 0; i < cache->block_count; i++)
+    vertex_cache_block *block = cache->head;
+    while (block)
     {
-        const vertex_cache_block *block = &cache->blocks[i];
         uint16_t diff = index - block->start;
         if (diff < block->count) {
             *cache_index = cur_offset + diff;
             return true;
         }
         cur_offset += block->count;
+        block = block->next;
     }
 
     return false;
 }
 
-static void vertex_cache_load(const vertex_cache *cache, int32_t offset)
+static uint8_t vertex_cache_get(const vertex_cache *cache, uint16_t index)
 {
-    //debugf("Vertex batch (total %ld):\n", cache->total_count);
-    uint32_t cache_offset = 0;
-    for (size_t i = 0; i < cache->block_count; i++)
+    uint8_t cache_index;
+    bool found = vertex_cache_find(cache, index, &cache_index);
+    assertf(found, "Index %d not found in vertex batch! This is a bug within magma.", index);
+    return cache_index;
+}
+
+static void vertex_cache_load(const vertex_cache *cache, int32_t offset, uint32_t cache_offset)
+{
+    vertex_cache_block *block = cache->head;
+    while (block)
     {
-        if (cache->blocks[i].count == 0) continue;
-        //debugf("block %d: offset %d, count %d\n", i, cache->blocks[i].start, cache->blocks[i].count);
-        mg_load_vertices(cache->blocks[i].start + offset, cache_offset, cache->blocks[i].count);
-        cache_offset += cache->blocks[i].count;
+        if (block->count > 0) {
+            mg_load_vertices(block->start + offset, cache_offset, block->count);
+            cache_offset += block->count;
+        }
+
+        block = block->next;
     }
 }
 
-static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, uint32_t max_count, vertex_cache *cache)
+static void vertex_cache_dump(const vertex_cache *cache)
+{
+    debugf("vertex cache dump:\n");
+    vertex_cache_block *block = cache->head;
+    while (block)
+    {
+        debugf("%d %d\n", block->start, block->count);
+        block = block->next;
+    }
+}
+
+static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, uint32_t max_count, vertex_cache *cache, uint32_t windup, uint32_t advance, bool restart_enabled, uint32_t cache_offset)
 {
     vertex_cache_clear(cache);
 
     uint32_t count = 0;
-    for (; count < max_count; count++)
+    uint32_t required = windup + advance;
+
+    while (count + required <= max_count)
     {
-        if (!vertex_cache_try_insert(cache, indices[count])) {
+        bool restart = false;
+        uint32_t need_insertion = 0;
+        for (size_t i = 0; i < required; i++)
+        {
+            uint16_t index = indices[count + i];
+            if (restart_enabled && index == SPECIAL_INDEX) {
+                required = windup + advance;
+                need_insertion = 0;
+                count++;
+                restart = true;
+                break;
+            }
+
+            uint8_t dummy;
+            need_insertion += vertex_cache_find(cache, index, &dummy) ? 0 : 1;
+        }
+
+        if (restart) {
+            continue;
+        }
+
+        if (cache->total_count + need_insertion + cache_offset > MAGMA_VERTEX_CACHE_COUNT) {
             break;
         }
+
+        for (size_t i = 0; i < required; i++)
+        {
+            vertex_cache_try_insert(cache, indices[count + i]);
+        }
+
+        count += required;
+        required = advance;
+
+        //vertex_cache_dump(cache);
     }
 
-    assertf(cache->total_count <= MAGMA_VERTEX_CACHE_COUNT, "Vertex batch is too big! This is a bug within magma.");
+    assertf(cache->total_count + cache_offset <= MAGMA_VERTEX_CACHE_COUNT, "Vertex batch is too big! This is a bug within magma.");
 
-    vertex_cache_load(cache, vertex_offset);
+    vertex_cache_load(cache, vertex_offset, cache_offset);
     return count;
 }
 
-static void draw_batch(const uint16_t *indices, uint32_t current_index, uint32_t batch_count, const vertex_cache *cache)
+static void draw_triangle_list_batch(const uint16_t *indices, uint32_t current_index, uint32_t batch_count, const vertex_cache *cache)
 {
+    uint8_t prim_indices[3];
+    for (size_t i = 0; i < batch_count; i++)
+    {
+        uint8_t cache_index = vertex_cache_get(cache, indices[current_index + i]);
+
+        prim_indices[i%3] = cache_index;
+        if (i%3 == 2) {
+            mg_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
+        }
+    }
+}
+
+static void draw_triangle_strip_batch(const uint16_t *indices, uint32_t current_index, uint32_t batch_count, const vertex_cache *cache, bool restart_enabled)
+{
+    size_t prim_counter = 0;
     uint8_t prim_indices[3];
     for (size_t i = 0; i < batch_count; i++)
     {
         uint16_t index = indices[current_index + i];
 
-        uint8_t cache_index = 0;
-        bool found = vertex_cache_find(cache, index, &cache_index);
-        assertf(found, "Index not found in vertex batch! This is a bug within magma.");
-
-        prim_indices[i%3] = cache_index;
-        if (i%3 == 2) {
-            //debugf("Triangle: %d, %d, %d\n", prim_indices[0], prim_indices[1], prim_indices[2]);
-            mg_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
+        if (restart_enabled && index == SPECIAL_INDEX) {
+            prim_counter = 0;
+            continue;
         }
+
+        uint8_t cache_index = vertex_cache_get(cache, index);
+
+        prim_indices[prim_counter%3] = cache_index;
+        if (prim_counter>1) {
+            int p = prim_counter-2;
+            int p0 = p;
+            int p1 = p+(1+p%2);
+            int p2 = p+(2-p%2);
+            mg_draw_indices(prim_indices[p0%3], prim_indices[p1%3], prim_indices[p2%3]);
+        }
+
+        prim_counter++;
+    }
+}
+
+static void draw_triangle_fan_batch(const uint16_t *indices, uint32_t current_index, uint32_t batch_count, const vertex_cache *cache, bool restart_enabled, uint32_t cache_offset)
+{
+    uint8_t prim_indices[3] = {0};
+    size_t prim_counter = cache_offset;
+    for (size_t i = 0; i < batch_count; i++)
+    {
+        uint16_t index = indices[current_index + i];
+
+        if (restart_enabled && index == SPECIAL_INDEX) {
+            prim_counter = 0;
+            continue;
+        }
+
+        uint8_t cache_index = vertex_cache_get(cache, index) + cache_offset;
+
+        if (prim_counter == 0) {
+            prim_indices[2] = cache_index;
+        } else {
+            prim_indices[prim_counter%2] = cache_index;
+        }
+
+        if (prim_counter>1) {
+            int p = prim_counter-2;
+            int p0 = p+1;
+            int p1 = p+2;
+            mg_draw_indices(prim_indices[p0%2], prim_indices[p1%2], prim_indices[2]);
+        }
+
+        prim_counter++;
+    }
+}
+
+static uint32_t get_advance_count(mg_primitive_topology_t topology)
+{
+    switch (topology) {
+    case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+        return 3;
+    case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+    case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+        return 1;
+    default:
+        assertf(0, "Unknown topology");
+    }
+}
+
+static uint32_t get_windup_count(mg_primitive_topology_t topology)
+{
+    switch (topology) {
+    case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+        return 0;
+    case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+    case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+        return 2;
+    default:
+        assertf(0, "Unknown topology");
     }
 }
 
@@ -536,11 +737,33 @@ void mg_draw_indexed(const mg_input_assembly_parms_t *input_assembly_parms, cons
     vertex_cache cache;
     uint32_t current_index = 0;
 
-    while (current_index < index_count)
+    mg_primitive_topology_t topology = input_assembly_parms ? input_assembly_parms->primitive_topology : MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    bool restart_enabled = input_assembly_parms != NULL && input_assembly_parms->primitive_restart_enabled;
+
+    assertf(!(restart_enabled && topology == MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST), "Primitive restart is not supported for triangle lists!");
+
+    uint32_t windup = get_windup_count(topology);
+    uint32_t advance = get_advance_count(topology);
+
+    uint32_t cache_offset = 0;
+
+    while (current_index < index_count - windup + cache_offset)
     {
-        uint32_t batch_index_count = prepare_batch(indices + current_index, vertex_offset, index_count - current_index, &cache);
-        draw_batch(indices, current_index, batch_index_count, &cache);
-        
-        current_index += batch_index_count;
+        uint32_t batch_index_count = prepare_batch(indices + current_index, vertex_offset, index_count - current_index, &cache, windup, advance, restart_enabled, cache_offset);
+
+        switch (topology) {
+        case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+            draw_triangle_list_batch(indices, current_index, batch_index_count, &cache);
+            break;
+        case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+            draw_triangle_strip_batch(indices, current_index, batch_index_count, &cache, restart_enabled);
+            break;
+        case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+            draw_triangle_fan_batch(indices, current_index, batch_index_count, &cache, restart_enabled, cache_offset);
+            cache_offset = 1;
+            break;
+        }
+
+        current_index += batch_index_count - windup + cache_offset;
     }
 }

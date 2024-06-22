@@ -29,10 +29,10 @@ void assert_block_contents(const uint32_t *expected_commands, uint32_t expected_
     ASSERT_EQUAL_HEX(last_cmd, return_cmd, "block is not %ld words long", expected_commands_count);
 }
 
-void assert_draw_indexed(const uint32_t *expected_commands, uint32_t expected_commands_count, const uint16_t *indices, uint32_t count, uint32_t offset, TestContext *ctx)
+void assert_draw_indexed(const uint32_t *expected_commands, uint32_t expected_commands_count, const mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t count, uint32_t offset, TestContext *ctx)
 {
     rspq_block_begin();
-        mg_draw_indexed(NULL, indices, count, offset);
+        mg_draw_indexed(input_assembly_parms, indices, count, offset);
     rspq_block_t *block = rspq_block_end();
 
     assert_block_contents(expected_commands, expected_commands_count, block, ctx);
@@ -78,7 +78,7 @@ void test_mg_draw_indexed_one_tri(TestContext *ctx)
         TRI(0, 1, 2),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_two_tris(TestContext *ctx)
@@ -95,7 +95,7 @@ void test_mg_draw_indexed_two_tris(TestContext *ctx)
         TRI(3, 2, 1),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_full_cache(TestContext *ctx)
@@ -118,12 +118,50 @@ void test_mg_draw_indexed_full_cache(TestContext *ctx)
         TRI(21, 22, 23),
         TRI(24, 25, 26),
         TRI(27, 28, 29),
-        VTX(6, 0, 0),
+        VTX(6, 0, 30),
         TRI(0, 1, 2),
         TRI(3, 4, 5),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_full_one_extra(TestContext *ctx)
+{
+    MG_INIT();
+
+
+    const uint16_t indices[] = {
+        0, 1, 2, 
+        3, 4, 5,
+        6, 7, 8,
+        9, 10, 11,
+        12, 13, 14,
+        15, 16, 17,
+        18, 19, 20,
+        21, 22, 23,
+        24, 25, 26,
+        27, 28, 29,
+        30, 29, 50
+    };
+
+    const uint32_t expected_commands[] = {
+        VTX(31, 0, 0),
+        VTX(1, 31, 50),
+        TRI(0, 1, 2),
+        TRI(3, 4, 5),
+        TRI(6, 7, 8),
+        TRI(9, 10, 11),
+        TRI(12, 13, 14),
+        TRI(15, 16, 17),
+        TRI(18, 19, 20),
+        TRI(21, 22, 23),
+        TRI(24, 25, 26),
+        TRI(27, 28, 29),
+        TRI(30, 29, 31),
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_fragmented_batch(TestContext *ctx)
@@ -141,7 +179,7 @@ void test_mg_draw_indexed_fragmented_batch(TestContext *ctx)
         TRI(3, 4, 5),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_frag_backwards(TestContext *ctx)
@@ -153,13 +191,13 @@ void test_mg_draw_indexed_frag_backwards(TestContext *ctx)
     };
 
     const uint32_t expected_commands[] = {
-        VTX(3, 0, 41),
-        VTX(3, 3, 0),
-        TRI(0, 1, 2),
+        VTX(3, 0, 0),
+        VTX(3, 3, 41),
         TRI(3, 4, 5),
+        TRI(0, 1, 2),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_holes(TestContext *ctx)
@@ -177,7 +215,7 @@ void test_mg_draw_indexed_holes(TestContext *ctx)
         TRI(0, 1, 2),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_out_of_order(TestContext *ctx)
@@ -194,7 +232,7 @@ void test_mg_draw_indexed_out_of_order(TestContext *ctx)
         TRI(0, 3, 2),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
 
 void test_mg_draw_indexed_coalescing(TestContext *ctx)
@@ -211,5 +249,213 @@ void test_mg_draw_indexed_coalescing(TestContext *ctx)
         TRI(1, 4, 2),
     };
 
-    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), NULL, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_strip(TestContext *ctx)
+{
+    MG_INIT();
+
+    const uint16_t indices[] = {
+        0, 1, 2, 3, 4, 5
+    };
+
+    const uint32_t expected_commands[] = {
+        VTX(6, 0, 0),
+        TRI(0, 1, 2),
+        TRI(1, 3, 2),
+        TRI(2, 3, 4),
+        TRI(3, 5, 4),
+    };
+
+    mg_input_assembly_parms_t parms = {
+        .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .primitive_restart_enabled = false
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), &parms, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_strip_full(TestContext *ctx)
+{
+    MG_INIT();
+
+    const size_t count = 36;
+    uint16_t indices[count];
+    for (size_t i = 0; i < count; i++) indices[i] = i;
+
+    const uint32_t expected_commands[] = {
+        VTX(32, 0, 0),
+        TRI(0, 1, 2),
+        TRI(1, 3, 2),
+        TRI(2, 3, 4),
+        TRI(3, 5, 4),
+        TRI(4, 5, 6),
+        TRI(5, 7, 6),
+        TRI(6, 7, 8),
+        TRI(7, 9, 8),
+        TRI(8, 9, 10),
+        TRI(9, 11, 10),
+        TRI(10, 11, 12),
+        TRI(11, 13, 12),
+        TRI(12, 13, 14),
+        TRI(13, 15, 14),
+        TRI(14, 15, 16),
+        TRI(15, 17, 16),
+        TRI(16, 17, 18),
+        TRI(17, 19, 18),
+        TRI(18, 19, 20),
+        TRI(19, 21, 20),
+        TRI(20, 21, 22),
+        TRI(21, 23, 22),
+        TRI(22, 23, 24),
+        TRI(23, 25, 24),
+        TRI(24, 25, 26),
+        TRI(25, 27, 26),
+        TRI(26, 27, 28),
+        TRI(27, 29, 28),
+        TRI(28, 29, 30),
+        TRI(29, 31, 30),
+        VTX(6, 0, 30),
+        TRI(0, 1, 2),
+        TRI(1, 3, 2),
+        TRI(2, 3, 4),
+        TRI(3, 5, 4),
+    };
+
+    mg_input_assembly_parms_t parms = {
+        .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .primitive_restart_enabled = false
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), &parms, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_fan(TestContext *ctx)
+{
+    MG_INIT();
+
+    const uint16_t indices[] = {
+        0, 1, 2, 3, 4, 5
+    };
+
+    const uint32_t expected_commands[] = {
+        VTX(6, 0, 0),
+        TRI(1, 2, 0),
+        TRI(2, 3, 0),
+        TRI(3, 4, 0),
+        TRI(4, 5, 0),
+    };
+
+    mg_input_assembly_parms_t parms = {
+        .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+        .primitive_restart_enabled = false
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), &parms, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_fan_full(TestContext *ctx)
+{
+    MG_INIT();
+
+    const size_t count = 36;
+    uint16_t indices[count];
+    for (size_t i = 0; i < count; i++) indices[i] = i;
+
+    const uint32_t expected_commands[] = {
+        VTX(32, 0, 0),
+        TRI(1, 2, 0),
+        TRI(2, 3, 0),
+        TRI(3, 4, 0),
+        TRI(4, 5, 0),
+        TRI(5, 6, 0),
+        TRI(6, 7, 0),
+        TRI(7, 8, 0),
+        TRI(8, 9, 0),
+        TRI(9, 10, 0),
+        TRI(10, 11, 0),
+        TRI(11, 12, 0),
+        TRI(12, 13, 0),
+        TRI(13, 14, 0),
+        TRI(14, 15, 0),
+        TRI(15, 16, 0),
+        TRI(16, 17, 0),
+        TRI(17, 18, 0),
+        TRI(18, 19, 0),
+        TRI(19, 20, 0),
+        TRI(20, 21, 0),
+        TRI(21, 22, 0),
+        TRI(22, 23, 0),
+        TRI(23, 24, 0),
+        TRI(24, 25, 0),
+        TRI(25, 26, 0),
+        TRI(26, 27, 0),
+        TRI(27, 28, 0),
+        TRI(28, 29, 0),
+        TRI(29, 30, 0),
+        TRI(30, 31, 0),
+        VTX(5, 1, 31),
+        TRI(1, 2, 0),
+        TRI(2, 3, 0),
+        TRI(3, 4, 0),
+        TRI(4, 5, 0),
+    };
+
+    mg_input_assembly_parms_t parms = {
+        .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+        .primitive_restart_enabled = false
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), &parms, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_restart_strip(TestContext *ctx)
+{
+    MG_INIT();
+
+    const uint16_t indices[] = {
+        0, 1, 2, 3, 4, -1, 5, 6, 7, 8
+    };
+
+    const uint32_t expected_commands[] = {
+        VTX(9, 0, 0),
+        TRI(0, 1, 2),
+        TRI(1, 3, 2),
+        TRI(2, 3, 4),
+        TRI(5, 6, 7),
+        TRI(6, 8, 7),
+    };
+
+    mg_input_assembly_parms_t parms = {
+        .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .primitive_restart_enabled = true
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), &parms, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
+}
+
+void test_mg_draw_indexed_restart_fan(TestContext *ctx)
+{
+    MG_INIT();
+
+    const uint16_t indices[] = {
+        0, 1, 2, 3, 4, -1, 5, 6, 7, 8
+    };
+
+    const uint32_t expected_commands[] = {
+        VTX(9, 0, 0),
+        TRI(1, 2, 0),
+        TRI(2, 3, 0),
+        TRI(3, 4, 0),
+        TRI(6, 7, 5),
+        TRI(7, 8, 5),
+    };
+
+    mg_input_assembly_parms_t parms = {
+        .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+        .primitive_restart_enabled = true
+    };
+
+    assert_draw_indexed(expected_commands, sizeof(expected_commands)/sizeof(expected_commands[0]), &parms, indices, sizeof(indices)/sizeof(indices[0]), 0, ctx);
 }
