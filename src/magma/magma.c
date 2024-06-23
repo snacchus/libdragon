@@ -346,41 +346,51 @@ void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
 
 void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex)
 {
+    uint32_t cache_offset = 0;
+    uint32_t next_cache_offset = 0;
     uint32_t advance_count = 0;
+    uint32_t batch_size = 0;
     switch (input_assembly_parms->primitive_topology) {
     case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
         advance_count = TRI_LIST_ADVANCE_COUNT;
+        batch_size = TRI_LIST_ADVANCE_COUNT;
         break;
     case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+        advance_count = MAGMA_VERTEX_CACHE_COUNT - 2;
+        batch_size = MAGMA_VERTEX_CACHE_COUNT;
+        break;
     case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
-        advance_count = MAGMA_VERTEX_CACHE_COUNT;
+        advance_count = MAGMA_VERTEX_CACHE_COUNT - 1;
+        batch_size = MAGMA_VERTEX_CACHE_COUNT;
         break;
     }
 
-    for (uint32_t current_vertex = 0; current_vertex < vertex_count; current_vertex += advance_count)
+    for (uint32_t current_vertex = 0; current_vertex < vertex_count; current_vertex += advance_count - cache_offset)
     {
-        uint32_t load_count = MIN(advance_count, vertex_count - current_vertex);
-        mg_load_vertices(current_vertex + first_vertex, 0, load_count);
+        cache_offset = next_cache_offset;
+        uint32_t load_count = MIN(batch_size - cache_offset, vertex_count - current_vertex);
+        mg_load_vertices(current_vertex + first_vertex, cache_offset, load_count);
 
         switch (input_assembly_parms->primitive_topology) {
-        case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
-        {
-            size_t prim_count = load_count / 3;
-            for (size_t i = 0; i < prim_count; i++) mg_draw_indices(3*i, 3*i+1, 3*i+2);
-            break;
-        }
-        case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
-        {
-            size_t prim_count = MAX(0, load_count - 2);
-            for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i, i + 1 + i%2, i + 2 - i%2);
-            break;
-        }
-        case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
-        {
-            size_t prim_count = MAX(0, load_count - 2);
-            for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i+1, i+2, 0);
-            break;
-        }
+            case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+            {
+                size_t prim_count = load_count / 3;
+                for (size_t i = 0; i < prim_count; i++) mg_draw_indices(3*i, 3*i+1, 3*i+2);
+                break;
+            }
+            case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+            {
+                size_t prim_count = MAX(0, load_count - 2);
+                for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i, i + 1 + i%2, i + 2 - i%2);
+                break;
+            }
+            case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+            {
+                size_t prim_count = MAX(0, load_count - 2 + cache_offset);
+                for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i+1, i+2, 0);
+                next_cache_offset = 1;
+                break;
+            }
         }
     }
 }
