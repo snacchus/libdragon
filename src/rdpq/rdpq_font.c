@@ -39,6 +39,9 @@ static void recalc_style(int font_type, style_t *s)
     rspq_block_begin();
             switch (font_type) {
             case FONT_TYPE_ALIASED:
+                // Atlases are simple I4 textures, so we just need to colorize
+                // them using the PRIM color. We also use PRIM alpha to control
+                // additional transparency of the text.
                 rdpq_mode_begin();
                     rdpq_set_mode_standard();
                     rdpq_mode_combiner(RDPQ_COMBINER1((0,0,0,PRIM), (TEX0,0,PRIM,0)));
@@ -48,6 +51,9 @@ static void recalc_style(int font_type, style_t *s)
                 rdpq_set_prim_color(s->color);
                 break;
             case FONT_TYPE_MONO:
+                // Monochrome fonts use CI4 textures with 4 1bpp layers, and special
+                // palettes to isolate each layer. PRIM control the color and
+                // the transparency of the text.
                 rdpq_mode_begin();
                     rdpq_set_mode_standard();
                     rdpq_mode_combiner(RDPQ_COMBINER1((0,0,0,PRIM), (TEX0,0,PRIM,0)));
@@ -108,7 +114,7 @@ rdpq_font_t* rdpq_font_load_buf(void *buf, int sz)
     assertf(sz >= sizeof(rdpq_font_t), "Font buffer too small (sz=%d)", sz);
     assertf(memcmp(fnt->magic, FONT_MAGIC_LOADED, 3), "Trying to load already loaded font data (buf=%p, sz=%08x)", buf, sz);
     assertf(!memcmp(fnt->magic, FONT_MAGIC, 3), "invalid font data (magic: %c%c%c)", fnt->magic[0], fnt->magic[1], fnt->magic[2]);
-    assertf(fnt->version == 6, "unsupported font version: %d\nPlease regenerate fonts with an updated mkfont tool", fnt->version);
+    assertf(fnt->version == 7, "unsupported font version: %d\nPlease regenerate fonts with an updated mkfont tool", fnt->version);
     fnt->ranges = PTR_DECODE(fnt, fnt->ranges);
     fnt->glyphs = PTR_DECODE(fnt, fnt->glyphs);
     fnt->atlases = PTR_DECODE(fnt, fnt->atlases);
@@ -292,8 +298,8 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
         // Draw the glyph
         float x = x0 + (ch->x + g->xoff);
         float y = y0 + (ch->y + g->yoff);
-        int width = (g->xoff2 - g->xoff + 1);
-        int height = (g->yoff2 - g->yoff + 1);
+        int width = g->xoff2 - g->xoff;
+        int height = g->yoff2 - g->yoff;
 
         rdpq_texture_rectangle(g->ntile,
             x, y, x+width, y+height,
@@ -309,12 +315,36 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
     return ch - chars;
 }
 
-rdpq_font_t *__rdpq_font_load_builtin_0(void)
+bool rdpq_font_get_glyph_ranges(const rdpq_font_t *fnt, int idx, uint32_t *start, uint32_t *end)
+{
+    if (idx < 0 || idx >= fnt->num_ranges)
+        return false;
+    *start = fnt->ranges[idx].first_codepoint;
+    *end = fnt->ranges[idx].first_codepoint + fnt->ranges[idx].num_codepoints - 1;
+    return true;
+}
+
+bool rdpq_font_get_glyph_metrics(const rdpq_font_t *fnt,  uint32_t codepoint, rdpq_font_gmetrics_t *metrics)
+{
+    int16_t glyph = __rdpq_font_glyph(fnt, codepoint);
+    if (glyph < 0)
+        return false;
+
+    glyph_t *g = &fnt->glyphs[glyph];
+    metrics->xadvance = g->xadvance * (1.0f / 64.0f);
+    metrics->x0 = g->xoff;
+    metrics->y0 = g->yoff;
+    metrics->x1 = g->xoff2;
+    metrics->y1 = g->yoff2;
+    return true;
+}
+
+rdpq_font_t *__rdpq_font_load_builtin_1(void)
 {
     return rdpq_font_load_buf((void*)__fontdb_monogram, __fontdb_monogram_len);
 }
 
-rdpq_font_t *__rdpq_font_load_builtin_1(void)
+rdpq_font_t *__rdpq_font_load_builtin_2(void)
 {
     return rdpq_font_load_buf((void*)__fontdb_at01, __fontdb_at01_len);
 }

@@ -50,6 +50,11 @@ enum rdpq_paragraph_flag_e {
     /// and #rdpq_text_print. It can be disabled by setting #rdpq_textparms_t::disable_aa_fix
     /// while rendering.
     RDPQ_PARAGRAPH_FLAG_ANTIALIAS_FIX = (1 << 0),
+
+    /// @brief Dynamically-allocated layout
+    /// This flag is set when the layout was allocated dynamically via malloc
+    /// and can thus be resized when needed via realloc.
+    RDPQ_PARAGRAPH_FLAG_MALLOC = (1 << 1),
 };
 
 /**
@@ -71,7 +76,9 @@ typedef struct {
         float x1;                    ///< Bottom-right corner (X coord) of the bounding box, relative to drawing position
         float y1;                    ///< Bottom-right corner (Y coord) of the bounding box, relative to drawing position
     } bbox;                          ///< Bounding box of the text, relative to the drawing position
-    int nlines;                      ///< Number of lines of the text
+    float advance_x;                 ///< Pen advance in X after drawing the text
+    float advance_y;                 ///< Pen advance in Y after drawing the text
+    int nlines;                      ///< Number of lines in the text
     int nchars;                      ///< Total number of chars in this layout
     int capacity;                    ///< Capacity of the chars array
     float x0, y0;                    ///< Alignment offset of the text

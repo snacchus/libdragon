@@ -77,12 +77,17 @@ void rdpq_paragraph_builder_begin(const rdpq_textparms_t *parms, uint8_t initial
     static const rdpq_textparms_t empty_parms = {0};
     builder.parms = parms ? parms : &empty_parms;
 
-    int layout_cap = 256;
-    if (!layout)
+    int flags = 0;
+    int layout_cap = 32;
+    if (!layout) {
         layout = malloc(sizeof(rdpq_paragraph_t) + sizeof(rdpq_paragraph_char_t) * layout_cap);
-    else
+        flags = RDPQ_PARAGRAPH_FLAG_MALLOC;
+    } else {
+        flags = layout->flags & RDPQ_PARAGRAPH_FLAG_MALLOC;
         layout_cap = layout->capacity;
+    }
     memset(layout, 0, sizeof(*layout));
+    layout->flags = flags;
     layout->capacity = layout_cap;
     if (!builder.parms->disable_aa_fix)
         layout->flags |= RDPQ_PARAGRAPH_FLAG_ANTIALIAS_FIX;
@@ -116,6 +121,14 @@ void rdpq_paragraph_builder_style(uint8_t style_id)
 {
     builder.must_sort |= builder.style_id > style_id;
     builder.style_id = style_id;
+}
+
+static void paragraph_extend(void)
+{
+    assertf(builder.layout->flags & RDPQ_PARAGRAPH_FLAG_MALLOC, "paragraph of text is too long and cannot be dynamically extnded");
+    int new_cap = builder.layout->capacity * 2;
+    builder.layout = realloc(builder.layout, sizeof(rdpq_paragraph_t) + sizeof(rdpq_paragraph_char_t) * new_cap);
+    builder.layout->capacity = new_cap;
 }
 
 static bool paragraph_wrap(int wrapchar, float *xcur, float *ycur)
@@ -169,14 +182,12 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
     float xcur = builder.x;
     float ycur = builder.y;
     int16_t next_index = -1;
-    bool is_space = false;
     bool is_tab = false;
 
     #define UTF8_DECODE_NEXT() ({ \
         uint32_t codepoint = *utf8_text > 0 ? *utf8_text++ : utf8_decode(&utf8_text); \
         is_tab = (codepoint == '\t'); \
         if (is_tab) codepoint = ' '; \
-        is_space = codepoint == ' '; \
         __rdpq_font_glyph(builder.font, codepoint); \
     })
 
@@ -188,39 +199,52 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
         float xadvance; int8_t xoff2; bool has_kerning; uint8_t atlas_id;
         __rdpq_font_glyph_metrics(fnt, index, &xadvance, NULL, &xoff2, &has_kerning, &atlas_id);
 
-        if (!is_space) {
-            builder.layout->chars[builder.layout->nchars++] = (rdpq_paragraph_char_t) {
-                .font_id = builder.font_id,
-                .atlas_id = atlas_id,
-                .style_id = builder.style_id,
-                .glyph = index,
-                .x = xcur+.5f,
-                .y = ycur+.5f,
-            };
-        } else {       
+        // Check if this is a space character
+        if (UNLIKELY(xoff2 == 0)) {
             builder.ch_last_space = builder.layout->nchars;
-        }
 
-        float last_pixel = xcur + xoff2 * builder.xscale;
-
-        if (UNLIKELY(is_tab)) {
-            if (parms->tabstops) {
-                // Go to next tabstop
-                for (int t=0; parms->tabstops[t] != 0; t++) {
-                    if (last_pixel < parms->tabstops[t] * builder.xscale) {
-                        xcur = parms->tabstops[t] * builder.xscale;
-                        break;
+            if (UNLIKELY(is_tab)) {
+                if (parms->tabstops) {
+                    // Go to next tabstop
+                    for (int t=0; parms->tabstops[t] != 0; t++) {
+                        if (xcur < parms->tabstops[t] * builder.xscale) {
+                            xcur = parms->tabstops[t] * builder.xscale;
+                            break;
+                        }
                     }
+                } else {
+                    // Arbitrarly put tabstops every 32 pixels
+                    xcur += xadvance * builder.xscale;
+                    xcur = fm_ceilf(xcur / 32.0f) * 32.0f;
                 }
             } else {
-                // Arbitrarly put tabstops every 32 pixels
                 xcur += xadvance * builder.xscale;
-                xcur = fm_ceilf(xcur / 32.0f) * 32.0f;
             }
-        } else {
-            xcur += xadvance * builder.xscale;
+
+            // Round to nearest pixel when we find a space. This makes all words
+            // start from a pixel boundary, which means words will always look
+            // the same in any rendition (since, depending on resolution, a single
+            // pixel of relative distance between letters can be very visible).
+            xcur = roundf(xcur);
+
+            continue;
         }
 
+        // Add character to the layout
+        if (UNLIKELY(builder.layout->nchars >= builder.layout->capacity)) paragraph_extend();
+        builder.layout->chars[builder.layout->nchars++] = (rdpq_paragraph_char_t) {
+            .font_id = builder.font_id,
+            .atlas_id = atlas_id,
+            .style_id = builder.style_id,
+            .glyph = index,
+            .x = xcur+.5f,
+            .y = ycur+.5f,
+        };
+
+        // Advance the cursor
+        xcur += xadvance * builder.xscale;
+
+        // Correct for kerning
         if (UNLIKELY(has_kerning && utf8_text < end)) {
             next_index = UTF8_DECODE_NEXT();
             if (next_index >= 0) {
@@ -229,13 +253,8 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
             }
         }
 
-        // Round to nearest pixel when we find a space. This makes all words
-        // start from a pixel boundary, which means words will always look
-        // the same in any rendition (since, depending on resolution, a single
-        // pixel of relative distance between letters can be very visible).
-        if (is_space) xcur = roundf(xcur);
-
         // Check if we are limited in width
+        float last_pixel = xcur + (xoff2-1) * builder.xscale;
         if (UNLIKELY(parms->width) && UNLIKELY(last_pixel > parms->width)) {
             // Check if we are allowed to wrap
             switch (parms->wrap) {
@@ -282,9 +301,11 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
                     uint8_t ellipsis_atlas_id;
                     __rdpq_font_glyph_metrics(wfnt, wfnt->ellipsis_glyph, NULL, NULL, NULL, NULL, &ellipsis_atlas_id);
 
+                    builder.layout->nchars = wrapchar;
                     uint8_t wrap_font_id = wrapch[-1].font_id, wrap_style_id = wrapch[-1].style_id;
                     for (int i=0; i<wfnt->ellipsis_reps; i++) {
-                        builder.layout->chars[wrapchar+i] = (rdpq_paragraph_char_t) {
+                        if (UNLIKELY(builder.layout->nchars >= builder.layout->capacity)) paragraph_extend();
+                        builder.layout->chars[builder.layout->nchars++] = (rdpq_paragraph_char_t) {
                             .font_id = wrap_font_id,
                             .atlas_id = ellipsis_atlas_id,
                             .style_id = wrap_style_id,
@@ -293,7 +314,6 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
                             .y = wrapch[-1].y + .5f,
                         };
                     }
-                    builder.layout->nchars = wrapchar + fnt->ellipsis_reps;
                 }   // fallthrough!
                 case WRAP_NONE:
                     // The text doesn't fit on this line anymore.
@@ -430,9 +450,13 @@ rdpq_paragraph_t* rdpq_paragraph_builder_end(void)
     }
 
     // Make sure there is always a terminator.
-    assertf(builder.layout->nchars < builder.layout->capacity,
+    assertf(builder.layout->nchars <= builder.layout->capacity,
         "paragraph too long (%d/%d chars)", builder.layout->nchars, builder.layout->capacity);
     builder.layout->chars[builder.layout->nchars].sort_key = 0;
+
+    // Finish filling the metrics
+    builder.layout->advance_x = builder.x;
+    builder.layout->advance_y = builder.y;
 
     return builder.layout;
 }

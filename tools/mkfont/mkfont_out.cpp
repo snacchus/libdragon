@@ -183,6 +183,7 @@ struct Image {
         uint16_t *palette;
 
         Image::Pixel operator[](int x) {
+            assert(x >= 0 && x < w);
             return {fmt, data + TEX_FORMAT_PIX2BYTES(fmt, x), palette};
         }
 
@@ -198,6 +199,7 @@ struct Image {
     };
 
     Line operator[](int y) {
+        assert(y >= 0 && y < h);
         return {pixels.data() + TEX_FORMAT_PIX2BYTES(fmt, y * w), w, fmt, palette.data()};
     }
 
@@ -302,7 +304,7 @@ struct Font {
         outfn = fn;
         fnt = (rdpq_font_t*)calloc(1, sizeof(rdpq_font_t));
         memcpy(fnt->magic, FONT_MAGIC, 3);
-        fnt->version = 6;
+        fnt->version = 7;
         fnt->flags = FONT_TYPE_ALIASED;
         fnt->point_size = point_size;
         fnt->ascent = ascent;
@@ -537,6 +539,28 @@ int Font::add_glyph(uint32_t cp, Image&& img, int xoff, int yoff, int xadv)
 
 void Font::make_atlases(void)
 {
+    if (glyphs.empty()) {
+        if (flag_verbose) fprintf(stderr, "WARNING: no glyphs found in this range\n");
+        return;
+    }
+
+    bool all_spaces = true;
+    for (auto& g : glyphs) {
+        // Zero-sized glyphs ("spaces") will not be included in the atlases
+        // but we want to set their advance anyway in the output table.
+        if (g.img.w == 0 && g.img.h == 0) {
+            glyph_t *gout = &fnt->glyphs[g.gidx];
+            gout->xadvance = g.xadv;
+        } else {
+            all_spaces = false;
+        }
+    }
+    if (all_spaces) {
+        // No glyphs to pack
+        glyphs.clear();
+        return;
+    }
+
     if (num_atlases == 0) {
         // First call, time to decide the format of the font
         fnt->flags &= ~FONT_FLAG_TYPE_MASK;
@@ -587,21 +611,76 @@ void Font::make_atlases(void)
     }
 
     if (!is_mono) {
-        // Aliased font: pack into I4 (max 128x64).
-        // Outline not supported yet.
+        int ppb; 
         if (!has_outline) {
+            // Aliased font: pack into I4 (max 128x64).
             settings.max_width = 128;
             settings.max_height = 64;
+            settings.align_width = 16;
+            ppb = 2;
         } else {
+            // Aliased+outlined font: pack into IA8 (max 64x64).
             settings.max_width = 64;
             settings.max_height = 64;
+            settings.align_width = 8;
+            ppb = 1;
         }
         sheets = rect_pack::pack(settings, sizes);
+
+        // We can save byte son the last sheet by checking for many different
+        // sizes. This is not something at which rect_pack excels at, so a bruteforce
+        // approach is used here.
+        int i = sheets.size()-1;
+        int best_area = sheets[i].width * sheets[i].height;
+
+        if (flag_verbose >= 2)
+            printf("repacking last sheet %d x %d (%d bytes)\n", sheets[i].width, sheets[i].height, best_area/ppb);
+
+        // Create a new array of sizes for the glyphs in this sheet
+        std::vector<rect_pack::Size> sizes2;
+        rect_pack::Sheet& sheet = sheets[i];
+        for (auto &r : sheet.rects) {
+            auto &g = glyphs[r.id];
+            rect_pack::Size size;
+            size.id = r.id;
+            size.width = g.img.w + settings.border_padding;
+            size.height = g.img.h + settings.border_padding;
+            sizes2.push_back(size);
+        }
+
+        // Try to find a better packing for this sheet
+        while (1) {
+            bool changed = false;
+            for (int h=16; h<=256; h++) {
+                int w = (best_area-1) / h / settings.align_width * settings.align_width;
+                if (w > 256) w = 256;
+                if (!w) break;
+
+                settings.min_width = 0;
+                settings.max_width = w;
+                settings.max_height = h;
+                std::vector<rect_pack::Sheet> new_sheets = rect_pack::pack(settings, sizes2);
+                if (new_sheets.size() == 1 && new_sheets[0].rects.size() == sizes2.size()) {
+                    auto &new_sheet = new_sheets[0];
+                    int new_area = new_sheet.width * new_sheet.height;
+                    if (new_area < best_area) {
+                        if (flag_verbose >= 2)
+                            printf("    found better packing: %d x %d (%d bytes)\n", new_sheet.width, new_sheet.height, new_area/ppb);
+                        sheets[i] = new_sheet;
+                        best_area = new_area;
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if (!changed) break;
+        }
     } else {
         // Start by computing a pack with the CI4 maximum size (64x64)
         settings.min_width = 64;
         settings.max_width = 64;
         settings.max_height = 64;
+        settings.align_width = 16;
         sheets = rect_pack::pack(settings, sizes);
         int num_sheets = sheets.size();
         int last_group = (num_sheets-1) / merge_layers * merge_layers;
@@ -609,10 +688,16 @@ void Font::make_atlases(void)
         // Try to optimize the last group (up to four sheets). Create an array
         // of input sizes for all the glyphs in the last group
         std::vector<rect_pack::Size> sizes2;
-        for (int i=last_group; i<num_sheets; i++) {
-            rect_pack::Sheet& sheet = sheets[i];
-            for (auto &r : sheet.rects)
-                sizes2.push_back(sizes[r.id]);
+        for (int j=last_group; j<num_sheets; j++) {
+            rect_pack::Sheet& sheet = sheets[j];
+            for (auto &r : sheet.rects) {
+                auto &g = glyphs[r.id];
+                rect_pack::Size size;
+                size.id = r.id;
+                size.width = g.img.w + settings.border_padding;
+                size.height = g.img.h + settings.border_padding;
+                sizes2.push_back(size);
+            }
         }
 
         // Move the last group of sheets to a temporary array
@@ -629,11 +714,12 @@ void Font::make_atlases(void)
         // Try to find a better packing for the last group
         while (1) {
             bool changed = false;
-            for (int h=16; h<=64; h++) {
+            for (int h=16; h<=256; h++) {
                 // Find texture sizes where the value is a multiple of 16. Since
                 // They are going to be packed as CI4, this allows the stride to be
                 // multiple of 8, which allows LOAD_BLOCK to be used at runtime.
-                int w = (best_area-1) / h / 16 * 16;
+                int w = (best_area-1) / h / settings.align_width * settings.align_width;
+                if (w > 256) w = 256;
                 if (!w) break;
 
                 settings.min_width = 0;
@@ -641,14 +727,22 @@ void Font::make_atlases(void)
                 settings.max_height = h;
                 std::vector<rect_pack::Sheet> new_sheets = rect_pack::pack(settings, sizes2);
                 if (new_sheets.size() <= merge_layers) {
-                    if (flag_verbose >= 2)
-                        printf("    found better packing: %d x %d (%d)\n", w, h, w*h);
-                    best_sheets = new_sheets;
-                    best_area = w * h;
-                    changed = true;
-                    break;
+                    // Check that all the glyphs were packed.
+                    // FIXME: this seems like a bug in rect_pack... I can't see
+                    // why it shouldn't simply create more sheets if it can't fit
+                    int packed_glyphs = 0;
+                    for (auto &sheet : new_sheets)
+                        packed_glyphs += sheet.rects.size();
+                    if (packed_glyphs == sizes2.size()) {
+                        if (flag_verbose >= 2)
+                            printf("    found better packing: %d x %d (%d)\n", w, h, w*h);
+                        best_sheets = new_sheets;
+                        best_area = w * h;
+                        changed = true;
+                        break;
+                    }
                 }
-            } 
+            }
             if (!changed) break;
         }
 
@@ -675,15 +769,17 @@ void Font::make_atlases(void)
 
             glyph_t *gout = &fnt->glyphs[glyph.gidx];
             gout->natlas = i;
-            if (is_mono) {
+            if (merge_layers > 1) {
                 gout->ntile = i & (merge_layers-1);
                 gout->natlas /= merge_layers;
             }
+            gout->natlas += fnt->num_atlases; // offset by the atlases already added for other ranges
+            assert(rect.x < 256 && rect.y < 256);
             gout->s = rect.x; gout->t = rect.y;
             gout->xoff = glyph.xoff;
             gout->yoff = glyph.yoff;
-            gout->xoff2 = gout->xoff + glyph.img.w - 1;
-            gout->yoff2 = gout->yoff + glyph.img.h - 1;
+            gout->xoff2 = gout->xoff + glyph.img.w;
+            gout->yoff2 = gout->yoff + glyph.img.h;
             gout->xadvance = glyph.xadv;
 
             if (flag_verbose >= 2) {
@@ -700,8 +796,8 @@ void Font::make_atlases(void)
             }
         }
 
-        if (flag_verbose && !is_mono)
-            fprintf(stderr, "created atlas %d: %d x %d pixels (%zu glyphs)\n", i, sheet.width, sheet.height, sheet.rects.size());
+        if (flag_verbose && merge_layers == 1)
+            fprintf(stderr, "created atlas %d: %d x %d pixels (%zu glyphs)\n", i + fnt->num_atlases, sheet.width, sheet.height, sheet.rects.size());
         if (flag_debug) {
             char *imgfn = NULL;
             asprintf(&imgfn, "%s_%d.png", outfn.c_str(), num_atlases);
@@ -721,8 +817,7 @@ void Font::make_atlases(void)
         num_atlases++;
     }
 
-    if (is_mono) {
-        assert(merge_layers == 2 || merge_layers == 4);
+    if (merge_layers > 1) {
         std::vector<Image> atlases2;
         for (int i=0; i<atlases.size(); i+=merge_layers) {
             // Merge (up to) 4 images into a single atlas. Calculate the
@@ -781,9 +876,9 @@ void Font::make_atlases(void)
 
             if (flag_verbose) {
                 int num_glyphs = 0;
-                for (int j=0; j<4 && i+j<atlases.size(); j++)
+                for (int j=0; j<merge_layers && i+j<atlases.size(); j++)
                     num_glyphs += sheets[i+j].rects.size();
-                fprintf(stderr, "created atlas %d: %d x %d pixels (%d glyphs)\n", i/4, w, h, num_glyphs);
+                fprintf(stderr, "created atlas %d: %d x %d pixels (%d glyphs)\n", i/merge_layers + fnt->num_atlases, w, h, num_glyphs);
             }
             atlases2.push_back(std::move(img));
         }
@@ -795,15 +890,6 @@ void Font::make_atlases(void)
     // Add atlases to the font
     for (int i=0; i<atlases.size(); i++)
         add_atlas(atlases[i]);
-
-    // Search for 0-sized glyphs. Those were not included in the atlases, so
-    // we just need to set their advances correctly
-    for (auto& g : glyphs) {
-        if (g.img.w == 0 || g.img.h == 0) {
-            glyph_t *gout = &fnt->glyphs[g.gidx];
-            gout->xadvance = g.xadv;
-        }
-    }
 
     // Clear the glyph array, as we have added these to the atlases already
     glyphs.clear();
