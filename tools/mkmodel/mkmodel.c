@@ -5,6 +5,7 @@
 #include <math.h>
 #include "../common/binout.c"
 #include "../common/binout.h"
+#include "../common/utils.h"
 
 // Compression library
 #include <sys/stat.h>
@@ -12,6 +13,8 @@
 
 #include "../../include/GL/gl_enums.h"
 #include "../../src/GL/gl_constants.h"
+#include "../../include/mgfx.h"
+#include "../../include/model64.h"
 #include "../../src/model64_internal.h"
 #include "../../src/model64_catmull.h"
 
@@ -31,9 +34,9 @@
 // Update these when changing code that writes to the output file
 // IMPORTANT: Do not attempt to move these values to a header that is shared by mkmodel and runtime code!
 //            These values must reflect what the tool actually outputs.
-#define HEADER_SIZE         88
+#define HEADER_SIZE         92
 #define MESH_SIZE           8
-#define PRIMITIVE_SIZE      116
+#define PRIMITIVE_SIZE      120
 #define NODE_SIZE           128
 #define SKIN_SIZE           8
 #define ANIM_SIZE           40
@@ -49,6 +52,8 @@
 #define MIN_KEYFRAME_DT (1.0f/80.0f)
 
 #define MAX_TEXTURES 1000
+
+#define MGFX_PACKED_NORMAL  0xF000
 
 typedef void (*component_convert_func_t)(void*,float*,size_t);
 typedef void (*index_convert_func_t)(void*,cgltf_uint*,size_t);
@@ -98,6 +103,8 @@ struct {
 int flag_anim_stream = 1;
 int flag_verbose = 0;
 
+model64_vtx_fmt_t vertex_format = MODEL64_VTX_FMT_GL;
+
 uint32_t get_type_size(uint32_t type)
 {
     switch (type) {
@@ -124,6 +131,16 @@ uint32_t get_type_size(uint32_t type)
     }
 }
 
+uint32_t get_attribute_size(uint32_t type, uint32_t num_components)
+{
+    switch (type) {
+    case MGFX_PACKED_NORMAL:
+        return sizeof(uint16_t);
+    default:
+        return get_type_size(type) * num_components;
+    }
+}
+
 void print_args( char * name )
 {
     fprintf(stderr, "mkmodel -- Convert glTF 2.0 models into the model64 format for libdragon\n\n");
@@ -133,6 +150,7 @@ void print_args( char * name )
     fprintf(stderr, "   -o/--output <dir>       Specify output directory (default: .)\n");
     fprintf(stderr, "   --anim-no-stream        Disable animation streaming\n");
     fprintf(stderr, "   -c/--compress <level>   Compress output files (default: %d)\n", DEFAULT_COMPRESSION);
+    fprintf(stderr, "   -f/--format <format>    Choose vertex format. Accepted formats: gl, mgfx (default: gl)\n");
     fprintf(stderr, "   -v/--verbose            Verbose output\n");
     fprintf(stderr, "\n");
 }
@@ -148,6 +166,7 @@ model64_data_t* model64_alloc()
     model->node_size = NODE_SIZE;
     model->skin_size = SKIN_SIZE;
     model->anim_size = ANIM_SIZE;
+    model->vtx_fmt = vertex_format;
     return model;
 }
 
@@ -207,7 +226,7 @@ void texture_table_free()
     }
 }
 
-void model64_free(model64_data_t *model)
+void model64_data_free(model64_data_t *model)
 {
     for (size_t i = 0; i < model->num_nodes; i++) {
         node_free(&model->nodes[i]);
@@ -252,31 +271,7 @@ uint32_t attribute_get_data_size(attribute_t *attr)
     if(!attr->pointer) {
         return 0;
     }
-    return get_type_size(attr->type) * attr->size;
-}
-
-void vertex_write(FILE *out, attribute_t *attr, uint32_t index)
-{
-    if (attr->size == 0) return;
-    
-    switch (attr->type) {
-    case GL_BYTE:
-    case GL_UNSIGNED_BYTE:
-        for (size_t i = 0; i < attr->size; i++) w8(out, ((uint8_t*)attr->pointer)[index * attr->size + i]);
-        break;
-    case GL_SHORT:
-    case GL_UNSIGNED_SHORT:
-    case GL_HALF_FIXED_N64:
-        for (size_t i = 0; i < attr->size; i++) w16(out, ((uint16_t*)attr->pointer)[index * attr->size + i]);
-        break;
-    case GL_INT:
-    case GL_UNSIGNED_INT:
-    case GL_FLOAT:
-        for (size_t i = 0; i < attr->size; i++) w32(out, ((uint32_t*)attr->pointer)[index * attr->size + i]);
-        break;
-    default:
-        break;
-    }
+    return get_attribute_size(attr->type, attr->size);
 }
 
 uint32_t indices_get_data_size(uint32_t type, uint32_t count)
@@ -362,6 +357,7 @@ void model64_write_header(model64_data_t *model, FILE *out)
 
     w32(out, texture_table.num);
     w32_placeholderf(out, "textures");
+    w32(out, model->vtx_fmt);
 
     assert(ftell(out)-start_ofs == HEADER_SIZE);
 }
@@ -461,6 +457,59 @@ void model64_write_nodes(model64_data_t *model, FILE *out)
     }
 }
 
+void vertex_attribute_write(FILE *out, attribute_t *attr, uint32_t index, const char *placeholder, uint32_t mesh_index, uint32_t prim_index)
+{
+    if (attr->size == 0) return;
+
+    if (index == 0) {
+        placeholder_set(out, placeholder, mesh_index, prim_index);
+    }
+    
+    switch (attr->type) {
+    case GL_BYTE:
+    case GL_UNSIGNED_BYTE:
+        for (size_t i = 0; i < attr->size; i++) w8(out, ((uint8_t*)attr->pointer)[index * attr->size + i]);
+        break;
+    case GL_SHORT:
+    case GL_UNSIGNED_SHORT:
+    case GL_HALF_FIXED_N64:
+        for (size_t i = 0; i < attr->size; i++) w16(out, ((uint16_t*)attr->pointer)[index * attr->size + i]);
+        break;
+    case GL_INT:
+    case GL_UNSIGNED_INT:
+    case GL_FLOAT:
+        for (size_t i = 0; i < attr->size; i++) w32(out, ((uint32_t*)attr->pointer)[index * attr->size + i]);
+        break;
+    case MGFX_PACKED_NORMAL:
+        w16(out, ((uint16_t*)attr->pointer)[index]);
+        break;
+    default:
+        break;
+    }
+}
+
+void vertex_write_gl(FILE *out, primitive_t *primitive, uint32_t index, uint32_t mesh_index, uint32_t prim_index)
+{
+    vertex_attribute_write(out, &primitive->position, index, "mesh%d_primitive%d_position", mesh_index, prim_index);
+    vertex_attribute_write(out, &primitive->color, index, "mesh%d_primitive%d_color", mesh_index, prim_index);
+    vertex_attribute_write(out, &primitive->texcoord, index, "mesh%d_primitive%d_texcoord", mesh_index, prim_index);
+    vertex_attribute_write(out, &primitive->normal, index, "mesh%d_primitive%d_normal", mesh_index, prim_index);
+    vertex_attribute_write(out, &primitive->mtx_index, index, "mesh%d_primitive%d_mtx_index", mesh_index, prim_index);
+}
+
+void vertex_write_mgfx(FILE *out, primitive_t *primitive, uint32_t index, uint32_t mesh_index, uint32_t prim_index)
+{
+    vertex_attribute_write(out, &primitive->position, index, "mesh%d_primitive%d_position", mesh_index, prim_index);
+    vertex_attribute_write(out, &primitive->normal, index, "mesh%d_primitive%d_normal", mesh_index, prim_index);
+    if (primitive->color.size == 0) {
+        // TODO: Flexible vertex layout in magma
+        w32(out, 0xFFFFFFFF);
+    } else {
+        vertex_attribute_write(out, &primitive->color, index, "mesh%d_primitive%d_color", mesh_index, prim_index);
+    }
+    vertex_attribute_write(out, &primitive->texcoord, index, "mesh%d_primitive%d_texcoord", mesh_index, prim_index);
+}
+
 void model64_write_meshes(model64_data_t *model, FILE *out)
 {
     walign(out, 4);
@@ -493,35 +542,28 @@ void model64_write_meshes(model64_data_t *model, FILE *out)
             w32(out, primitive->local_texture);
             w32(out, TEXTURE_INDEX_MISSING);
             w32_placeholderf(out, "mesh%d_primitive%d_index", i, j);
+            w32_placeholderf(out, "mesh%d_primitive%d_vertex", i, j);
             assert(ftell(out)-start_ofs == PRIMITIVE_SIZE);
         }
     }
     for(uint32_t i=0; i<model->num_meshes; i++) {
         for(uint32_t j=0; j<model->meshes[i].num_primitives; j++) {
             primitive_t *primitive = &model->meshes[i].primitives[j];
+
+            walign(out, 8);
+            placeholder_set(out, "mesh%d_primitive%d_vertex", i, j);
+
             for (size_t k = 0; k < primitive->num_vertices; k++) {
-                if(primitive->position.pointer && k == 0) {
-                    placeholder_set(out, "mesh%d_primitive%d_position", i, j);
+                switch (vertex_format) {
+                case MODEL64_VTX_FMT_GL:
+                    vertex_write_gl(out, primitive, k, i, j);
+                    break;
+                case MODEL64_VTX_FMT_MGFX:
+                    vertex_write_mgfx(out, primitive, k, i, j);
+                    break;
                 }
-                vertex_write(out, &primitive->position, k);
-                if(primitive->color.pointer && k == 0) {
-                    placeholder_set(out, "mesh%d_primitive%d_color", i, j);
-                }
-                vertex_write(out, &primitive->color, k);
-                if(primitive->texcoord.pointer && k == 0) {
-                    placeholder_set(out, "mesh%d_primitive%d_texcoord", i, j);
-                }
-                vertex_write(out, &primitive->texcoord, k);
-                if(primitive->normal.pointer && k == 0) {
-                    placeholder_set(out, "mesh%d_primitive%d_normal", i, j);
-                }
-                vertex_write(out, &primitive->normal, k);
-                if(primitive->mtx_index.pointer && k == 0) {
-                    placeholder_set(out, "mesh%d_primitive%d_mtx_index", i, j);
-                }
-                vertex_write(out, &primitive->mtx_index, k);
-                
             }
+            
             if(primitive->num_indices > 0) {
                 walign(out, 4);
                 placeholder_set(out, "mesh%d_primitive%d_index", i, j);
@@ -626,14 +668,13 @@ int convert_attribute_data(cgltf_accessor *accessor, attribute_t *attr, componen
     }
 
     // Allocate storage for converted values
-    uint32_t component_size = get_type_size(attr->type);
-    attr->pointer = calloc(num_values, component_size);
-    attr->stride = num_components * component_size;
+    attr->stride = get_attribute_size(attr->type, num_components);
+    attr->pointer = calloc(accessor->count, attr->stride);
 
     // Convert floats to the target format
     for (size_t i = 0; i < accessor->count; i++)
     {
-        uint8_t *dst = (uint8_t*)attr->pointer + num_components * component_size * i;
+        uint8_t *dst = (uint8_t*)attr->pointer + attr->stride * i;
         float *src = &temp_buffer[i * num_components];
         convert_func(dst, src, num_components);
     }
@@ -664,6 +705,14 @@ void convert_texcoord(int16_t *dst, float *value, size_t size)
 void convert_normal(int8_t *dst, float *value, size_t size)
 {
     for (size_t i = 0; i < size; i++) dst[i] = value[i] * 0x7F;
+}
+
+void convert_normal_packed(int16_t *dst, float *value, size_t size)
+{
+    int16_t x = CLAMP(roundf(value[0] * 15.5f), -16.0f, 15.0f);
+    int16_t y = CLAMP(roundf(value[1] * 31.5f), -32.0f, 31.0f);
+    int16_t z = CLAMP(roundf(value[2] * 15.5f), -16.0f, 15.0f);
+    *dst = MGFX_NRM(x, y, z);
 }
 
 void convert_mtx_index(uint8_t *dst, float *value, size_t size)
@@ -800,20 +849,26 @@ int convert_primitive(cgltf_primitive *in_primitive, primitive_t *out_primitive)
     out_primitive->vertex_precision = VERTEX_PRECISION;
     out_primitive->texcoord_precision = TEXCOORD_PRECISION;
 
-    static const uint32_t attr_types[] = {
-        GL_HALF_FIXED_N64,
-        GL_UNSIGNED_BYTE,
-        GL_HALF_FIXED_N64,
-        GL_BYTE,
-        GL_UNSIGNED_BYTE,
+    static const uint32_t attribute_types[][ATTRIBUTE_COUNT] = {
+        { GL_HALF_FIXED_N64, GL_UNSIGNED_BYTE, GL_HALF_FIXED_N64, GL_BYTE,            GL_UNSIGNED_BYTE },
+        { GL_HALF_FIXED_N64, GL_UNSIGNED_BYTE, GL_HALF_FIXED_N64, MGFX_PACKED_NORMAL, GL_UNSIGNED_BYTE }
     };
 
-    static const component_convert_func_t attr_convert_funcs[] = {
-        (component_convert_func_t)convert_position,
-        (component_convert_func_t)convert_color,
-        (component_convert_func_t)convert_texcoord,
-        (component_convert_func_t)convert_normal,
-        (component_convert_func_t)convert_mtx_index
+    static const component_convert_func_t attr_convert_funcs[][ATTRIBUTE_COUNT] = {
+        {
+            (component_convert_func_t)convert_position,
+            (component_convert_func_t)convert_color,
+            (component_convert_func_t)convert_texcoord,
+            (component_convert_func_t)convert_normal,
+            (component_convert_func_t)convert_mtx_index
+        },
+        {
+            (component_convert_func_t)convert_position,
+            (component_convert_func_t)convert_color,
+            (component_convert_func_t)convert_texcoord,
+            (component_convert_func_t)convert_normal_packed,
+            (component_convert_func_t)convert_mtx_index
+        }
     };
     
     attribute_t weight_attr = {};
@@ -875,9 +930,9 @@ int convert_primitive(cgltf_primitive *in_primitive, primitive_t *out_primitive)
         attrs[i]->size = cgltf_num_components(attr_map[i]->data->type);
         
         if (attrs[i]->size == 0) continue;
-        attrs[i]->type = attr_types[i];
+        attrs[i]->type = attribute_types[vertex_format][i];
 
-        if (convert_attribute_data(attr_map[i]->data, attrs[i], attr_convert_funcs[i]) != 0) {
+        if (convert_attribute_data(attr_map[i]->data, attrs[i], attr_convert_funcs[vertex_format][i]) != 0) {
             fprintf(stderr, "Error: failed converting data of attribute %d\n", attr_map[i]->index);
             return 1;
         }
@@ -1892,13 +1947,13 @@ int convert(const char *infn, const char *outfn)
     fclose(out);
 
     texture_table_free();
-    model64_free(model);
+    model64_data_free(model);
     cgltf_free(data);
     return 0;
 
 error:
     texture_table_free();
-    model64_free(model);
+    model64_data_free(model);
     cgltf_free(data);
     return 1;
 }
@@ -1943,6 +1998,18 @@ int main(int argc, char *argv[])
                 outdir = argv[i];
             } else if (!strcmp(argv[i], "--anim-no-stream")) {
                 flag_anim_stream = 0;
+            } else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--format")) {
+                if (++i == argc) {
+                    fprintf(stderr, "missing argument for %s\n", argv[i-1]);
+                    return 1;
+                }
+                if (!strcmp(argv[i], "gl")) {
+                    vertex_format = MODEL64_VTX_FMT_GL;
+                } else if (!strcmp(argv[i], "mgfx")) {
+                    vertex_format = MODEL64_VTX_FMT_MGFX;
+                } else {
+                    fprintf(stderr, "invalid format: %s\n", argv[i]);
+                }
             } else {
                 fprintf(stderr, "invalid flag: %s\n", argv[i]);
                 return 1;

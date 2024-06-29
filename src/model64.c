@@ -223,6 +223,7 @@ static model64_data_t *load_model_data_buf(void *buf, int sz, const char* prefix
             primitive->normal.pointer = PTR_DECODE(model, primitive->normal.pointer);
             primitive->mtx_index.pointer = PTR_DECODE(model, primitive->mtx_index.pointer);
             primitive->indices = PTR_DECODE(model, primitive->indices);
+            primitive->vertices = PTR_DECODE(model, primitive->vertices);
 
             if (primitive->local_texture != TEXTURE_INDEX_MISSING) {
                 uint32_t idx = texture_table_get(model->texture_paths[primitive->local_texture]);
@@ -446,6 +447,7 @@ static void unload_model_data(model64_data_t *model)
             primitive->normal.pointer = PTR_ENCODE(model, primitive->normal.pointer);
             primitive->mtx_index.pointer = PTR_ENCODE(model, primitive->mtx_index.pointer);
             primitive->indices = PTR_ENCODE(model, primitive->indices);
+            primitive->vertices = PTR_ENCODE(model, primitive->vertices);
             texture_table_dec_ref_count(primitive->shared_texture);
             primitive->shared_texture = TEXTURE_INDEX_MISSING;
         }
@@ -504,6 +506,11 @@ void model64_free(model64_t *model)
     }
     free_model64_data(model->data);
     free(model);
+}
+
+model64_vtx_fmt_t model64_get_vertex_format(model64_t *model)
+{
+    return model->data->vtx_fmt;
 }
 
 uint32_t model64_get_mesh_count(model64_t *model)
@@ -609,6 +616,26 @@ uint32_t model64_get_primitive_count(mesh_t *mesh)
 primitive_t *model64_get_primitive(mesh_t *mesh, uint32_t primitive_index)
 {
     return &mesh->primitives[primitive_index];
+}
+
+void *model64_get_primitive_vertices(primitive_t *primitive)
+{
+    return primitive->position.pointer;
+}
+
+uint32_t model64_get_primitive_vertex_count(primitive_t *primitive)
+{
+    return primitive->num_vertices;
+}
+
+void *model64_get_primitive_indices(primitive_t *primitive)
+{
+    return primitive->indices;
+}
+
+uint32_t model64_get_primitive_index_count(primitive_t *primitive)
+{
+    return primitive->num_indices;
 }
 
 void model64_draw_primitive(primitive_t *primitive)

@@ -11,7 +11,7 @@
 /** @brief model64 owned model buffer magic */
 #define MODEL64_MAGIC_OWNED     0x4D444C4F // "MDLO"
 /** @brief Current version of model64 */
-#define MODEL64_VERSION         2
+#define MODEL64_VERSION         3
 
 #define ANIM_COMPONENT_POS 0
 #define ANIM_COMPONENT_ROT 1
@@ -46,6 +46,7 @@ typedef struct primitive_s {
     uint32_t local_texture;         ///< Texture index in this model
     uint32_t shared_texture;        ///< A shared texture index between other models
     void *indices;                  ///< Pointer to the first index value. If NULL, indices are not used
+    void *vertices;                 ///< Pointer to the first vertex
 } primitive_t;
 
 /** @brief Transform of a node of a model */
@@ -138,6 +139,7 @@ typedef struct model64_data_s {
     void *anim_data_handle;     ///< Handle for animation data (0 means animations are not streamed)
     uint32_t num_textures;      ///< Number of texture paths
     char **texture_paths;       ///< Pointer to first texture path
+    model64_vtx_fmt_t vtx_fmt;  ///< Vertex format of all primitives
 } model64_data_t;
 
 /** @brief Decoded data for a keyframe */

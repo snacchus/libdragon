@@ -9,6 +9,11 @@ extern "C" {
 #endif
 
 typedef enum {
+    MODEL64_VTX_FMT_GL   = 0,
+    MODEL64_VTX_FMT_MGFX = 1
+} model64_vtx_fmt_t;
+
+typedef enum {
     MODEL64_ANIM_SLOT_0 = 0,
     MODEL64_ANIM_SLOT_1 = 1,
     MODEL64_ANIM_SLOT_2 = 2,
@@ -31,6 +36,11 @@ model64_t *model64_load(const char *fn);
 model64_t *model64_load_buf(void *buf, int sz);
 void model64_free(model64_t *model);
 model64_t *model64_clone(model64_t *model);
+
+/**
+ * @brief Return the vertex format of this model.
+ */
+model64_vtx_fmt_t model64_get_vertex_format(model64_t *model);
 
 /**
  * @brief Return the number of meshes in this model.
@@ -92,6 +102,26 @@ uint32_t model64_get_primitive_count(mesh_t *mesh);
  * @brief Return the primitive at the specified index.
  */
 primitive_t *model64_get_primitive(mesh_t *mesh, uint32_t primitive_index);
+
+/**
+ * @brief Return a pointer to the first vertex in this primitive.
+ */
+void *model64_get_primitive_vertices(primitive_t *primitive);
+
+/**
+ * @brief Return the number of vertices in this primitive.
+ */
+uint32_t model64_get_primitive_vertex_count(primitive_t *primitive);
+
+/**
+ * @brief Return a pointer to the first index in this primitive.
+ */
+void *model64_get_primitive_indices(primitive_t *primitive);
+
+/**
+ * @brief Return the number of indices in this primitive.
+ */
+uint32_t model64_get_primitive_index_count(primitive_t *primitive);
 
 /**
  * @brief Draw an entire model.
