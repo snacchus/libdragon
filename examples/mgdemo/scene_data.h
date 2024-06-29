@@ -2,7 +2,6 @@
 #define SCENE_DATA_H
 
 #include "utility.h"
-#include "cube_mesh.h"
 
 /*
     A minimalistic "asset database" for this demo.
@@ -12,7 +11,7 @@
 
 #define TEXTURE_COUNT   3
 #define MATERIAL_COUNT  5
-#define MESH_COUNT      1
+#define MESH_COUNT      2
 #define OBJECT_COUNT    10
 #define LIGHT_COUNT     2
 
@@ -39,17 +38,9 @@ static const uint32_t material_diffuse_colors[] = { // Currently unused
 
 
 /* Meshes */
-static const mgfx_vertex_t *mesh_vertices[] = {
-    cube_vertices
-};
-static const uint32_t mesh_vertex_counts[] = {
-    ARRAY_COUNT(cube_vertices)
-};
-static const uint16_t *mesh_indices[] = {
-    cube_indices
-};
-static const uint32_t mesh_index_counts[] = {
-    ARRAY_COUNT(cube_indices)
+static const char *mesh_files[] = {
+    "rom:/suzanne.model64",
+    "rom:/cube.model64",
 };
 
 
@@ -58,7 +49,7 @@ static const uint32_t object_material_ids[] = {
     0, 1, 2, 3, 4, 3, 2, 1, 4, 4
 };
 static const uint32_t object_mesh_ids[] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1
 };
 static const float object_positions[][3] = {
     { 0.0f, 0.0f, 0.0f },

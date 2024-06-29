@@ -4,7 +4,6 @@
 #include "matrix.h"
 #include "quat.h"
 #include "utility.h"
-#include "cube_mesh.h"
 #include "scene_data.h"
 
 #define FB_COUNT    3
@@ -35,6 +34,7 @@ typedef struct
 
 typedef struct
 {
+    model64_t *model;
     mg_buffer_t *vertex_buffer;
     const uint16_t *indices;
     uint32_t index_count;
@@ -60,7 +60,7 @@ void update();
 void render();
 void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
-void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count);
+void mesh_create(mesh_data *mesh, model64_t *model);
 void update_object_matrices(object_data *object);
 
 static surface_t zbuffer;
@@ -174,7 +174,10 @@ void init()
     // Create meshes
     for (size_t i = 0; i < MESH_COUNT; i++)
     {
-        mesh_create(&meshes[i], mesh_vertices[i], mesh_vertex_counts[i], mesh_indices[i], mesh_index_counts[i]);
+        model64_t *model = model64_load(mesh_files[i]);
+        model64_vtx_fmt_t vertex_format = model64_get_vertex_format(model);
+        assertf(vertex_format == MODEL64_VTX_FMT_MGFX, "The model %s has an unsupported vertex format!", mesh_files[i]);
+        mesh_create(&meshes[i], model);
     }
 
     // Initialize objects
@@ -219,7 +222,7 @@ void create_scene_resources()
     // provided by the fixed function pipeline.
     scene_resource_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
         .size = sizeof(scene_raw_data),
-        .flags = MG_BUFFER_FLAGS_USAGE_UNIFORM
+        .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ | MG_BUFFER_FLAGS_ACCESS_CPU_WRITE
     });
 
     // Create the resource set. A resource set contains a number of resource bindings.
@@ -310,20 +313,22 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     material->color = color;
 }
 
-void mesh_create(mesh_data *mesh, const mgfx_vertex_t *vertices, uint32_t vertex_count, const uint16_t *indices, uint32_t index_count)
+void mesh_create(mesh_data *mesh, model64_t *model)
 {
+    // TODO: This is hacky
+    primitive_t *primitive = model64_get_primitive(model64_get_mesh(model, 0), 0);
+
     // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
-    // By setting "initial_data", the buffer will already contain this data after creation, so we don't 
-    // need to map it and manually copy the data in.
+    // By setting "backing_memory", the buffer will actually use that pointer instead of allocating new memory.
 
     mesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-        .size = sizeof(mgfx_vertex_t) * vertex_count,
-        .initial_data = vertices,
-        .flags = MG_BUFFER_FLAGS_USAGE_VERTEX
+        .size = sizeof(mgfx_vertex_t) * model64_get_primitive_vertex_count(primitive),
+        .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ,
+        .backing_memory = model64_get_primitive_vertices(primitive),
     });
 
-    mesh->indices = indices;
-    mesh->index_count = index_count;
+    mesh->indices = model64_get_primitive_indices(primitive);
+    mesh->index_count = model64_get_primitive_index_count(primitive);
 
     // To increase performance, we can record the drawing command into a block, since the topology of the mesh doesn't change in this case.
     // Note that we could still modify the vertices themselves if we wanted, by writing to the vertex buffer. This would require some manual
