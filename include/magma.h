@@ -26,9 +26,9 @@ typedef enum
 
 typedef enum
 {
-    MG_GEOMETRY_FLAGS_Z_ENABLED             = 0x1,
-    MG_GEOMETRY_FLAGS_TEX_ENABLED           = 0x2,
-    MG_GEOMETRY_FLAGS_SHADE_ENABLED         = 0x4,
+    MG_GEOMETRY_FLAGS_Z_ENABLED             = 1<<0,
+    MG_GEOMETRY_FLAGS_TEX_ENABLED           = 1<<1,
+    MG_GEOMETRY_FLAGS_SHADE_ENABLED         = 1<<2,
 } mg_geometry_flags_t;
 
 typedef enum
@@ -44,19 +44,18 @@ typedef enum
     MG_FRONT_FACE_CLOCKWISE                 = 1,
 } mg_front_face_t;
 
-// TODO: rethink these flags
 typedef enum
 {
-    MG_BUFFER_FLAGS_USAGE_VERTEX            = 0x1,
-    MG_BUFFER_FLAGS_USAGE_INDEX             = 0x2,
-    MG_BUFFER_FLAGS_USAGE_UNIFORM           = 0x4,
-    MG_BUFFER_FLAGS_LAZY_ALLOC              = 0x8,
+    MG_BUFFER_FLAGS_ACCESS_CPU_READ         = 1<<0,
+    MG_BUFFER_FLAGS_ACCESS_CPU_WRITE        = 1<<1,
+    MG_BUFFER_FLAGS_ACCESS_RCP_READ         = 1<<2,
+    MG_BUFFER_FLAGS_ACCESS_RCP_WRITE        = 1<<3,
 } mg_buffer_flags_t;
 
 typedef enum
 {
-    MG_BUFFER_MAP_FLAGS_READ                = 0x1,
-    MG_BUFFER_MAP_FLAGS_WRITE               = 0x2,
+    MG_BUFFER_MAP_FLAGS_READ                = 1<<0,
+    MG_BUFFER_MAP_FLAGS_WRITE               = 1<<1,
 } mg_buffer_map_flags_t;
 
 typedef enum
@@ -105,8 +104,8 @@ typedef struct
 typedef struct
 {
     mg_buffer_flags_t flags;
-    const void *initial_data;
     uint32_t size;
+    void *backing_memory;
 } mg_buffer_parms_t;
 
 typedef struct

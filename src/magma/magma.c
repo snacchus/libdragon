@@ -14,6 +14,7 @@ typedef struct mg_pipeline_s
 
 typedef struct mg_buffer_s 
 {
+    mg_buffer_flags_t flags;
     void *memory;
     uint32_t size;
     bool is_mapped;
@@ -110,11 +111,13 @@ const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t bi
 mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms)
 {
     mg_buffer_t *buffer = malloc(sizeof(mg_buffer_t));
-    buffer->memory = malloc_uncached(parms->size);
+    buffer->flags = parms->flags;
     buffer->size = parms->size;
 
-    if (parms->initial_data) {
-        memcpy(buffer->memory, parms->initial_data, parms->size);
+    if (parms->backing_memory) {
+        buffer->memory = parms->backing_memory;
+    } else {
+        buffer->memory = malloc_uncached(parms->size);
     }
 
     return buffer;
@@ -126,12 +129,41 @@ void mg_buffer_free(mg_buffer_t *buffer)
     free(buffer);
 }
 
+static void mg_buffer_check_cpu_write(mg_buffer_t *buffer)
+{
+    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_CPU_WRITE) != 0, "This buffer has no write access on CPU!");
+}
+
+static void mg_buffer_check_cpu_read(mg_buffer_t *buffer)
+{
+    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_CPU_READ) != 0, "This buffer has no read access on CPU!");
+}
+
+static void mg_buffer_check_rcp_write(mg_buffer_t *buffer)
+{
+    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_RCP_WRITE) != 0, "This buffer has no write access on RCP!");
+}
+
+static void mg_buffer_check_rcp_read(mg_buffer_t *buffer)
+{
+    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_RCP_READ) != 0, "This buffer has no read access on RCP!");
+}
+
 void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags)
 {
+    assertf((flags & (MG_BUFFER_MAP_FLAGS_READ|MG_BUFFER_MAP_FLAGS_WRITE)) != 0, "Buffer must be mapped with at least read or write access!");
     assertf(!buffer->is_mapped, "Buffer is already mapped");
     assertf(offset + size < buffer->size, "Map is out of range");
 
     // TODO: Optimize for different types of access depending on flags
+
+    if (flags & MG_BUFFER_MAP_FLAGS_READ) {
+        mg_buffer_check_cpu_read(buffer);
+    }
+
+    if (flags & MG_BUFFER_MAP_FLAGS_WRITE) {
+        mg_buffer_check_cpu_write(buffer);
+    }
 
     buffer->is_mapped = true;
     return (uint8_t*)buffer->memory + offset;
@@ -146,8 +178,10 @@ void mg_buffer_unmap(mg_buffer_t *buffer)
 void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const void *data)
 {
     assertf(!buffer->is_mapped, "Buffer is mapped");
-    assertf(offset + size < buffer->size, "Out of range");
+    assertf(offset + size <= buffer->size, "Out of range");
 
+    mg_buffer_check_cpu_write(buffer);
+    
     memcpy((uint8_t*)buffer->memory + offset, data, size);
 }
 
@@ -170,6 +204,7 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
 
         case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
         case MG_RESOURCE_TYPE_STORAGE_BUFFER:
+            mg_buffer_check_rcp_read(binding->buffer);
             break;
         }
     }
@@ -339,6 +374,7 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
 {
     // TODO: inline?
+    mg_buffer_check_rcp_read(buffer);
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer->memory) + offset);
 }
 
@@ -513,7 +549,7 @@ static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
                 cache->total_count++;
 
                 // Try to merge with the previous block in case they are now bordering
-                vertex_cache_merge_with_next(cache, prev);
+                if (prev) vertex_cache_merge_with_next(cache, prev);
 
                 return true;
             }

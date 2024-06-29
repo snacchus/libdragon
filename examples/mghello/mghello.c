@@ -78,8 +78,10 @@ int main()
         .bindings = resource_bindings
     });
 
-    // Create and fill a vertex buffer. Like the resources, this copies the input data
-    // when the buffer is created and the input can be thrown away afterwards.
+    // Create and fill a vertex buffer.
+    // The buffer contents will never change and will only ever be read by the RCP (the ucode),
+    // though we need to write to it once from CPU to initialise it.
+    // Therefore we need to set the buffer flags accordingly.
     mgfx_vertex_t vertices[] = {
         MGFX_VERTEX(0, -0.5f, 0, 0, 0, 0, 0, 0, 0xFF0000FF),
         MGFX_VERTEX(-0.5f, 0.5f, 0, 0, 0, 0, 0, 0, 0x00FF00FF),
@@ -87,9 +89,9 @@ int main()
     };
     mg_buffer_t *vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
         .size = sizeof(vertices),
-        .initial_data = vertices,
-        .flags = MG_BUFFER_FLAGS_USAGE_VERTEX
+        .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ|MG_BUFFER_FLAGS_ACCESS_CPU_WRITE
     });
+    mg_buffer_write(vertex_buffer, 0, sizeof(vertices), vertices);
 
     // Everything we need is initialised. Start the main rendering loop!
     while (true)
