@@ -245,9 +245,7 @@ typedef struct
     mg_rsp_viewport_t viewport;
     uint16_t clip_factors[4];
     uint32_t shader_code;
-    uint32_t shader_data;
-    uint16_t shader_code_size;
-    uint16_t shader_data_size;
+    uint32_t shader_code_size;
     uint32_t vertex_buffer;
     uint16_t tri_cmd;
     uint8_t cull_mode;

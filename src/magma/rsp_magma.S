@@ -1,6 +1,7 @@
 #include <rsp_magma.inc>
 
 MgBeginShaderUniforms
+    .fill MAX_UNIFORMS_SIZE
 MgEndShaderUniforms
 
 MgBeginShader

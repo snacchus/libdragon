@@ -263,11 +263,8 @@ void mg_resource_set_free(mg_resource_set_t *resource_set)
 void mg_load_shader(const rsp_ucode_t *shader_ucode)
 {
     uint32_t code = PhysicalAddr(shader_ucode->code);
-    uint32_t data = PhysicalAddr(shader_ucode->data);
     uint32_t code_size = (uint8_t*)shader_ucode->code_end - shader_ucode->code;
-    uint32_t data_size = (uint8_t*)shader_ucode->data_end - shader_ucode->data;
-    uint32_t packed_sizes = ((ROUND_UP(code_size, 8) - 1) << 16) | (ROUND_UP(data_size, 8) - 1);
-    mg_cmd_write(MG_CMD_SET_SHADER, code, data, packed_sizes);
+    mg_cmd_write(MG_CMD_SET_SHADER, code, ROUND_UP(code_size, 8) - 1);
 }
 
 void mg_bind_pipeline(mg_pipeline_t *pipeline)

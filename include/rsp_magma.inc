@@ -1,10 +1,31 @@
 #include <rsp_queue.inc>
 #include "magma_constants.h"
 
-#define TRIANGLE_SIZE 0xB0
+#define TRIANGLE_SIZE       0xB0
+#define MAX_UNIFORMS_SIZE   0x400
 
 .macro MgBeginShaderUniforms
-    .section .bss.magma_shader_uniforms
+    .data
+
+    RSPQ_BeginSavedState
+    
+    .align 3
+    MAGMA_VERTEX_CACHE:         .dcb.b  MAGMA_VERTEX_CACHE_COUNT * MAGMA_VTX_SIZE
+    MAGMA_VERTEX_OVERFLOW:      .dcb.b  MAGMA_VTX_SIZE
+
+    .align 4
+MAGMA_STATE:
+    MAGMA_VIEWPORT:
+        MAGMA_VIEWPORT_SCALE:   .half   0,0,0,0
+        MAGMA_VIEWPORT_OFFSET:  .half   0,0,0,0
+    MAGMA_CLIP_FACTORS:         .half   1,1,MAGMA_DEFAULT_GUARD_BAND,MAGMA_DEFAULT_GUARD_BAND
+    MAGMA_SHADER_TEXT:          .word   0
+    MAGMA_SHADER_TEXT_SIZE:     .word   0
+    MAGMA_VERTEX_BUFFER:        .word   0
+    MAGMA_TRI_CMD:              .half   0x800
+    MAGMA_CULL_MODE:            .byte   0
+    MAGMA_OUTPUT_OFFSET:        .byte   0
+
     .align 4
 _MG_VTX_SHADER_UNIFORMS:
 .endm
@@ -12,6 +33,7 @@ _MG_VTX_SHADER_UNIFORMS:
 .macro MgEndShaderUniforms
     .align 3
 _MG_VTX_SHADER_UNIFORMS_END:
+    RSPQ_EndSavedState
 .endm
 
 .equ _mg_defining_uniform, 0
@@ -55,7 +77,7 @@ _MG_VTX_SHADER_END:
         RSPQ_DefineCommand MgCmd_SetShort,      8
         RSPQ_DefineCommand MgCmd_SetWord,       8
         RSPQ_DefineCommand MgCmd_SetQuad,       20
-        RSPQ_DefineCommand MgCmd_SetShader,     12
+        RSPQ_DefineCommand MgCmd_SetShader,     8
         RSPQ_DefineCommand MgCmd_LoadVertices,  8
         RSPQ_DefineCommand MgCmd_DrawIndices,   4
         RSPQ_DefineCommand MgCmd_DrawEnd,       4
@@ -84,29 +106,6 @@ MAGMA_CLIP_PLANES:
     .half 1, 0, 0, -1
     .half 0, 1, 0, -1
     .half 0, 0, 1, -1
-
-    RSPQ_BeginSavedState
-    
-    .align 3
-    MAGMA_VERTEX_CACHE:         .dcb.b  MAGMA_VERTEX_CACHE_COUNT * MAGMA_VTX_SIZE
-    MAGMA_VERTEX_OVERFLOW:      .dcb.b  MAGMA_VTX_SIZE
-
-    .align 4
-MAGMA_STATE:
-    MAGMA_VIEWPORT:
-        MAGMA_VIEWPORT_SCALE:   .half   0,0,0,0
-        MAGMA_VIEWPORT_OFFSET:  .half   0,0,0,0
-    MAGMA_CLIP_FACTORS:         .half   1,1,MAGMA_DEFAULT_GUARD_BAND,MAGMA_DEFAULT_GUARD_BAND
-    MAGMA_SHADER_TEXT:          .word   0
-    MAGMA_SHADER_DATA:          .word   0
-    MAGMA_SHADER_TEXT_SIZE:     .half   0
-    MAGMA_SHADER_DATA_SIZE:     .half   0
-    MAGMA_VERTEX_BUFFER:        .word   0    
-    MAGMA_TRI_CMD:              .half   0x800
-    MAGMA_CULL_MODE:            .byte   0
-    MAGMA_OUTPUT_OFFSET:        .byte   0    
-
-    RSPQ_EndSavedState
 
     .bss
     .align 4
@@ -182,38 +181,23 @@ MgCmd_LoadUniform:
     # MgCmd_SetShader
     # ARGS:
     #   a0: RDRAM pointer to shader ucode text
-    #   a1: RDRAM pointer to shader ucode data
-    #   a2: Bit 31..16: shader text size
-    #       Bit 15..0: shader data size
+    #   a1: shader text size
     #############################################################
     .func MgCmd_SetShader
 MgCmd_SetShader:
     sw a0, %lo(MAGMA_SHADER_TEXT)
-    sw a1, %lo(MAGMA_SHADER_DATA)
-    sw a2, %lo(MAGMA_SHADER_TEXT_SIZE)
+    sw a1, %lo(MAGMA_SHADER_TEXT_SIZE)
     # fallthrough
     .endfunc
 
 Mg_LoadShader:
-    # move ra2, ra
     lw s0, %lo(MAGMA_SHADER_TEXT)
-    lhu t0, %lo(MAGMA_SHADER_TEXT_SIZE)
+    lw t0, %lo(MAGMA_SHADER_TEXT_SIZE)
     li s4, %lo(_MG_VTX_SHADER)
     andi t1, s4, 0xFFF
     add s0, t1
     j DMAIn
     sub t0, t1
-
-    # TODO: Uniforms are not being saved currently!
-    # TODO: Shader data not needed?
-    # lw s0, %lo(MAGMA_SHADER_DATA)
-    # lh t0, %lo(MAGMA_SHADER_DATA_SIZE)
-    # li s4, %lo(_MG_VTX_SHADER_UNIFORMS)
-    # add s0, s4
-    # sub t0, s4
-    # emux_log_string "dma shader data\n"
-    # j DMAIn
-    # move ra, ra2
 
     #############################################################
     # MgCmd_LoadVertices
