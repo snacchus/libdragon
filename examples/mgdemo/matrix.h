@@ -124,11 +124,6 @@ inline void mat4x4_make_rotation_translation(mat4x4_t *d, const float position[3
     d->m[3][3] = 1.f;
 }
 
-inline void mat4x4_make_translation_rotation(mat4x4_t *d, const float position[3], const float rotation[4])
-{
-    // TODO
-}
-
 inline void mat4x4_make_lookat(mat4x4_t *d, const float eye[3], const float up[3], const float target[3])
 {
     float f[3] = {target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]};

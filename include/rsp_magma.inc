@@ -228,7 +228,6 @@ MgCmd_LoadVertices:
     # We can't fall through here because RDPQ_Triangle_Send_Async etc. is always placed after the .text segment
     # and we therefore need to put the vertex shader into it's own segment to force it being placed at the end.
     # That means we can't register the command with the shader's address directly because it is not in the .text segment.
-    # TODO: is there a better way?
     j _MG_VTX_SHADER
     nop
     .endfunc
