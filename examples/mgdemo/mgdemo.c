@@ -34,11 +34,17 @@ typedef struct
 
 typedef struct
 {
-    model64_t *model;
     mg_buffer_t *vertex_buffer;
     const uint16_t *indices;
     uint32_t index_count;
     rspq_block_t *block;
+} submesh_data;
+
+typedef struct
+{
+    model64_t *model;
+    submesh_data *submeshes;
+    uint32_t submesh_count;
 } mesh_data;
 
 typedef struct
@@ -51,17 +57,23 @@ typedef struct
     float rotation_axis[3];
     float rotation_angle;
     float rotation_rate;
+    uint32_t mesh_id;
+    uint32_t material_ids[MAX_SUBMESH_COUNT];
+} object_data;
+
+typedef struct
+{
     uint32_t material_id;
     uint32_t mesh_id;
-} object_data;
+    uint32_t object_id;
+} draw_call;
 
 void init();
 void update();
 void render();
 void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
-void mesh_create(mesh_data *mesh, model64_t *model);
-void update_object_matrices(object_data *object);
+void mesh_create(mesh_data *mesh, const char *model_file);
 
 static surface_t zbuffer;
 
@@ -76,6 +88,9 @@ static material_data materials[MATERIAL_COUNT];
 static mesh_data meshes[MESH_COUNT];
 static object_data objects[OBJECT_COUNT];
 static mgfx_light_parms_t lights[LIGHT_COUNT];
+
+static draw_call *draw_calls;
+static uint32_t draw_call_count;
 
 static mat4x4_t projection_matrix;
 static mat4x4_t view_matrix;
@@ -174,19 +189,16 @@ void init()
     // Create meshes
     for (size_t i = 0; i < MESH_COUNT; i++)
     {
-        model64_t *model = model64_load(mesh_files[i]);
-        model64_vtx_fmt_t vertex_format = model64_get_vertex_format(model);
-        assertf(vertex_format == MODEL64_VTX_FMT_MGFX, "The model %s has an unsupported vertex format!", mesh_files[i]);
-        mesh_create(&meshes[i], model);
+        mesh_create(&meshes[i], mesh_files[i]);
     }
 
     // Initialize objects
     for (size_t i = 0; i < OBJECT_COUNT; i++)
     {
         objects[i] = (object_data) {
-            .material_id = object_material_ids[i],
             .mesh_id = object_mesh_ids[i],
         };
+        memcpy(objects[i].material_ids, object_material_ids[i], sizeof(objects[i].material_ids));
         memcpy(objects[i].position, object_positions[i], sizeof(objects[i].position));
         quat_make_identity(&objects[i].rotation);
 
@@ -199,6 +211,33 @@ void init()
         objects[i].rotation_rate = RAND_FLT() * 5.0f;
         objects[i].rotation_angle = RAND_FLT() * M_TWOPI;
     }
+
+    // Count the number of submeshes per object and accumulate
+    draw_call_count = 0;
+    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    {
+        draw_call_count += meshes[objects[i].mesh_id].submesh_count;
+    }
+
+    // Initialize draw calls. Since the number of objects never changes, we only need to do this once.
+    draw_calls = calloc(draw_call_count, sizeof(draw_call));
+    uint32_t draw_call_id = 0;
+    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    {
+        object_data *object = &objects[i];
+        mesh_data *mesh = &meshes[object->mesh_id];
+        for (size_t j = 0; j < mesh->submesh_count; j++)
+        {
+            draw_calls[draw_call_id++] = (draw_call) {
+                .material_id = object->material_ids[j],
+                // Pack both mesh id and submesh id into a 32 bit value for faster comparison
+                .mesh_id = (object->mesh_id << 16) | (j & 0xFFFF),
+                .object_id = i
+            };
+        }
+    }
+
+    // TODO: Sort draw calls by material, then submesh
 
     // Initialize camera properties
     float aspect_ratio = (float)resolution.width / (float)resolution.height;
@@ -313,33 +352,49 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     material->color = color;
 }
 
-void mesh_create(mesh_data *mesh, model64_t *model)
+void mesh_create(mesh_data *mesh, const char *model_file)
 {
-    // TODO: This is hacky
-    primitive_t *primitive = model64_get_primitive(model64_get_mesh(model, 0), 0);
+    model64_t *model = model64_load(model_file);
 
-    // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
-    // By setting "backing_memory", the buffer will actually use that pointer instead of allocating new memory.
+    model64_vtx_fmt_t vertex_format = model64_get_vertex_format(model);
+    assertf(vertex_format == MODEL64_VTX_FMT_MGFX, "The model %s has an unsupported vertex format!", model_file);
 
-    mesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-        .size = sizeof(mgfx_vertex_t) * model64_get_primitive_vertex_count(primitive),
-        .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ,
-        .backing_memory = model64_get_primitive_vertices(primitive),
-    });
+    uint32_t mesh_count = model64_get_mesh_count(model);
+    assertf(mesh_count == 1, "The model %s contains more than one mesh!", model_file);
+    mesh_t *in_mesh = model64_get_mesh(model, 0);
 
-    mesh->indices = model64_get_primitive_indices(primitive);
-    mesh->index_count = model64_get_primitive_index_count(primitive);
+    mesh->model = model;
+    mesh->submesh_count = model64_get_primitive_count(in_mesh);
+    mesh->submeshes = calloc(mesh->submesh_count, sizeof(submesh_data));
 
-    // To increase performance, we can record the drawing command into a block, since the topology of the mesh doesn't change in this case.
-    // Note that we could still modify the vertices themselves if we wanted, by writing to the vertex buffer. This would require some manual
-    // synchronisation, however.
-    rspq_block_begin();
-        // This function internally just reads the list of indices and emits a sequence of calls to mg_load_vertices and mg_draw_indices.
-        // Those function can also be called manually, if more customisation of the mesh layout is desired.
-        mg_draw_indexed(&(mg_input_assembly_parms_t) {
-            .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-        }, mesh->indices, mesh->index_count, 0);
-    mesh->block = rspq_block_end();
+    for (size_t i = 0; i < mesh->submesh_count; i++)
+    {
+        submesh_data *submesh = &mesh->submeshes[i];
+        primitive_t *primitive = model64_get_primitive(in_mesh, i);
+
+        // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
+        // By setting "backing_memory", the buffer will actually use that pointer instead of allocating new memory.
+
+        submesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
+            .size = sizeof(mgfx_vertex_t) * model64_get_primitive_vertex_count(primitive),
+            .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ,
+            .backing_memory = model64_get_primitive_vertices(primitive),
+        });
+
+        submesh->indices = model64_get_primitive_indices(primitive);
+        submesh->index_count = model64_get_primitive_index_count(primitive);
+
+        // To increase performance, we can record the drawing command into a block, since the topology of the mesh doesn't change in this case.
+        // Note that we could still modify the vertices themselves if we wanted, by writing to the vertex buffer. This would require some manual
+        // synchronisation, however.
+        rspq_block_begin();
+            // This function internally just reads the list of indices and emits a sequence of calls to mg_load_vertices and mg_draw_indices.
+            // Those function can also be called manually, if more customisation of the mesh layout is desired.
+            mg_draw_indexed(&(mg_input_assembly_parms_t) {
+                .primitive_topology = MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+            }, submesh->indices, submesh->index_count, 0);
+        submesh->block = rspq_block_end();
+    }
 }
 
 void update()
@@ -394,16 +449,21 @@ void update_lights()
     mg_buffer_unmap(scene_resource_buffer);
 }
 
-void update_object_matrices(object_data *object)
+void update_objects()
 {
-    // Update object matrices from its current transform.
+    // Recalculate object matrices.
+    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    {
+        object_data *object = &objects[i];
+        // Update object matrices from its current transform.
 
-    // TODO: Do (parts of) this on RSP instead
-    mat4x4_t model_matrix;
-    mat4x4_make_rotation_translation(&model_matrix, object->position, object->rotation.v);
-    mat4x4_mult(&object->mvp_matrix, &vp_matrix, &model_matrix);
-    mat4x4_mult(&object->mv_matrix, &view_matrix, &model_matrix);
-    mat4x4_to_normal_matrix(&object->n_matrix, &object->mv_matrix);
+        // TODO: Do (parts of) this on RSP instead
+        mat4x4_t model_matrix;
+        mat4x4_make_rotation_translation(&model_matrix, object->position, object->rotation.v);
+        mat4x4_mult(&object->mvp_matrix, &vp_matrix, &model_matrix);
+        mat4x4_mult(&object->mv_matrix, &view_matrix, &model_matrix);
+        mat4x4_to_normal_matrix(&object->n_matrix, &object->mv_matrix);
+    }
 }
 
 void render()
@@ -411,6 +471,7 @@ void render()
     // Update frame specific data
     update_camera();
     update_lights();
+    update_objects();
 
     // Get framebuffer
     surface_t *disp = display_get();
@@ -443,25 +504,25 @@ void render()
 
     uint32_t current_material_id = -1;
     uint32_t current_mesh_id = -1;
+    uint32_t current_object_id = -1;
 
     material_data *current_material = NULL;
-    mesh_data *current_mesh = NULL;
-    object_data *object = NULL;
+    submesh_data *current_submesh = NULL;
+    object_data *current_object = NULL;
+    draw_call *draw_call = NULL;
 
-    // Iterate over all objects
-    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    // Iterate over all draw calls
+    for (size_t i = 0; i < draw_call_count; i++)
     {
-        rdpq_debug_log_msg("-----> Object");
-        // Recalculate object matrices.
-        object = &objects[i];
-        update_object_matrices(object);
+        draw_call = &draw_calls[i];
+        rdpq_debug_log_msg("-----> Draw call");
 
         // Swap out the current material resources. This will automatically upload all uniform data to DMEM that is bound to the set.
         // To avoid redundant uploads, we keep track of the current material and only make this call when it actually changes.
         // This will be most optimal if the list of objects has been sorted by material.
-        if (object->material_id != current_material_id) {
+        if (draw_call->material_id != current_material_id) {
             rdpq_debug_log_msg("-------> Material");
-            current_material_id = object->material_id;
+            current_material_id = draw_call->material_id;
             current_material = &materials[current_material_id];
             mg_bind_resource_set(current_material->resource_set);
 
@@ -478,24 +539,32 @@ void render()
 
         // Swap out the currently bound vertex buffer. Similar to materials, we only do this when it changes.
         // Since swapping buffers is very quick, objects should be sorted by material first, and then by mesh.
-        if (object->mesh_id != current_mesh_id) {
-            current_mesh_id = object->mesh_id;
-            current_mesh = &meshes[current_mesh_id];
-            mg_bind_vertex_buffer(current_mesh->vertex_buffer, 0);
+        if (draw_call->mesh_id != current_mesh_id) {
+            current_mesh_id = draw_call->mesh_id;
+            // Unpack mesh id and submesh id
+            uint16_t mesh_id = current_mesh_id >> 16;
+            uint16_t submesh_id = current_mesh_id & 0xFFFF;
+            current_submesh = &meshes[mesh_id].submeshes[submesh_id];
+            mg_bind_vertex_buffer(current_submesh->vertex_buffer, 0);
         }
 
-        // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
-        // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
-        // If we were to use resource sets for matrices as well, we would have to manually synchronize updating them on the CPU.
-        // TODO: an example how to do manual synchronization
-        // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
-        mgfx_set_matrices_inline(&(mgfx_matrices_parms_t) {
-            .model_view_projection = object->mvp_matrix.m[0],
-            .model_view = object->mv_matrix.m[0],
-            .normal = object->mv_matrix.m[0],
-        });
+        if (draw_call->object_id != current_object_id) {
+            current_object_id = draw_call->object_id;
+            current_object = &objects[current_object_id];
 
-        assert(current_mesh != NULL);
+            // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
+            // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
+            // If we were to use resource sets for matrices as well, we would have to manually synchronize updating them on the CPU.
+            // TODO: an example how to do manual synchronization
+            // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
+            mgfx_set_matrices_inline(&(mgfx_matrices_parms_t) {
+                .model_view_projection = current_object->mvp_matrix.m[0],
+                .model_view = current_object->mv_matrix.m[0],
+                .normal = current_object->mv_matrix.m[0],
+            });
+        }
+
+        assert(current_submesh != NULL);
 
         // Perform the draw call. This will assemble the triangles from the currently bound vertex/index buffers, process them with the
         // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
@@ -503,12 +572,12 @@ void render()
 
         // Even when drawing commands are recorded into a block, we need to put them into a drawing batch to ensure proper synchronisation with rdpq.
         mg_draw_begin();
-            rspq_block_run(current_mesh->block);
+            rspq_block_run(current_submesh->block);
         mg_draw_end();
 
         rdpq_debug_log_msg("<------- Draw");
 
-        rdpq_debug_log_msg("<----- Object");
+        rdpq_debug_log_msg("<----- Draw call");
     }
 
     // Done. Detach from the framebuffer and present it.

@@ -9,11 +9,12 @@
     Using this system for a full game is probably not recommended.
 */
 
-#define TEXTURE_COUNT   3
-#define MATERIAL_COUNT  5
-#define MESH_COUNT      2
-#define OBJECT_COUNT    10
-#define LIGHT_COUNT     2
+#define TEXTURE_COUNT       3
+#define MATERIAL_COUNT      5
+#define MESH_COUNT          2
+#define OBJECT_COUNT        10
+#define LIGHT_COUNT         2
+#define MAX_SUBMESH_COUNT   8
 
 
 /* Textures */
@@ -39,17 +40,26 @@ static const uint32_t material_diffuse_colors[] = { // Currently unused
 
 /* Meshes */
 static const char *mesh_files[] = {
-    "rom:/suzanne.model64",
-    "rom:/cube.model64",
+    "rom:/pipe.model64",
+    "rom:/crate.model64",
 };
 
 
 /* Objects */
-static const uint32_t object_material_ids[] = {
-    0, 1, 2, 3, 4, 3, 2, 1, 4, 4
-};
 static const uint32_t object_mesh_ids[] = {
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1
+    0, 1, 1, 0, 0, 1, 1, 0, 1, 1
+};
+static const uint32_t object_material_ids[][MAX_SUBMESH_COUNT] = {
+    { 0, 1 }, 
+    { 1 }, 
+    { 2 }, 
+    { 3, 0 }, 
+    { 4, 2 }, 
+    { 3 }, 
+    { 2 }, 
+    { 1, 2 }, 
+    { 4 }, 
+    { 4 }
 };
 static const float object_positions[][3] = {
     { 0.0f, 0.0f, 0.0f },
