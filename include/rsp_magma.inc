@@ -185,6 +185,9 @@ MgCmd_LoadUniform:
     #############################################################
     .func MgCmd_SetShader
 MgCmd_SetShader:
+    # TODO: Adjust size of saved data in case the shader uses less DMEM for uniforms.
+    #       In theory this could be done by overwriting the state size in the overlay header.
+    #       However, this could be problematic because of the profiler buffer that is automatically generated at the end of the state.
     sw a0, %lo(MAGMA_SHADER_TEXT)
     sw a1, %lo(MAGMA_SHADER_TEXT_SIZE)
     # fallthrough
