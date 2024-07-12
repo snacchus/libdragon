@@ -5,6 +5,7 @@
 #include "quat.h"
 #include "utility.h"
 #include "scene_data.h"
+#include "debug_overlay.h"
 
 #define FB_COUNT    3
 
@@ -101,6 +102,10 @@ static quat_t camera_rotation;
 static uint32_t last_frame_ticks;
 
 static uint64_t frames = 0;
+static bool display_metrics = false;
+static bool request_display_metrics = false;
+static float last_3d_fps = 0.0f;
+static rspq_profile_data_t profile_data;
 
 int main()
 {
@@ -132,9 +137,12 @@ void init()
     // Initialize the required subsystems
 	debug_init(DEBUG_FEATURE_LOG_ISVIEWER | DEBUG_FEATURE_LOG_USB);
     dfs_init(DFS_DEFAULT_LOCATION);
+    joypad_init();
     display_init(resolution, DEPTH_16_BPP, FB_COUNT, GAMMA_NONE, FILTERS_RESAMPLE_ANTIALIAS_DEDITHER);
     rdpq_init();
     mg_init();
+
+    debug_overlay_init();
 
     // Create depth buffer
     zbuffer = surface_alloc(FMT_RGBA16, resolution.width, resolution.height);
@@ -399,6 +407,16 @@ void mesh_create(mesh_data *mesh, const char *model_file)
 
 void update()
 {
+    joypad_poll();
+    joypad_inputs_t joypad = joypad_get_inputs(JOYPAD_PORT_1);
+
+    if (joypad.btn.r) {
+        request_display_metrics = true;
+    } else {
+        request_display_metrics = false;
+        display_metrics = false;
+    }
+
     // Very basic delta time setup. It's enough for this demo.
     const uint32_t new_ticks = TICKS_READ();
     const uint32_t delta_ticks = TICKS_DISTANCE(last_frame_ticks, new_ticks);
@@ -580,6 +598,10 @@ void render()
         rdpq_debug_log_msg("<----- Draw call");
     }
 
+    if (display_metrics) {
+        debug_draw_perf_overlay(last_3d_fps);
+    }
+
     // Done. Detach from the framebuffer and present it.
     rdpq_detach_show();
 
@@ -587,8 +609,17 @@ void render()
 
     rspq_profile_next_frame();
 
-    if (((frames++) % 60) == 0) {
-        rspq_profile_dump();
+    if (frames == 30) {
+        if (!display_metrics) {
+            last_3d_fps = display_get_fps();
+            rspq_wait();
+            rspq_profile_get_data(&profile_data);
+            if (request_display_metrics) display_metrics = true;
+        }
+
+        frames = 0;
         rspq_profile_reset();
     }
+
+    frames++;
 }
