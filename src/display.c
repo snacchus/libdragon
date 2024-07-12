@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <malloc.h>
 #include <string.h>
+#include <math.h>
 #include "regsinternal.h"
 #include "system_internal.h"
 #include "n64sys.h"
@@ -22,6 +23,8 @@
 #define NUM_BUFFERS         32
 /** @brief Number of past frames used to evaluate FPS */
 #define FPS_WINDOW          32
+/** @brief How many times per second we should update the FPS value */
+#define FPS_UPDATE_FREQ      4
 
 static surface_t *surfaces;
 /** @brief Currently allocated Z-buffer */
@@ -46,14 +49,57 @@ static int now_showing = -1;
 static uint32_t drawing_mask = 0;
 /** @brief Bitmask of surfaces that are ready to be shown */
 static volatile uint32_t ready_mask = 0;
-/** @brief Window of absolute times at which previous frames were shown */
-static uint32_t frame_times[FPS_WINDOW];
-/** @brief Current index into the frame times window */
-static int frame_times_index = 0;
-/** @brief Current duration of the frame window (time elapsed for FPS_WINDOW frames) */
-static uint32_t frame_times_duration;
 /** @brief Auto detected TV region for display */
 static uint32_t __tv_type;
+/** @brief Actual display refresh rate */
+static float refresh_rate;
+/** @brief Actual display refresh period */
+static float refresh_period;
+/** @brief Currently calculated delta time estimation */
+static volatile float delta_time;
+/** @brief Snapshot of frame rate for display purposes (avoid changing it too fast) */
+static volatile float frame_rate_snapshot;
+/** @brief Factor between TV refresh rate and requested virtual refresh rate (#display_set_fps_limit) */
+static float frame_skip;
+/** @brief Minimum refresh period as requested by #display_set_fps_limit */
+static float min_refresh_period;
+/** @brief Rounded minimum refresh period as requested by #display_set_fps_limit */
+static float min_refresh_period_rounded;
+
+/** @brief State for the Kalman filter */
+typedef struct {
+    float P;            ///< Process noise covariance
+    float Q;            ///< Measurement noise covariance
+    float R;            ///< Estimation error covariance
+    float p_estimate;   ///> Last estimated value
+} kalman_state_t;
+
+/** @brief State for kalman filter used for FPS estimation */
+static kalman_state_t k_fps;
+/** @brief State for kalman filter used for delta-time estimation */
+static kalman_state_t k_delta;
+
+/** @brief Initalize Kalman's filter  */
+static void kalman_init(kalman_state_t *s, float x, float Q)
+{
+    s->P = 1.0f;
+    s->Q = Q;
+    s->R = 1.0f;
+    s->p_estimate = x;
+}
+
+/** @brief Run kalman's filter */
+static float kalman(kalman_state_t *s, float x)
+{
+    float p_pred = s->p_estimate;
+    float P_pred = s->P + s->Q;
+
+    float K = P_pred / (P_pred + s->R);
+    s->p_estimate = p_pred + K * (x - p_pred);
+    s->P = (1 - K) * P_pred;
+
+    return s->p_estimate;
+}
 
 /** @brief Get the next buffer index (with wraparound) */
 static inline int buffer_next(int idx) {
@@ -61,6 +107,83 @@ static inline int buffer_next(int idx) {
     if (idx == __buffers)
         idx = 0;
     return idx;
+}
+
+/** Calculate the actual refresh rate of the display given the current VI configuration */
+static float calc_refresh_rate(void)
+{
+    int clock;
+    switch (__tv_type) {
+        case TV_PAL:    clock = 49656530; break;
+        case TV_MPAL:   clock = 48628322; break;
+        default:        clock = 48681818; break;
+    }
+    uint32_t HSYNC = *VI_H_SYNC;
+    uint32_t VSYNC = *VI_V_SYNC;
+    uint32_t HSYNC_LEAP = *VI_H_SYNC_LEAP;
+
+    int h_sync = (HSYNC & 0xFFF) + 1;
+    int v_sync = (VSYNC & 0x3FF) + 1;
+    int h_sync_leap_b = (HSYNC_LEAP >>  0) & 0xFFF;
+    int h_sync_leap_a = (HSYNC_LEAP >> 16) & 0xFFF;
+    int leap_bitcount = 0;
+    int mask = 1<<16;
+    for (int i=0; i<5; i++) {
+        if (HSYNC & mask) leap_bitcount++;
+        mask <<= 1;
+    }
+    int h_sync_leap_avg = (h_sync_leap_a * leap_bitcount + h_sync_leap_b * (5 - leap_bitcount)) / 5;
+
+    return (float)clock / ((h_sync * (v_sync - 2) / 2 + h_sync_leap_avg));
+}
+
+/** 
+ * @brief Check if we should use this vblank interrupt or not, depending on fps limit 
+ * 
+ * FPS limit is implemented simply by pretending the hardware is slower at generating
+ * video interrupts, which in turn means skipping an interrupt every now and then
+ * to keep the frame rate within the desired limits.
+ */
+static bool fps_limit_ok(void)
+{
+    static float frame_skip_accum = 0.0f;
+    frame_skip_accum += frame_skip;
+    if (frame_skip_accum < 0.0f) return false;
+    frame_skip_accum -= 1.0f;
+    return true;
+}
+
+/** 
+ * @brief Update FPS estimation. 
+ * 
+ * This function is on every "virtual" vblank (that is, only on vblank interrupts
+ * which are not ignored by #fps_limit_ok). It updates the estimation of the
+ * frame rate using a Kalman filter, based on the number of frames that were
+ * actually displayed.
+ * 
+ * @param newframe      True if a new frame was displayed in this vblank, false otherwise
+ */
+static void update_fps(bool newframe)
+{
+    static int last_frame_counter = 0;
+    ++last_frame_counter;
+    if (!newframe) return;
+
+    // Calculate updated delta_time and frame_rate. Technically one is just the
+    // reciprocal of the other, but we prefer a more reactive kalman filter (Q=1)
+    // for delta_time, and a more stable one (Q=0.01) for frame_rate for display purposes.
+    delta_time = kalman(&k_delta, last_frame_counter) * min_refresh_period;
+    float kk_fps = kalman(&k_fps, last_frame_counter);
+
+    // Take a few snapshots of the framerate for display purposes.
+    static uint32_t last_update = 0;
+    uint32_t now = TICKS_READ();
+    if (TICKS_DISTANCE(last_update, now) > TICKS_PER_SECOND / FPS_UPDATE_FREQ) {
+        last_update = now;        
+        frame_rate_snapshot = 1.0f / (kk_fps * min_refresh_period_rounded);
+    }
+
+    last_frame_counter = 0;
 }
 
 /**
@@ -85,12 +208,15 @@ static void __display_callback()
     /* Check if the next buffer is ready to be displayed, otherwise just
        leave up the current frame. If full interlace mode is selected
        then don't update the buffer until two fields were displayed. */
-    if (!(__interlace_mode == INTERLACE_FULL && field)) {
+    if (!(__interlace_mode == INTERLACE_FULL && field) && fps_limit_ok()) {
+        bool newframe = false;
         int next = buffer_next(now_showing);
         if (ready_mask & (1 << next)) {
             now_showing = next;
             ready_mask &= ~(1 << next);
+            newframe = true;
         }
+        update_fps(newframe);
     }
 
     vi_write_dram_register(__safe_buffer[now_showing] + (interlaced && !field ? __width * __bitdepth : 0));
@@ -124,6 +250,20 @@ void display_init( resolution_t res, bitdepth_t bit, uint32_t num_buffers, gamma
 
     /* Copy over extra initializations */
     vi_write_config(&vi_config_presets[serrate][__tv_type]);
+
+    if( __tv_type == TV_PAL && res.pal60 )
+    {
+        /* 60Hz PAL is a regular PAL video mode with NTSC-like V_SYNC and V_VIDEO */
+
+        /* NOTE: Ideally V_SYNC would be 524/525, matching NTSC, however in practice this appears
+                to cause too-slow retrace intervals. Instead we use 518/519 half-lines which is
+                only a 1.14% deviation, the expectation is that this is within the tolerance ranges
+                of almost all devices.
+                Alternatively we could have elected to shorten H_SYNC, however H_SYNC is expected
+                to be less tolerant than V_SYNC so we opt to leave it alone at the nominal value. */
+        vi_write_safe(VI_V_SYNC, VI_V_SYNC_SET(525 - 6 - serrate));
+        vi_write_safe(VI_V_VIDEO, (serrate) ? VI_V_VIDEO_SET(35, 509) : VI_V_VIDEO_SET(37, 511));
+    }
 
     /* Figure out control register based on input given */
     switch( bit )
@@ -273,6 +413,14 @@ void display_init( resolution_t res, bitdepth_t bit, uint32_t num_buffers, gamma
     }
     vi_write_safe(VI_CTRL, control);
 
+    /* Calculate actual refresh rate for this configuration */
+    refresh_rate = calc_refresh_rate();
+    refresh_period = 1.0f / refresh_rate;
+    frame_rate_snapshot = refresh_rate;
+    display_set_fps_limit(0);
+    kalman_init(&k_fps, 1.0f, 0.01f);
+    kalman_init(&k_delta, 1.0f, 1.0f);
+
     enable_interrupts();
 
     /* Set which line to call back on in order to flip screens */
@@ -413,16 +561,6 @@ void display_show( surface_t* surf )
     drawing_mask &= ~(1 << i);
     ready_mask |= 1 << i;
 
-    /* Record the time at which this frame was (asked to be) shown */
-    uint32_t old_ticks = frame_times[frame_times_index];
-    uint32_t now = TICKS_READ();
-    if (old_ticks)
-        frame_times_duration = TICKS_DISTANCE(old_ticks, now);
-    frame_times[frame_times_index] = now;
-    frame_times_index++;
-    if (frame_times_index == FPS_WINDOW)
-        frame_times_index = 0;
-
     enable_interrupts();
 }
 
@@ -469,8 +607,33 @@ uint32_t display_get_num_buffers(void)
 
 float display_get_fps(void)
 {
-    if (!frame_times_duration) return 0;
-    return (float)FPS_WINDOW * TICKS_PER_SECOND / frame_times_duration;
+    return frame_rate_snapshot;
+}
+
+float display_get_refresh_rate(void)
+{
+    return refresh_rate;
+}
+
+float display_get_delta_time(void)
+{
+    return delta_time;
+}
+
+void display_set_fps_limit(float fps)
+{
+    disable_interrupts();
+
+    min_refresh_period = 1.0f / (fps ? fps : refresh_rate);
+    frame_skip = refresh_period / min_refresh_period;
+    delta_time = min_refresh_period;
+
+    // Calculate also the minimum period using a rounded refresh rate
+    // This will be used only for display purposes, so that FPS are capped
+    // to 60 Hz rather than 59.83 Hz, which would be the hw-accurate value.
+    min_refresh_period_rounded = 1.0f / (fps ? fps : roundf(refresh_rate));
+
+    enable_interrupts();
 }
 
 extern inline void vi_write_config(const vi_config_t* config);
