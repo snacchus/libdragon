@@ -8,8 +8,12 @@
 #include <libdragon.h>
 #include <rspq_profile.h>
 
-#define DEBUG_OVERLAY_FONT_ID UINT8_MAX
-#define DEBUG_OVERLAY_TEXT_YOFFSET 10
+#define DEBUG_OVERLAY_FONT_ID           UINT8_MAX
+#define DEBUG_OVERLAY_DEFAULT_STYLE_ID  0
+#define DEBUG_OVERLAY_ACCENT_STYLE_ID   1
+#define DEBUG_OVERLAY_MUTED_STYLE_ID    2
+#define DEBUG_OVERLAY_DARK_STYLE_ID     3
+#define DEBUG_OVERLAY_TEXT_YOFFSET      10
 
 typedef struct {
   uint32_t calls;
@@ -90,9 +94,7 @@ static bool debug_profile_is_idle(uint32_t index) {
 
 static void debug_print_table_entry(ProfileSlot *slot, float posX, float *posY)
 {
-  rdpq_set_prim_color(slot->color);
   rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, posX-10, *posY+DEBUG_OVERLAY_TEXT_YOFFSET, "*");
-  rdpq_set_prim_color(RGBA32(0xFF, 0xFF, 0xFF, 0xFF));
 
   if(slot->calls != 0) {
   rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, posX, *posY+DEBUG_OVERLAY_TEXT_YOFFSET, "%-10.10s %5lu %7luu", slot->name, slot->calls, slot->timeUs);
@@ -111,6 +113,15 @@ void debug_overlay_init()
 {
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(DEBUG_OVERLAY_FONT_ID, font);
+    rdpq_font_style(font, DEBUG_OVERLAY_ACCENT_STYLE_ID, &(rdpq_fontstyle_t) {
+      .color = RGBA32(0x99, 0x99, 0xEE, 0xFF)
+    });
+    rdpq_font_style(font, DEBUG_OVERLAY_MUTED_STYLE_ID, &(rdpq_fontstyle_t) {
+      .color = RGBA32(0xAA, 0xAA, 0xAA, 0xFF)
+    });
+    rdpq_font_style(font, DEBUG_OVERLAY_DARK_STYLE_ID, &(rdpq_fontstyle_t) {
+      .color = RGBA32(0x55, 0x55, 0x55, 0x99)
+    });
 }
 
 void debug_draw_perf_overlay(float measuredFps)
@@ -193,18 +204,11 @@ void debug_draw_perf_overlay(float measuredFps)
     posY += 1;
 
     // Table - Total Waits
-    rdpq_set_prim_color((color_t){0x99, 0x99, 0xEE, 0xFF});
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, TABLE_POS_X, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "Total (busy)     %7ldu", (uint32_t)timeTotalBusy);
-    rdpq_set_prim_color(RGBA32(0xFF, 0xFF, 0xFF, 0xFF));
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_ACCENT_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, TABLE_POS_X, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "Total (busy)     %7ldu", (uint32_t)timeTotalBusy);
 
     posY += 12; float endSectionTotalBusyY = posY;
     posY += 6;
 
-    // Draw Table (texts, idle/waits)
-    //rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, TABLE_POS_X, posY, "Waiting for:");
-    //posY += 12;
-
-    rdpq_set_prim_color(RGBA32(0xAA, 0xAA, 0xAA, 0xFF));
     colorIndex = 4;
     for(size_t i = 0; i < SLOT_COUNT; i++)
     {
@@ -213,15 +217,12 @@ void debug_draw_perf_overlay(float measuredFps)
       colorIndex++;
       debug_print_table_entry(&slots[i], TABLE_POS_X, &posY);
     }
-    rdpq_set_prim_color(RGBA32(0xFF, 0xFF, 0xFF, 0xFF));
 
     posY += 2; float endSectionCPUY = posY;
     posY += 1;
 
     // Table - Total Waits
-    rdpq_set_prim_color((color_t){0x99, 0x99, 0xEE, 0xFF});
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, TABLE_POS_X, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "Total (waiting)  %7ldu", (uint32_t)timeTotalWait);
-    rdpq_set_prim_color(RGBA32(0xFF, 0xFF, 0xFF, 0xFF));
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_ACCENT_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, TABLE_POS_X, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "Total (waiting)  %7ldu", (uint32_t)timeTotalWait);
 
     posY += 12; float endSectionTotalWaitsY = posY;
     posY += 10;
@@ -269,24 +270,19 @@ void debug_draw_perf_overlay(float measuredFps)
 
     // bar (idle vs busy) - Text
     rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
-    rdpq_set_prim_color(RGBA32(0xFF, 0xFF, 0xFF, 0xFF));
-    //rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, posY+2, "Total-Time");
     rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 4 + (BAR_HEIGHT+BAR_BORDER), "RSP");
     rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 4 + (BAR_HEIGHT+BAR_BORDER)*2, "RDP");
 
-    rdpq_set_prim_color(RGBA32(0xAA, 0xAA, 0xAA, 0xFF));
     float fpsMarkerY = posY + 8 + (BAR_HEIGHT+BAR_BORDER)*3;
-    rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "FPS Target:");
+    rdpq_text_print(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_MUTED_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "FPS Target:");
 
     // FPS marker at bottom of lines
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0] + posFps60 - 20, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "60");
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0] + posFps30 - 20, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "30");
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0] + posFps20 - 20, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "20");
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_MUTED_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0] + floorf(posFps60) - 14, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "60");
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_MUTED_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0] + floorf(posFps30) - 14, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "30");
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_MUTED_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0] + floorf(posFps20) - 14, fpsMarkerY+DEBUG_OVERLAY_TEXT_YOFFSET, "20");
 
-    rdpq_set_prim_color((color_t){0x99, 0x99, 0xEE, 0xFF});
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0] + 120, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "FPS: %.2f", measuredFps);
-    rdpq_set_prim_color((color_t){0x99, 0x99, 0x99, 0xFF});
-    rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0] + 208, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "(f:%lld)", profile_data.frame_count);
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_ACCENT_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0] + 120, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "FPS: %.2f", measuredFps);
+    rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_MUTED_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0] + 208, posY+DEBUG_OVERLAY_TEXT_YOFFSET, "(f:%lld)", profile_data.frame_count);
 
     // ======== FILL MODE ========
 
@@ -325,15 +321,14 @@ void debug_draw_perf_overlay(float measuredFps)
     rdpq_set_mode_standard();
     rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
     rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
-    rdpq_set_prim_color(RGBA32(0x55, 0x55, 0x55, 0x99));
 
     // total time on right side of bar
     if((busyWidth+idleWidth) < 150) {
-      rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]+184, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER), "%7luu", timeTotalBusy + timeTotalWait);
-      rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]+184, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER)*2, "%7lluu", rdpTimeBusy);
+      rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_DARK_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0]+198, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER), "%7luu", timeTotalBusy + timeTotalWait);
+      rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_DARK_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0]+198, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER)*2, "%7lluu", rdpTimeBusy);
     } else {
-      rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]+2, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER), "%luu", timeTotalBusy + timeTotalWait);
-      rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]+2, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER)*2, "%lluu", rdpTimeBusy);
+      rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_DARK_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0]+2, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER), "%luu", timeTotalBusy + timeTotalWait);
+      rdpq_text_printf(&(rdpq_textparms_t){.style_id = DEBUG_OVERLAY_DARK_STYLE_ID}, DEBUG_OVERLAY_FONT_ID, barPos[0]+2, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 3 + (BAR_HEIGHT+BAR_BORDER)*2, "%lluu", rdpTimeBusy);
     }
 }
 
