@@ -72,7 +72,7 @@ typedef struct
 } draw_call;
 
 void init();
-void update();
+void update(float delta_time);
 void render();
 void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
@@ -104,8 +104,6 @@ static quat_t camera_rotation;
 
 static uint32_t current_object_count = OBJECT_COUNT;
 
-static uint32_t last_frame_ticks;
-
 static uint64_t frames = 0;
 static bool display_metrics = false;
 static bool request_display_metrics = false;
@@ -125,7 +123,7 @@ int main()
 
     while (true) 
     {
-        update();
+        update(display_get_delta_time());
         render();
 
 #if SINGLE_FRAME
@@ -133,15 +131,6 @@ int main()
         break;
 #endif
     }
-}
-
-int compare_draw_call(const draw_call *a, const draw_call *b)
-{
-    if (a->material_id < b->material_id) return -1;
-    if (a->material_id > b->material_id) return 1;
-    if (a->mesh_id < b->mesh_id) return -1;
-    if (a->mesh_id > b->mesh_id) return 1;
-    return 0;
 }
 
 void init()
@@ -242,8 +231,6 @@ void init()
     mat4x4_make_projection(&projection_matrix, camera_fov, aspect_ratio, camera_near_plane, camera_far_plane);
     memcpy(camera_position, camera_starting_position, sizeof(camera_position));
     quat_make_identity(&camera_rotation);
-
-    last_frame_ticks = TICKS_READ();
 }
 
 void create_scene_resources()
@@ -395,7 +382,7 @@ void mesh_create(mesh_data *mesh, const char *model_file)
     }
 }
 
-void update()
+void update(float delta_time)
 {
     joypad_poll();
     joypad_buttons_t btn = joypad_get_buttons_pressed(JOYPAD_PORT_1);
@@ -416,16 +403,11 @@ void update()
         draw_calls_dirty = true;
     }
 
-    // Very basic delta time setup. It's enough for this demo.
-    const uint32_t new_ticks = TICKS_READ();
-    const uint32_t delta_ticks = TICKS_DISTANCE(last_frame_ticks, new_ticks);
-    const float delta_seconds = (float)delta_ticks / TICKS_PER_SECOND;
-    last_frame_ticks = new_ticks;
-
+    // Compute animation based on delta time. It's enough for this demo.
     for (size_t i = 0; i < current_object_count; i++)
     {
         quat_from_axis_angle(&objects[i].rotation, objects[i].rotation_axis, objects[i].rotation_angle);
-        objects[i].rotation_angle = wrap_angle(objects[i].rotation_angle + objects[i].rotation_rate * delta_seconds);
+        objects[i].rotation_angle = wrap_angle(objects[i].rotation_angle + objects[i].rotation_rate * delta_time);
     }
 }
 
@@ -481,6 +463,15 @@ void update_objects()
         mat4x4_mult(&object->mv_matrix, &view_matrix, &model_matrix);
         mat4x4_to_normal_matrix(&object->n_matrix, &object->mv_matrix);
     }
+}
+
+int compare_draw_call(const draw_call *a, const draw_call *b)
+{
+    if (a->material_id < b->material_id) return -1;
+    if (a->material_id > b->material_id) return 1;
+    if (a->mesh_id < b->mesh_id) return -1;
+    if (a->mesh_id > b->mesh_id) return 1;
+    return 0;
 }
 
 void update_draw_calls()
