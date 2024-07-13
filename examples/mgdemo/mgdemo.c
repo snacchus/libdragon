@@ -17,6 +17,8 @@
 #define TEX_SIZE_SHIFT  (VTX_TEX_SHIFT-RDP_TEX_SHIFT)
 #define RDP_HALF_TEXEL  (1<<(RDP_TEX_SHIFT-1))
 
+#define MAX_DRAW_CALL_COUNT (OBJECT_COUNT * MAX_SUBMESH_COUNT)
+
 typedef struct
 {
     mgfx_fog_t fog;
@@ -92,12 +94,15 @@ static mgfx_light_parms_t lights[LIGHT_COUNT];
 
 static draw_call *draw_calls;
 static uint32_t draw_call_count;
+static bool draw_calls_dirty = true;
 
 static mat4x4_t projection_matrix;
 static mat4x4_t view_matrix;
 static mat4x4_t vp_matrix;
 static float camera_position[3];
 static quat_t camera_rotation;
+
+static uint32_t current_object_count = OBJECT_COUNT;
 
 static uint32_t last_frame_ticks;
 
@@ -128,6 +133,15 @@ int main()
         break;
 #endif
     }
+}
+
+int compare_draw_call(const draw_call *a, const draw_call *b)
+{
+    if (a->material_id < b->material_id) return -1;
+    if (a->material_id > b->material_id) return 1;
+    if (a->mesh_id < b->mesh_id) return -1;
+    if (a->mesh_id > b->mesh_id) return 1;
+    return 0;
 }
 
 void init()
@@ -220,32 +234,8 @@ void init()
         objects[i].rotation_angle = RAND_FLT() * M_TWOPI;
     }
 
-    // Count the number of submeshes per object and accumulate
-    draw_call_count = 0;
-    for (size_t i = 0; i < OBJECT_COUNT; i++)
-    {
-        draw_call_count += meshes[objects[i].mesh_id].submesh_count;
-    }
-
-    // Initialize draw calls. Since the number of objects never changes, we only need to do this once.
-    draw_calls = calloc(draw_call_count, sizeof(draw_call));
-    uint32_t draw_call_id = 0;
-    for (size_t i = 0; i < OBJECT_COUNT; i++)
-    {
-        object_data *object = &objects[i];
-        mesh_data *mesh = &meshes[object->mesh_id];
-        for (size_t j = 0; j < mesh->submesh_count; j++)
-        {
-            draw_calls[draw_call_id++] = (draw_call) {
-                .material_id = object->material_ids[j],
-                // Pack both mesh id and submesh id into a 32 bit value for faster comparison
-                .mesh_id = (object->mesh_id << 16) | (j & 0xFFFF),
-                .object_id = i
-            };
-        }
-    }
-
-    // TODO: Sort draw calls by material, then submesh
+    // Initialize draw calls.
+    draw_calls = calloc(MAX_DRAW_CALL_COUNT, sizeof(draw_call));
 
     // Initialize camera properties
     float aspect_ratio = (float)resolution.width / (float)resolution.height;
@@ -408,13 +398,22 @@ void mesh_create(mesh_data *mesh, const char *model_file)
 void update()
 {
     joypad_poll();
-    joypad_inputs_t joypad = joypad_get_inputs(JOYPAD_PORT_1);
+    joypad_buttons_t btn = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
-    if (joypad.btn.r) {
-        request_display_metrics = true;
-    } else {
-        request_display_metrics = false;
-        display_metrics = false;
+    // L toggles the debug/profiler overlay on/off
+    if (btn.l) {
+        request_display_metrics = !request_display_metrics;
+        if (!request_display_metrics) display_metrics = false;
+    }
+
+    // Increase/Decrease the number of drawn objects with the D-pad.
+    if (btn.d_up && current_object_count < OBJECT_COUNT) {
+        current_object_count++;
+        draw_calls_dirty = true;
+    }
+    if (btn.d_down && current_object_count > 0) {
+        current_object_count--;
+        draw_calls_dirty = true;
     }
 
     // Very basic delta time setup. It's enough for this demo.
@@ -423,7 +422,7 @@ void update()
     const float delta_seconds = (float)delta_ticks / TICKS_PER_SECOND;
     last_frame_ticks = new_ticks;
 
-    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    for (size_t i = 0; i < current_object_count; i++)
     {
         quat_from_axis_angle(&objects[i].rotation, objects[i].rotation_axis, objects[i].rotation_angle);
         objects[i].rotation_angle = wrap_angle(objects[i].rotation_angle + objects[i].rotation_rate * delta_seconds);
@@ -470,7 +469,7 @@ void update_lights()
 void update_objects()
 {
     // Recalculate object matrices.
-    for (size_t i = 0; i < OBJECT_COUNT; i++)
+    for (size_t i = 0; i < current_object_count; i++)
     {
         object_data *object = &objects[i];
         // Update object matrices from its current transform.
@@ -484,12 +483,42 @@ void update_objects()
     }
 }
 
+void update_draw_calls()
+{
+    if (!draw_calls_dirty) return;
+
+    // Collect draw calls from all objects.
+    // For each objects, we generate one draw call per submesh.
+    draw_call_count = 0;
+    for (size_t i = 0; i < current_object_count; i++)
+    {
+        object_data *object = &objects[i];
+        mesh_data *mesh = &meshes[object->mesh_id];
+
+        for (size_t j = 0; j < mesh->submesh_count; j++)
+        {
+            draw_calls[draw_call_count++] = (draw_call) {
+                .material_id = object->material_ids[j],
+                // Pack both mesh id and submesh id into a 32 bit value for faster comparison
+                .mesh_id = (object->mesh_id << 16) | (j & 0xFFFF),
+                .object_id = i
+            };
+        }
+    }
+
+    // Sort draw calls by material, then (sub)mesh
+    qsort(draw_calls, draw_call_count, sizeof(draw_call), (int (*)(const void*, const void*))compare_draw_call);
+
+    draw_calls_dirty = false;
+}
+
 void render()
 {
     // Update frame specific data
     update_camera();
     update_lights();
     update_objects();
+    update_draw_calls();
 
     // Get framebuffer
     surface_t *disp = display_get();
