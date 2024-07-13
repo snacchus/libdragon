@@ -19,6 +19,17 @@
 
 #define MAX_DRAW_CALL_COUNT (OBJECT_COUNT * MAX_SUBMESH_COUNT)
 
+#define STICK_DEADZONE       10
+#define IGNORE_DEADZONE(v)   ((v) > STICK_DEADZONE || (v) < -STICK_DEADZONE ? (v) : 0)
+
+#define CAMERA_AZIMUTH_SPEED        0.02f
+#define CAMERA_INCLINATION_SPEED    0.02f
+#define CAMERA_DISTANCE_SPEED       0.5f
+#define CAMERA_MIN_INCLINATION      (-M_PI_2 * 0.9)
+#define CAMERA_MAX_INCLINATION      (M_PI_2 * 0.9)
+#define CAMERA_MIN_DISTANCE         1.0f
+#define CAMERA_MAX_DISTANCE         100.0f
+
 typedef struct
 {
     mgfx_fog_t fog;
@@ -83,8 +94,8 @@ static surface_t zbuffer;
 static mg_viewport_t viewport;
 static mg_culling_parms_t culling;
 static mg_pipeline_t *pipeline;
-static mg_buffer_t *scene_resource_buffer;
-static mg_resource_set_t *scene_resource_set;
+static mg_buffer_t *scene_resource_buffer[FB_COUNT];
+static mg_resource_set_t *scene_resource_set[FB_COUNT];
 
 static sprite_t *textures[TEXTURE_COUNT];
 static material_data materials[MATERIAL_COUNT];
@@ -99,10 +110,12 @@ static bool draw_calls_dirty = true;
 static mat4x4_t projection_matrix;
 static mat4x4_t view_matrix;
 static mat4x4_t vp_matrix;
-static float camera_position[3];
-static quat_t camera_rotation;
+static float camera_azimuth;
+static float camera_inclination;
+static float camera_distance;
 
 static uint32_t current_object_count = OBJECT_COUNT;
+static uint32_t fb_index = 0;
 
 static uint64_t frames = 0;
 static bool display_metrics = false;
@@ -229,8 +242,7 @@ void init()
     // Initialize camera properties
     float aspect_ratio = (float)resolution.width / (float)resolution.height;
     mat4x4_make_projection(&projection_matrix, camera_fov, aspect_ratio, camera_near_plane, camera_far_plane);
-    memcpy(camera_position, camera_starting_position, sizeof(camera_position));
-    quat_make_identity(&camera_rotation);
+    camera_distance = camera_start_distance;
 }
 
 void create_scene_resources()
@@ -241,44 +253,52 @@ void create_scene_resources()
     // automatically optimized for us. Using uniform buffers also allows us to modify the buffer contents dynamically,
     // for example to update lighting.
 
-    // Create the uniform buffer. It's important that the buffer contents need to be in a format that is optimized for
-    // access by the RSP. This is what the scene_raw_data struct is, which itself contains the predefined structs
-    // provided by the fixed function pipeline.
-    scene_resource_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-        .size = sizeof(scene_raw_data),
-        .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ | MG_BUFFER_FLAGS_ACCESS_CPU_WRITE
-    });
+    // Because this data changes each frame we need to create one buffer/resource set for each frame that can be in flight simultaneosly,
+    // which is normally the number of framebuffers the display was initialized with.
+    // This is necessary so when frame N is being prepared on the CPU we won't overwrite the data for frame N-1, which might still be
+    // in the process of being rendered by RSP/RDP.
 
-    // Create the resource set. A resource set contains a number of resource bindings.
-    // Each resource binding describes the type of resource, where to copy it from, and which binding location to copy it to.
-    // Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
-    // the fixed function pipeline.
-    mg_resource_binding_t scene_bindings[] = {
-        {
-            .binding = MGFX_BINDING_FOG,
-            .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
-            .buffer = scene_resource_buffer,
-            .offset = offsetof(scene_raw_data, fog)
-        },
-        {
-            .binding = MGFX_BINDING_LIGHTING,
-            .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
-            .buffer = scene_resource_buffer,
-            .offset = offsetof(scene_raw_data, lighting)
-        },
-    };
+    for (size_t i = 0; i < FB_COUNT; i++)
+    {
+        // Create the uniform buffer. It's important that the buffer contents need to be in a format that is optimized for
+        // access by the RSP. This is what the scene_raw_data struct is, which itself contains the predefined structs
+        // provided by the fixed function pipeline.
+        scene_resource_buffer[i] = mg_buffer_create(&(mg_buffer_parms_t) {
+            .size = sizeof(scene_raw_data),
+            .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ | MG_BUFFER_FLAGS_ACCESS_CPU_WRITE
+        });
 
-    // By bundling multiple resource bindings in a resource set, magma can automatically optimize the operation
-    // (for example by detecting that some bindings can be coalesced into a contiguous DMA). During rendering, 
-    // the set can be "bound" with a single function call, which will load all attached resources into DMEM at once.
-    scene_resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
-        .pipeline = pipeline,
-        .binding_count = ARRAY_COUNT(scene_bindings),
-        .bindings = scene_bindings
-    });
+        // Create the resource set. A resource set contains a number of resource bindings.
+        // Each resource binding describes the type of resource, where to copy it from, and which binding location to copy it to.
+        // Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
+        // the fixed function pipeline.
+        mg_resource_binding_t scene_bindings[] = {
+            {
+                .binding = MGFX_BINDING_FOG,
+                .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
+                .buffer = scene_resource_buffer[i],
+                .offset = offsetof(scene_raw_data, fog)
+            },
+            {
+                .binding = MGFX_BINDING_LIGHTING,
+                .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
+                .buffer = scene_resource_buffer[i],
+                .offset = offsetof(scene_raw_data, lighting)
+            },
+        };
 
-    // Note that even though we've created the resource set above by pointing it towards a buffer, we haven't actually initialised
-    // any of the contents yet. This will be done at beginning of each frame.
+        // By bundling multiple resource bindings in a resource set, magma can automatically optimize the operation
+        // (for example by detecting that some bindings can be coalesced into a contiguous DMA). During rendering, 
+        // the set can be "bound" with a single function call, which will load all attached resources into DMEM at once.
+        scene_resource_set[i] = mg_resource_set_create(&(mg_resource_set_parms_t) {
+            .pipeline = pipeline,
+            .binding_count = ARRAY_COUNT(scene_bindings),
+            .bindings = scene_bindings
+        });
+
+        // Note that even though we've created the resource set above by pointing it towards a buffer, we haven't actually initialised
+        // any of the contents yet. This will be done at beginning of each frame.
+    }
 }
 
 void material_create(material_data *material, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color)
@@ -385,13 +405,25 @@ void mesh_create(mesh_data *mesh, const char *model_file)
 void update(float delta_time)
 {
     joypad_poll();
+    joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
     joypad_buttons_t btn = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
-    // L toggles the debug/profiler overlay on/off
-    if (btn.l) {
-        request_display_metrics = !request_display_metrics;
-        if (!request_display_metrics) display_metrics = false;
-    }
+    int8_t stick_x = IGNORE_DEADZONE(inputs.stick_x);
+    int8_t stick_y = IGNORE_DEADZONE(inputs.stick_y);
+    int8_t cstick_y = IGNORE_DEADZONE(inputs.cstick_y);
+
+    camera_azimuth += stick_x * delta_time * CAMERA_AZIMUTH_SPEED;
+    camera_inclination += stick_y * delta_time * CAMERA_INCLINATION_SPEED;
+    camera_distance += cstick_y * delta_time * CAMERA_DISTANCE_SPEED;
+
+    if (camera_azimuth > M_TWOPI) camera_azimuth -= M_TWOPI;
+    if (camera_azimuth < 0.0f) camera_azimuth += M_TWOPI;
+
+    if (camera_inclination > CAMERA_MAX_INCLINATION) camera_inclination = CAMERA_MAX_INCLINATION;
+    if (camera_inclination < CAMERA_MIN_INCLINATION) camera_inclination = CAMERA_MIN_INCLINATION;
+
+    if (camera_distance > CAMERA_MAX_DISTANCE) camera_distance = CAMERA_MAX_DISTANCE;
+    if (camera_distance < CAMERA_MIN_DISTANCE) camera_distance = CAMERA_MIN_DISTANCE;
 
     // Increase/Decrease the number of drawn objects with the D-pad.
     if (btn.d_up && current_object_count < OBJECT_COUNT) {
@@ -401,6 +433,12 @@ void update(float delta_time)
     if (btn.d_down && current_object_count > 0) {
         current_object_count--;
         draw_calls_dirty = true;
+    }
+
+    // L toggles the debug/profiler overlay on/off
+    if (btn.l) {
+        request_display_metrics = !request_display_metrics;
+        if (!request_display_metrics) display_metrics = false;
     }
 
     // Compute animation based on delta time. It's enough for this demo.
@@ -416,7 +454,19 @@ void update_camera()
     // Update camera matrices.
     const float up[3] = {0, 1, 0};
     const float target[3] = {0, 0, 0};
-    mat4x4_make_lookat(&view_matrix, camera_position, up, target);
+
+    // Calculate camera position from spherical coordinates
+    float sin_azimuth, cos_azimuth, sin_inclination, cos_inclination;
+    fm_sincosf(camera_azimuth, &sin_azimuth, &cos_azimuth);
+    fm_sincosf(camera_inclination, &sin_inclination, &cos_inclination);
+
+    const float eye[3] = {
+        camera_distance * cos_inclination * sin_azimuth,
+        camera_distance * sin_inclination,
+        camera_distance * cos_inclination * cos_azimuth
+    };
+
+    mat4x4_make_lookat(&view_matrix, eye, up, target);
     mat4x4_mult(&vp_matrix, &projection_matrix, &view_matrix);
 }
 
@@ -432,9 +482,8 @@ void update_lights()
         mat4x4_mult_vec(lights[i].position, &view_matrix, light_positions[i]);
     }
 
-    // TODO: synchronize
-    // Map the buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
-    scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer, 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
+    // Map the current frame's buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
+    scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer[fb_index], 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
         // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
         mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {
             .start = fog_start,
@@ -445,7 +494,7 @@ void update_lights()
             .light_count = ARRAY_COUNT(lights),
             .lights = lights
         });
-    mg_buffer_unmap(scene_resource_buffer);
+    mg_buffer_unmap(scene_resource_buffer[fb_index]);
 }
 
 void update_objects()
@@ -538,7 +587,7 @@ void render()
     mg_bind_pipeline(pipeline);
 
     // Bind resources that stay constant for the entire scene (for example lighting)
-    mg_bind_resource_set(scene_resource_set);
+    mg_bind_resource_set(scene_resource_set[fb_index]);
 
     uint32_t current_material_id = -1;
     uint32_t current_mesh_id = -1;
@@ -593,7 +642,6 @@ void render()
             // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
             // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
             // If we were to use resource sets for matrices as well, we would have to manually synchronize updating them on the CPU.
-            // TODO: an example how to do manual synchronization
             // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
             mgfx_set_matrices_inline(&(mgfx_matrices_parms_t) {
                 .model_view_projection = current_object->mvp_matrix.m[0],
@@ -642,4 +690,7 @@ void render()
     }
 
     frames++;
+
+    // Cycle the index used for accessing buffers and resource sets that change per frame.
+    fb_index = (fb_index + 1) % FB_COUNT;
 }
