@@ -79,9 +79,6 @@ int main()
     });
 
     // Create and fill a vertex buffer.
-    // The buffer contents will never change and will only ever be read by the RCP (the ucode),
-    // though we need to write to it once from CPU to initialise it.
-    // Therefore we need to set the buffer flags accordingly.
     mgfx_vertex_t vertices[] = {
         MGFX_VERTEX(0, -0.5f, 0, 0, 0, 0, 0, 0, 0xFF0000FF),
         MGFX_VERTEX(-0.5f, 0.5f, 0, 0, 0, 0, 0, 0, 0x00FF00FF),
@@ -89,7 +86,6 @@ int main()
     };
     mg_buffer_t *vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
         .size = sizeof(vertices),
-        .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ|MG_BUFFER_FLAGS_ACCESS_CPU_WRITE
     });
     mg_buffer_write(vertex_buffer, 0, sizeof(vertices), vertices);
 

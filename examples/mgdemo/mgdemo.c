@@ -265,7 +265,6 @@ void create_scene_resources()
         // provided by the fixed function pipeline.
         scene_resource_buffer[i] = mg_buffer_create(&(mg_buffer_parms_t) {
             .size = sizeof(scene_raw_data),
-            .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ | MG_BUFFER_FLAGS_ACCESS_CPU_WRITE
         });
 
         // Create the resource set. A resource set contains a number of resource bindings.
@@ -382,7 +381,6 @@ void mesh_create(mesh_data *mesh, const char *model_file)
 
         submesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
             .size = sizeof(mgfx_vertex_t) * model64_get_primitive_vertex_count(primitive),
-            .flags = MG_BUFFER_FLAGS_ACCESS_RCP_READ,
             .backing_memory = model64_get_primitive_vertices(primitive),
         });
 

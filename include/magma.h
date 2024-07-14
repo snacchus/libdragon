@@ -46,10 +46,8 @@ typedef enum
 
 typedef enum
 {
-    MG_BUFFER_FLAGS_ACCESS_CPU_READ         = 1<<0,
-    MG_BUFFER_FLAGS_ACCESS_CPU_WRITE        = 1<<1,
-    MG_BUFFER_FLAGS_ACCESS_RCP_READ         = 1<<2,
-    MG_BUFFER_FLAGS_ACCESS_RCP_WRITE        = 1<<3,
+    // Nothing here yet
+    MG_BUFFER_FLAGS_NONE
 } mg_buffer_flags_t;
 
 typedef enum

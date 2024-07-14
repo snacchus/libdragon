@@ -129,26 +129,6 @@ void mg_buffer_free(mg_buffer_t *buffer)
     free(buffer);
 }
 
-static void mg_buffer_check_cpu_write(mg_buffer_t *buffer)
-{
-    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_CPU_WRITE) != 0, "This buffer has no write access on CPU!");
-}
-
-static void mg_buffer_check_cpu_read(mg_buffer_t *buffer)
-{
-    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_CPU_READ) != 0, "This buffer has no read access on CPU!");
-}
-
-static void mg_buffer_check_rcp_write(mg_buffer_t *buffer)
-{
-    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_RCP_WRITE) != 0, "This buffer has no write access on RCP!");
-}
-
-static void mg_buffer_check_rcp_read(mg_buffer_t *buffer)
-{
-    assertf((buffer->flags & MG_BUFFER_FLAGS_ACCESS_RCP_READ) != 0, "This buffer has no read access on RCP!");
-}
-
 void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags)
 {
     assertf((flags & (MG_BUFFER_MAP_FLAGS_READ|MG_BUFFER_MAP_FLAGS_WRITE)) != 0, "Buffer must be mapped with at least read or write access!");
@@ -156,14 +136,6 @@ void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buff
     assertf(offset + size < buffer->size, "Map is out of range");
 
     // TODO: Optimize for different types of access depending on flags
-
-    if (flags & MG_BUFFER_MAP_FLAGS_READ) {
-        mg_buffer_check_cpu_read(buffer);
-    }
-
-    if (flags & MG_BUFFER_MAP_FLAGS_WRITE) {
-        mg_buffer_check_cpu_write(buffer);
-    }
 
     buffer->is_mapped = true;
     return (uint8_t*)buffer->memory + offset;
@@ -179,8 +151,6 @@ void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const 
 {
     assertf(!buffer->is_mapped, "Buffer is mapped");
     assertf(offset + size <= buffer->size, "Out of range");
-
-    mg_buffer_check_cpu_write(buffer);
     
     memcpy((uint8_t*)buffer->memory + offset, data, size);
 }
@@ -204,7 +174,6 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
 
         case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
         case MG_RESOURCE_TYPE_STORAGE_BUFFER:
-            mg_buffer_check_rcp_read(binding->buffer);
             break;
         }
     }
@@ -371,7 +340,6 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
 {
     // TODO: inline?
-    mg_buffer_check_rcp_read(buffer);
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer->memory) + offset);
 }
 
@@ -613,6 +581,7 @@ static void vertex_cache_load(const vertex_cache *cache, int32_t offset, uint32_
     }
 }
 
+#ifdef MAGMA_DEBUG_VERTEX_CACHE
 static void vertex_cache_dump(const vertex_cache *cache)
 {
     debugf("vertex cache dump:\n");
@@ -623,6 +592,7 @@ static void vertex_cache_dump(const vertex_cache *cache)
         block = block->next;
     }
 }
+#endif
 
 static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, uint32_t max_count, vertex_cache *cache, uint32_t windup, uint32_t advance, bool restart_enabled, uint32_t cache_offset)
 {
@@ -666,7 +636,9 @@ static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, ui
         count += required;
         required = advance;
 
-        //vertex_cache_dump(cache);
+        #ifdef MAGMA_DEBUG_VERTEX_CACHE
+        vertex_cache_dump(cache);
+        #endif
     }
 
     assertf(cache->total_count + cache_offset <= MAGMA_VERTEX_CACHE_COUNT, "Vertex batch is too big! This is a bug within magma.");
