@@ -555,7 +555,7 @@ light_loop_end:
     vlt vdot, vzero
 
     # negate
-    vsubc vdot, vzero, vdot
+    vsub vdot, vzero, vdot
 
     vcopy vtmp_i, vzero
     vmov vtmp_i.e2, K16384
