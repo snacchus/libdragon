@@ -52,7 +52,6 @@ static void debug_draw_color_rect(float x, float y, float width, float height, c
 
 static void draw_circle_slice(float x, float y, float radius, float startAngle, float endAngle, color_t color)
 {
-    rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
     rdpq_set_prim_color(color);
 
     float angleStep = 0.05f;
@@ -94,8 +93,6 @@ static bool debug_profile_is_idle(uint32_t index) {
 
 static void debug_print_table_entry(ProfileSlot *slot, float posX, float *posY)
 {
-  rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, posX-10, *posY+DEBUG_OVERLAY_TEXT_YOFFSET, "*");
-
   if(slot->calls != 0) {
   rdpq_text_printf(NULL, DEBUG_OVERLAY_FONT_ID, posX, *posY+DEBUG_OVERLAY_TEXT_YOFFSET, "%-10.10s %5lu %7luu", slot->name, slot->calls, slot->timeUs);
   } else {
@@ -231,6 +228,9 @@ void debug_draw_perf_overlay(float measuredFps)
     float angleOffset = -1.57079632679f;
 
 
+    rdpq_set_mode_standard();
+    rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
+
     if(profile_data.frame_count != 1)
     {
     for(int type=0; type<2; ++type)
@@ -269,7 +269,6 @@ void debug_draw_perf_overlay(float measuredFps)
     float posFps20 = (1000000.0f / 20.0f) * timeScale;
 
     // bar (idle vs busy) - Text
-    rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
     rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 4 + (BAR_HEIGHT+BAR_BORDER), "RSP");
     rdpq_text_print(NULL, DEBUG_OVERLAY_FONT_ID, barPos[0]-30, posY+DEBUG_OVERLAY_TEXT_YOFFSET + 4 + (BAR_HEIGHT+BAR_BORDER)*2, "RDP");
 
@@ -317,10 +316,6 @@ void debug_draw_perf_overlay(float measuredFps)
     debug_draw_line_vert(barPos[0] + posFps60, barPos[1]-BAR_BORDER, BAR_HEIGHT + 30);
     debug_draw_line_vert(barPos[0] + posFps30, barPos[1]-BAR_BORDER, BAR_HEIGHT + 30);
     debug_draw_line_vert(barPos[0] + posFps20, barPos[1]-BAR_BORDER, BAR_HEIGHT + 30);
-
-    rdpq_set_mode_standard();
-    rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
-    rdpq_mode_combiner(RDPQ_COMBINER_TEX_FLAT);
 
     // total time on right side of bar
     if((busyWidth+idleWidth) < 150) {
