@@ -526,7 +526,6 @@ light_loop_end:
     llv vtex.e0, MGFX_VTX_TEX + 0,            vtx_in_ptr
     llv vtex.e4, MGFX_VTX_TEX + MGFX_VTX_SIZE,vtx_in_ptr
 
-#if 0
     andi t0, flags, MGFX_FLAG_ENV_MAP
     beqz t0, 1f
     # veposnorm = normalize(veyepos)
@@ -549,16 +548,18 @@ light_loop_end:
 
     #undef vpos_eye
 
-    # vdot = dot(veposnorm, vnorm)
+    # vdot = min(dot(veposnorm, vnorm), 0)
     vmulf vdot, veposnorm, vnorm
-    vaddc vtmp_f, vdot, vdot.h1
-    vaddc vdot, vtmp_f, vdot.h2
+    vadd vtmp_f, vdot, vdot.h1
+    vadd vdot, vtmp_f, vdot.h2
+    vlt vdot, vzero
 
     # negate
     vsubc vdot, vzero, vdot
 
     vcopy vtmp_i, vzero
     vmov vtmp_i.e2, K16384
+    vmov vtmp_i.e6, K16384
 
     # refl = veposnorm - 2 * vdot * vnorm + (0, 0, 1)
     vmulf v___, vnorm, vdot.h0
@@ -580,7 +581,7 @@ light_loop_end:
     vaddc vsqdist_f, vtmp_f, vsqdist_f.h2
     vadd  vsqdist_i, vtmp_i, vsqdist_i.h2
 
-    vaddc vtmp_i, vzero, K128
+    vadd vtmp_i, vzero, K128
 
     vrsqh v___.e0,       vsqdist_i.e0
     vrsql vinvdist_f.e0, vsqdist_f.e0
@@ -597,13 +598,16 @@ light_loop_end:
 
     #undef vsqdist_i
     #undef vsqdist_f
-    #undef vtmp_i
-    #undef vtmp_f
     #undef vinvdist_i
     #undef vinvdist_f
+    #undef veposnorm
+    #undef vtmp_i
+    #undef vtmp_f
+    #undef refl_i
+    #undef refl_f
+    #undef vdot
     #undef vnorm
 1:
-#endif
 
     # transform texcoords
     vmudh v___, vtexoffset, K1
