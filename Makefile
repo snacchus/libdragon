@@ -69,7 +69,8 @@ LIBDRAGON_OBJS += \
 			 $(BUILD_DIR)/dlfcn.o $(BUILD_DIR)/model64.o \
 			 $(BUILD_DIR)/bb/skc.o $(BUILD_DIR)/bb/nand.o $(BUILD_DIR)/bb/bbfs.o \
 			 $(BUILD_DIR)/magma/magma.o $(BUILD_DIR)/magma/mgfx.o \
-			 $(BUILD_DIR)/magma/rsp_magma.o $(BUILD_DIR)/magma/rsp_mgfx.o
+			 $(BUILD_DIR)/magma/rsp_magma.o $(BUILD_DIR)/magma/rsp_magma_clipping.o \
+			 $(BUILD_DIR)/magma/rsp_mgfx.o
 
 include $(SOURCE_DIR)/audio/libdragon.mk
 

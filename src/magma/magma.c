@@ -27,6 +27,7 @@ typedef struct mg_resource_set_s
 } mg_resource_set_t;
 
 DEFINE_RSP_UCODE(rsp_magma);
+DEFINE_RSP_UCODE(rsp_magma_clipping);
 
 uint32_t mg_overlay_id;
 
@@ -65,6 +66,12 @@ void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
 void mg_init(void)
 {
     mg_overlay_id = rspq_overlay_register(&rsp_magma);
+
+    // Pass the location and size of the clipping code overlay to the RSP state
+    uint32_t code = PhysicalAddr(rsp_magma_clipping.code);
+    uint32_t code_size = (uint8_t*)rsp_magma_clipping.code_end - rsp_magma_clipping.code;
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code), code);
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code_size), code_size);
 }
 
 void mg_close(void)

@@ -244,6 +244,8 @@ typedef struct
     uint16_t clip_factors[4];
     uint32_t shader_code;
     uint32_t shader_code_size;
+    uint32_t clipping_code;
+    uint32_t clipping_code_size;
     uint32_t vertex_buffer;
     uint16_t tri_cmd;
     uint8_t cull_mode;
