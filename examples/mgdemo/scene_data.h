@@ -9,9 +9,9 @@
     Using this system for a full game is probably not recommended.
 */
 
-#define TEXTURE_COUNT       3
+#define TEXTURE_COUNT       4
 #define MATERIAL_COUNT      5
-#define MESH_COUNT          2
+#define MESH_COUNT          3
 #define OBJECT_COUNT        10
 #define LIGHT_COUNT         2
 #define MAX_SUBMESH_COUNT   8
@@ -22,12 +22,13 @@ static const char *texture_files[] = {
     "rom:/texture0.ci4.sprite",
     "rom:/texture1.ci4.sprite",
     "rom:/texture2.ci4.sprite",
+    "rom:/env_gold.rgba16.sprite",
 };
 
 
 /* Materials */
 static const uint32_t material_texture_indices[] = {
-    0, 0, 0, 1, 2
+    0, 0, 1, 2, 3
 };
 static const uint32_t material_diffuse_colors[] = { // Currently unused
     0xffffffff,
@@ -36,29 +37,37 @@ static const uint32_t material_diffuse_colors[] = { // Currently unused
     0xffffffff,
     0xffffffff,
 };
+static const mgfx_modes_flags_t material_flags[] = {
+    0,
+    0,
+    0,
+    0,
+    MGFX_MODES_FLAGS_ENV_MAP_ENABLED
+};
 
 
 /* Meshes */
 static const char *mesh_files[] = {
     "rom:/pipe.model64",
     "rom:/crate.model64",
+    "rom:/sphere.model64",
 };
 
 
 /* Objects */
 static const uint32_t object_mesh_ids[] = {
-    0, 1, 1, 0, 0, 1, 1, 0, 1, 1
+    2, 1, 1, 0, 0, 1, 1, 0, 1, 1
 };
 static const uint32_t object_material_ids[][MAX_SUBMESH_COUNT] = {
-    { 0, 1 }, 
+    { 4 }, 
     { 1 }, 
     { 2 }, 
-    { 3, 0 }, 
+    { 4, 0 }, 
     { 4, 2 }, 
     { 3 }, 
     { 2 }, 
-    { 1, 2 }, 
-    { 4 }, 
+    { 4, 2 }, 
+    { 0 }, 
     { 4 }
 };
 static const float object_positions[][3] = {

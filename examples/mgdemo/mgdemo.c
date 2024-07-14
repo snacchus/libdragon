@@ -204,7 +204,7 @@ void init()
             &materials[i], 
             textures[material_texture_indices[i]], 
             &(mgfx_modes_parms_t) {
-                .flags = MGFX_MODES_FLAGS_FOG_ENABLED
+                .flags = MGFX_MODES_FLAGS_FOG_ENABLED | material_flags[i]
             },
             MG_GEOMETRY_FLAGS_Z_ENABLED | MG_GEOMETRY_FLAGS_TEX_ENABLED | MG_GEOMETRY_FLAGS_SHADE_ENABLED,
             color_from_packed32(material_diffuse_colors[i]));
