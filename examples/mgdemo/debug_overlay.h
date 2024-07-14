@@ -1,5 +1,5 @@
 /**
-* @copyright 2024 - Max Bebök
+* @copyright 2024 - Max Bebök (modified by snacchus)
 * @license MIT
 */
 #ifndef DEBUG_OVERLAY_H
