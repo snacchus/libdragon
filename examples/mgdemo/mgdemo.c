@@ -503,7 +503,6 @@ void update_objects()
         object_data *object = &objects[i];
         // Update object matrices from its current transform.
 
-        // TODO: Do (parts of) this on RSP instead
         mat4x4_t model_matrix;
         mat4x4_make_rotation_translation(&model_matrix, object->position, object->rotation.v);
         mat4x4_mult(&object->mvp_matrix, &vp_matrix, &model_matrix);

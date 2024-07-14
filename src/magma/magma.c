@@ -238,7 +238,6 @@ void mg_load_shader(const rsp_ucode_t *shader_ucode)
 
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
-    // TODO: inline?
     mg_load_shader(pipeline->shader_ucode);
 }
 
@@ -277,7 +276,6 @@ void mg_set_viewport(const mg_viewport_t *viewport)
 
 void mg_bind_resource_set(mg_resource_set_t *resource_set)
 {
-    // TODO: inline?
     rspq_block_run(resource_set->block);
 }
 
@@ -339,7 +337,6 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
 
 void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
 {
-    // TODO: inline?
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer->memory) + offset);
 }
 
