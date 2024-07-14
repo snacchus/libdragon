@@ -310,11 +310,14 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
 
     // 1. Initialize the raw material data by using the functions provided by the fixed function pipeline.
     //    Just as with uniform buffers, the shader expects the data in a format that is optimized for the RSP.
+
+    // Flip the texture upside down if environment mapping is enabled, because it will appear upside down otherwise.
+    int tex_y_scale = (mode_parms->flags & MGFX_MODES_FLAGS_ENV_MAP_ENABLED) ? -1 : 1;
     mgfx_texturing_t tex;
     mgfx_modes_t modes;
     mgfx_get_texturing(&tex, &(mgfx_texturing_parms_t) {
         .scale[0] = texture->width  >> TEX_SIZE_SHIFT,
-        .scale[1] = texture->height >> TEX_SIZE_SHIFT,
+        .scale[1] = (texture->height * tex_y_scale) >> TEX_SIZE_SHIFT,
         .offset[0] = -RDP_HALF_TEXEL,
         .offset[1] = -RDP_HALF_TEXEL
     });
