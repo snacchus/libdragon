@@ -141,11 +141,11 @@ vertex_loop:
     bge vtx_in_ptr, vtx_in_end, RSPQ_Loop
     addi vtx_out1_ptr, vtx_out0_ptr, MAGMA_VTX_SIZE
 
-    #define vpos_clip_f     $v23
-    #define vpos_clip_i     $v24
-    #define vpos_in         $v25
-    #define vpos_eye        $v26
-    #define vnorm           $v27
+    #define vpos_in         $v23
+    #define vpos_eye        $v24
+    #define vnorm           $v25
+    #define vpos_clip_f     $v26
+    #define vpos_clip_i     $v27
 
     # load vertex position (of two vertices)
     ldv vpos_in.e0, MGFX_VTX_POS + 0,            vtx_in_ptr
@@ -289,9 +289,9 @@ vertex_loop:
 
     # compute lighting
 
-    #define vlight      $v25
     #define vinvdist_i  $v21
     #define vinvdist_f  $v22
+    #define vlight      $v23
 
     # Initialize the third lane of vinvdist to 1.0
     vxor vinvdist_f, vinvdist_f
@@ -440,8 +440,6 @@ light_loop:
     #undef vatt_i
     #undef vatt_f
 
-    #undef vnorm
-
 light_loop_end:
 
     #undef vinvdist_i
@@ -510,16 +508,102 @@ light_loop_end:
     suv vrgba.e0, MAGMA_VTX_RGBA,vtx_out0_ptr
     suv vrgba.e4, MAGMA_VTX_RGBA,vtx_out1_ptr
 
-    #undef vpos_eye
     #undef vrgba
 
-    #define vtex $v14
+    #define vtex        $v14
+    #define vsqdist_i   $v15
+    #define vsqdist_f   $v16
+    #define vinvdist_i  $v17
+    #define vinvdist_f  $v18
+    #define veposnorm   $v19
+    #define vtmp_i      $v20
+    #define vtmp_f      $v21
+    #define refl_i      $v22
+    #define refl_f      $v23
+    #define vdot        $v24
 
     # load texcoords (of two vertices)
     llv vtex.e0, MGFX_VTX_TEX + 0,            vtx_in_ptr
     llv vtex.e4, MGFX_VTX_TEX + MGFX_VTX_SIZE,vtx_in_ptr
 
-    # TODO: Generate texcoords
+#if 0
+    andi t0, flags, MGFX_FLAG_ENV_MAP
+    beqz t0, 1f
+    # veposnorm = normalize(veyepos)
+    vmudh v___, vpos_eye, vpos_eye
+    vsar  vsqdist_f, COP2_ACC_MD
+    vsar  vsqdist_i, COP2_ACC_HI
+    vaddc vtmp_f, vsqdist_f, vsqdist_f.h1
+    vadd  vtmp_i, vsqdist_i, vsqdist_i.h1
+    vaddc vsqdist_f, vtmp_f, vsqdist_f.h2
+    vadd  vsqdist_i, vtmp_i, vsqdist_i.h2
+
+    vrsqh v___.e0,       vsqdist_i.e0
+    vrsql vinvdist_f.e0, vsqdist_f.e0
+    vrsqh vinvdist_i.e0, vsqdist_i.e4
+    vrsql vinvdist_f.e4, vsqdist_f.e4
+    vrsqh vinvdist_i.e4, vzero.e0
+
+    vmudm v___,      vpos_eye, vinvdist_f.h0
+    vmadh veposnorm, vpos_eye, vinvdist_i.h0
+
+    #undef vpos_eye
+
+    # vdot = dot(veposnorm, vnorm)
+    vmulf vdot, veposnorm, vnorm
+    vaddc vtmp_f, vdot, vdot.h1
+    vaddc vdot, vtmp_f, vdot.h2
+
+    # negate
+    vsubc vdot, vzero, vdot
+
+    vcopy vtmp_i, vzero
+    vmov vtmp_i.e2, K16384
+
+    # refl = veposnorm - 2 * vdot * vnorm + (0, 0, 1)
+    vmulf v___, vnorm, vdot.h0
+    vmacf v___, vnorm, vdot.h0 # Add twice to account for multiplication by 2
+    vmadh v___, veposnorm, K1
+    vmadh v___, vtmp_i, K2
+
+    vsar refl_f, COP2_ACC_MD
+    vsar refl_i, COP2_ACC_HI
+
+    # m = 1 / 2 * sqrt(dot(refl, refl))
+    vmudl v___,      refl_f, refl_f
+    vmadm v___,      refl_i, refl_f
+    vmadn vsqdist_f, refl_f, refl_i
+    vmadh vsqdist_i, refl_i, refl_i
+
+    vaddc vtmp_f, vsqdist_f, vsqdist_f.h1
+    vadd  vtmp_i, vsqdist_i, vsqdist_i.h1
+    vaddc vsqdist_f, vtmp_f, vsqdist_f.h2
+    vadd  vsqdist_i, vtmp_i, vsqdist_i.h2
+
+    vaddc vtmp_i, vzero, K128
+
+    vrsqh v___.e0,       vsqdist_i.e0
+    vrsql vinvdist_f.e0, vsqdist_f.e0
+    vrsqh vinvdist_i.e0, vsqdist_i.e4
+    vrsql vinvdist_f.e4, vsqdist_f.e4
+    vrsqh vinvdist_i.e4, vzero.e0
+
+    # vtex = refl * m + 0.5
+    vmudh v___, vtmp_i, K1
+    vmadl v___, refl_f, vinvdist_f.h0
+    vmadm v___, refl_i, vinvdist_f.h0
+    vmadn v___, refl_f, vinvdist_i.h0
+    vmadh vtex, refl_i, vinvdist_i.h0
+
+    #undef vsqdist_i
+    #undef vsqdist_f
+    #undef vtmp_i
+    #undef vtmp_f
+    #undef vinvdist_i
+    #undef vinvdist_f
+    #undef vnorm
+1:
+#endif
 
     # transform texcoords
     vmudh v___, vtexoffset, K1
