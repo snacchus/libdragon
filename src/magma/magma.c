@@ -5,6 +5,8 @@
 #include "utils.h"
 #include "../rdpq/rdpq_internal.h"
 
+// TODO: Documentation on how magma works internally
+
 typedef struct mg_pipeline_s 
 {
     rsp_ucode_t *shader_ucode;

@@ -133,12 +133,15 @@ void mg_close(void);
 
 /* Pipelines */
 
+// TODO: Rename "pipeline" to "shader"?
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
 const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding);
 
 /* Buffers */
 
+// TODO: Rethink if buffers are necessary to operate magma. Should they be ingrained in the internal workings, or just a layer on top?
+//       Could the former offer some potential for optimization that wouldn't be possible otherwise?
 mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms);
 void mg_buffer_free(mg_buffer_t *buffer);
 void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags);
