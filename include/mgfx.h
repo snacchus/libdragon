@@ -10,7 +10,6 @@ typedef enum
 {
     MGFX_MODES_FLAGS_FOG_ENABLED                = MGFX_FLAG_FOG,
     MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = MGFX_FLAG_ENV_MAP,
-    MGFX_MODES_FLAGS_MATRIX_PALETTE_ENABLED     = MGFX_FLAG_MATRIX_PALLETE,
 } mgfx_modes_flags_t;
 
 /* RSP side uniform structs */
@@ -151,8 +150,6 @@ void mgfx_set_lighting_inline(const mgfx_lighting_parms_t *parms);
 void mgfx_set_texturing_inline(const mgfx_texturing_parms_t *parms);
 void mgfx_set_modes_inline(const mgfx_modes_parms_t *parms);
 void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms);
-
-void mgfx_set_matrix_palette(mg_buffer_t *palette_buffer);
 
 // TODO: RSP side matrix manipulation
 

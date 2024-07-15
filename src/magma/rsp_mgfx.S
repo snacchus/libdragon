@@ -29,10 +29,6 @@ MgBeginShaderUniforms
         MATRICES_MV:        .dcb.b  MGFX_MATRIX_SIZE
         MATRICES_NORMAL:    .dcb.b  MGFX_MATRIX_SIZE
     MgEndUniform
-
-    MgBeginUniform MATRIX_PALETTE, MGFX_BINDING_MATRIX_PALETTE
-        MATRIX_PALETTE_PTR: .word 0
-    MgEndUniform
 MgEndShaderUniforms
 
 MgBeginShader
@@ -158,8 +154,6 @@ vertex_loop:
     # Set W components to 1
     vmov vpos_in.e3, K32
     vmov vpos_in.e7, K32
-
-    # TODO: Matrix palette
 
     #define vmmv0_i $v14
     #define vmmv0_f $v15

@@ -30,7 +30,6 @@ typedef struct
     mgfx_texturing_t texturing;
     mgfx_modes_t modes;
     mgfx_matrices_t matrices;
-    uint32_t matrix_palette;
 } mgfx_state_t;
 
 static const mg_uniform_t mgfx_uniforms[] = {
@@ -58,12 +57,7 @@ static const mg_uniform_t mgfx_uniforms[] = {
         .binding = MGFX_BINDING_MATRICES,
         .offset = offsetof(mgfx_state_t, matrices),
         .size = sizeof(mgfx_matrices_t)
-    },
-    (mg_uniform_t) {
-        .binding = MGFX_BINDING_MATRIX_PALETTE,
-        .offset = offsetof(mgfx_state_t, matrix_palette),
-        .size = sizeof(uint32_t)
-    },
+    }
 };
 
 mg_pipeline_t *mgfx_create_pipeline(void)
@@ -221,9 +215,4 @@ void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms)
     mgfx_matrices_t matrices = {};
     mgfx_get_matrices(&matrices, parms);
     mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_MATRICES], &matrices);
-}
-
-void mgfx_set_matrix_palette(mg_buffer_t *palette_buffer)
-{
-    assertf(0, "Not implemented");
 }
