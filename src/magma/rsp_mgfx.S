@@ -77,6 +77,8 @@ MgBeginShader
     # cache_offset * MAGMA_VTX_SIZE + vertex_count * (MAGMA_VTX_SIZE - MGFX_VTX_SIZE)
     vadd $v03, $v02, $v02.e1
 
+    # TODO: Flexible vertex layout
+
     # vertex_count * MGFX_VTX_SIZE - 1
     andi t1, a1, 0xFFFF
     sll t1, MGFX_VTX_SIZE_SHIFT

@@ -502,7 +502,7 @@ void vertex_write_mgfx(FILE *out, primitive_t *primitive, uint32_t index, uint32
     vertex_attribute_write(out, &primitive->position, index, "mesh%d_primitive%d_position", mesh_index, prim_index);
     vertex_attribute_write(out, &primitive->normal, index, "mesh%d_primitive%d_normal", mesh_index, prim_index);
     if (primitive->color.size == 0) {
-        // TODO: Flexible vertex layout in magma
+        // TODO: Remove this when magma supports flexible vertex layout
         w32(out, 0xFFFFFFFF);
     } else {
         vertex_attribute_write(out, &primitive->color, index, "mesh%d_primitive%d_color", mesh_index, prim_index);
