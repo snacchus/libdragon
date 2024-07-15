@@ -81,12 +81,16 @@ void mg_close(void)
 
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 {
-    // TODO: check for binary compatibility
+    // TODO: Check for binary compatibility.
+    //       This might be tricky because of the shader bootstrapping code in rsp_magma.S,
+    //       which is obviously not contained in any shader code.
 
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
     pipeline->shader_ucode = parms->vertex_shader_ucode;
 
-    // TODO: get uniforms from ucode directly somehow?
+    // TODO: Get uniforms from ucode directly somehow.
+    //       This could be done by generating a list of symbols at build time and keeping them in a list
+    //       that is accessible at run time. Will require some makefile wizardry.
     if (parms->uniform_count > 0) {
         pipeline->uniforms = calloc(parms->uniform_count, sizeof(mg_uniform_t));
         memcpy(pipeline->uniforms, parms->uniforms, parms->uniform_count * sizeof(mg_uniform_t));
@@ -142,7 +146,7 @@ void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buff
     assertf(!buffer->is_mapped, "Buffer is already mapped");
     assertf(offset + size < buffer->size, "Map is out of range");
 
-    // TODO: Optimize for different types of access depending on flags
+    // TODO: Optimize for different types of access depending on flags. Define how?
 
     buffer->is_mapped = true;
     return (uint8_t*)buffer->memory + offset;
@@ -190,10 +194,12 @@ mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
     }
 
     // Record block
-    // TODO: optimize
+    // TODO: Optimize by coalescing adjacent uniforms into a single DMA transfer.
 
     embedded_data_size = 0;
 
+    // TODO: Should this really be using blocks? Do some profiling to test whether small blocks
+    //       are actually more harmful for performance (because they induce more DMA transfers).
     rspq_block_begin();
     for (uint32_t i = 0; i < parms->binding_count; i++)
     {
@@ -786,3 +792,26 @@ void mg_draw_indexed(const mg_input_assembly_parms_t *input_assembly_parms, cons
         current_index += batch_index_count - windup + cache_offset;
     }
 }
+
+/* TODO: Instanced draw calls?
+    There is probably no real benefit other than having a fancy API.
+    On modern hardware, instancing is a technique to reduce the number of draw calls,
+    thus reducing the amount of data sent from CPU to GPU.
+
+    On N64, this doesn't really apply
+    unless the RSP would drive the input assembly. We could investigate that possibility,
+    but it is questionably how much performance this could realistically save, since this workload
+    can't really be vectorized and the vertex/index data still needs to be transferred from RDRAM anyway.
+
+    As it stands, the assembly of vertex loading and triangle drawing commands is
+    done on the CPU and therefore instancing would not lead to a performance gain.
+*/
+
+/* TODO: Indirect draw calls?
+    As opposed to instancing, indirect rendering could have some actual benefits.
+    For example, one could compute visibility of objects on the RSP and dynamically emit
+    draw calls only for visible objects, which would then be run indirectly.
+
+    The implementation might simply use dynamically assembled rspq blocks internally.
+    So perhaps this could be a generic feature of rspq instead of being specific to magma.
+*/       

@@ -216,3 +216,6 @@ void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms)
     mgfx_get_matrices(&matrices, parms);
     mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_MATRICES], &matrices);
 }
+
+// TODO: RSP side matrix manipulation.
+//       This could be done using a separate overlay which acts as a batch matrix processor.

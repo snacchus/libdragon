@@ -216,6 +216,10 @@ MgCmd_SetShader:
     # TODO: Adjust size of saved data in case the shader uses less DMEM for uniforms.
     #       In theory this could be done by overwriting the state size in the overlay header.
     #       However, this could be problematic because of the profiler buffer that is automatically generated at the end of the state.
+    #       There are two potential fixes:
+    #       1) Disable this optimization when profiling is enabled.
+    #       2) Move the profiler buffer to the beginning of the saved state.
+    #       Provided it doesn't break anything, the second option would be preferred.
     sw a0, %lo(MAGMA_SHADER_TEXT)
     sw a1, %lo(MAGMA_SHADER_TEXT_SIZE)
     # fallthrough

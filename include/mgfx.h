@@ -151,8 +151,6 @@ void mgfx_set_texturing_inline(const mgfx_texturing_parms_t *parms);
 void mgfx_set_modes_inline(const mgfx_modes_parms_t *parms);
 void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms);
 
-// TODO: RSP side matrix manipulation
-
 #ifdef __cplusplus
 }
 #endif
