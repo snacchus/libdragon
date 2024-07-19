@@ -74,6 +74,13 @@ LIBDRAGON_OBJS += \
 
 include $(SOURCE_DIR)/audio/libdragon.mk
 
+$(SOURCE_DIR)/magma/rsp_magma.h: $(BUILD_DIR)/magma/rsp_magma.o
+	$(N64_NM) -n $(BUILD_DIR)/magma/rsp_magma.elf \
+		| awk 'BEGIN {print("#ifndef __RSP_MGFX_SYMBOLS\n#define __RSP_MGFX_SYMBOLS") } $$2 ~ /[dDbtT]/ {printf("#define RSP_MAGMA_%s 0x%s\n", $$3, substr($$1,13,4))} END {print("#endif")}' \
+		> $@
+
+$(BUILD_DIR)/magma/magma.o: $(SOURCE_DIR)/magma/rsp_magma.h
+
 libdragon.a: $(LIBDRAGON_OBJS)
 
 %.a:

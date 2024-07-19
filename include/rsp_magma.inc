@@ -107,7 +107,7 @@ Mg_Clipping:
         RSPQ_DefineCommand MgCmd_SetQuad,       20
         RSPQ_DefineCommand MgCmd_SetShader,     8
         RSPQ_DefineCommand MgCmd_LoadVertices,  8
-        RSPQ_DefineCommand MgCmd_DrawIndices,   4
+        RSPQ_DefineCommand MgCmd_DrawIndices,   8
         RSPQ_DefineCommand MgCmd_DrawEnd,       4
         RSPQ_DefineCommand MgCmd_LoadUniform,   8
         RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 8
@@ -263,48 +263,30 @@ MgCmd_LoadVertices:
     # 
     # ARGS:
     #   a0: Bit 31..24: Command id
-    #       Bit 23..16: Index 0
-    #       Bit 15..8:  Index 1
-    #       Bit 7..0:   Index 2
+    #       Bit 15..0:  Index 0
+    #   a1: Bit 31..16: Index 1
+    #       Bit 15..0:  Index 2
     #############################################################
     .func MgCmd_DrawIndices
 MgCmd_DrawIndices:
-    #define v___            $v29
-    #define vconst          $v28
-    #define vindices        $v27
-    #define voffsets        $v26
-    #define vvertices       $v25
-    #define vtx1            a1
+    #define vtx1            a0
     #define vtx2            a2
-    #define vtx3            a3
+    #define vtx3            a1
     #define clip_flags_out  t3
     #define clip_flags      t5
-    li t0, %lo(MAGMA_CONSTANTS)
-    lqv vconst, 0,t0
-    addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 3
-    luv vindices, 0,t1
-    li t0, %lo(MAGMA_VERTEX_CACHE) + MAGMA_VTX_XYZ
-    mtc2 t0, vconst.e1
-    lbu v0, %lo(MAGMA_CULL_MODE)
-    vsrl vindices, vindices, 7
-    vmudh voffsets, vindices, vconst.e0
-    # clear VCO_LO 
-    # TODO: Is this necessary?
-    vadd v___, vzero, vzero
-    vadd vvertices, voffsets, vconst.e1
-    li s1, %lo(MAGMA_CLIP_LIST0)
+    srl a2, a1, 16
+    addi s1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
     move s2, s1
-    sdv vvertices.e0, 0,s1
+    lbu v0, %lo(MAGMA_CULL_MODE)
+
     lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
     li t8, %lo(MAGMA_OUTPUT_BUFFER)
     add t8, t7
     move s3, t8
     
-    lhu vtx1, 0(s1)
-    lhu vtx2, 2(s2)
-    lhu vtx3, 4(s2)
+    # TODO: make sure vertex indices are passed correctly
     jal RDPQ_Triangle_Send_Async
-    lhu a0, %lo(MAGMA_TRI_CMD)
+    lhu a3, %lo(MAGMA_TRI_CMD)
 
     # Check if RDPQ_Triangle_Send_Async emitted a triangle:
     beq s3, t8, 1f
@@ -342,6 +324,10 @@ MgCmd_DrawEnd:
     sb zero, %lo(MAGMA_OUTPUT_OFFSET)
     .endfunc
 
+#define RDPQ_TRIANGLE_VTX1      a0
+#define RDPQ_TRIANGLE_VTX2      a2
+#define RDPQ_TRIANGLE_VTX3      a1
+#define RDPQ_TRIANGLE_TRICMD    a3
 #define RDPQ_TRIANGLE_VTX1_DMEM 0,s1
 #define RDPQ_TRIANGLE_VTX2_DMEM 2,s2
 #define RDPQ_TRIANGLE_VTX3_DMEM 4,s2

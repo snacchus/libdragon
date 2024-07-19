@@ -10,9 +10,9 @@ MgBeginShader
 #            which is why that routine is omitted here deliberately.
 
 Mg_Clipping:
-    #define vtx1            a1
+    #define vtx1            a0
     #define vtx2            a2
-    #define vtx3            a3
+    #define vtx3            a1
     #define clip_flags      t5
     #define out_count       v1
     #define plane_flag      t6
@@ -52,11 +52,14 @@ Mg_Clipping:
     #define v___            $v29
 
     li in_list, %lo(MAGMA_CLIP_LIST1)
-    move in_count, zero
 
-    # The three original vertices are already in the out_list
+    # Copy the three original vertices to the out_list
     # (after the initial swap they will be in the in_list)
+    li out_list, %lo(MAGMA_CLIP_LIST0)
     li out_count, 3*2
+    addi t0, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
+    ldv v___, 0,t0
+    sdv v___, 0,out_list
 
     li plane, %lo(MAGMA_CLIP_PLANES)
     li plane_flag, 1
@@ -403,7 +406,7 @@ mg_clip_finalize_loop_end:
     addi out_end, -4
 mg_draw_clipped_triangles_loop:
     bge out_ptr, out_end, RSPQ_Loop
-    lhu a0, %lo(MAGMA_TRI_CMD)
+    lhu a3, %lo(MAGMA_TRI_CMD)
     lbu v0, %lo(MAGMA_CULL_MODE)
     lhu vtx1, 0(out_list)
     lhu vtx2, 2(out_ptr)

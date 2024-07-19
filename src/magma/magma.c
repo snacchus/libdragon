@@ -3,6 +3,7 @@
 #include "rspq.h"
 #include "rdpq.h"
 #include "utils.h"
+#include "rsp_magma.h"
 #include "../rdpq/rdpq_internal.h"
 
 // TODO: Documentation on how magma works internally
@@ -62,7 +63,12 @@ void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
     assertf(index0 <= MAGMA_VERTEX_CACHE_COUNT, "index0 is out of range");
     assertf(index1 <= MAGMA_VERTEX_CACHE_COUNT, "index1 is out of range");
     assertf(index2 <= MAGMA_VERTEX_CACHE_COUNT, "index2 is out of range");
-    mg_cmd_write(MG_CMD_DRAW_INDICES, (index0 << 16) | (index1 << 8) | index2);
+
+    uint16_t i0 = index0 * MAGMA_VTX_SIZE + RSP_MAGMA_MAGMA_VERTEX_CACHE;
+    uint16_t i1 = index1 * MAGMA_VTX_SIZE + RSP_MAGMA_MAGMA_VERTEX_CACHE;
+    uint16_t i2 = index2 * MAGMA_VTX_SIZE + RSP_MAGMA_MAGMA_VERTEX_CACHE;
+
+    mg_cmd_write(MG_CMD_DRAW_INDICES, i0, (i1 << 16) | i2);
 }
 
 void mg_init(void)
