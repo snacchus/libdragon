@@ -284,7 +284,6 @@ MgCmd_DrawIndices:
     add t8, t7
     move s3, t8
     
-    # TODO: make sure vertex indices are passed correctly
     jal RDPQ_Triangle_Send_Async
     lhu a3, %lo(MAGMA_TRI_CMD)
 
