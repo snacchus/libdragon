@@ -272,47 +272,29 @@ MgCmd_DrawIndices:
     #define vtx1            a0
     #define vtx2            a2
     #define vtx3            a1
-    #define clip_flags_out  t3
-    #define clip_flags      t5
     srl a2, a1, 16
     addi s1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
     move s2, s1
     lbu v0, %lo(MAGMA_CULL_MODE)
-
-    lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
-    li t8, %lo(MAGMA_OUTPUT_BUFFER)
-    add t8, t7
-    move s3, t8
     
+    lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
+    addi s3, t7, %lo(MAGMA_OUTPUT_BUFFER)
+
+    li sp, %lo(RSPQ_Loop)
     jal RDPQ_Triangle_Send_Async
     lhu a3, %lo(MAGMA_TRI_CMD)
 
-    # Check if RDPQ_Triangle_Send_Async emitted a triangle:
-    beq s3, t8, 1f
     xor t7, TRIANGLE_SIZE
-    # If it did, swap the output buffer
+    j RSPQ_Loop
     sb t7, %lo(MAGMA_OUTPUT_OFFSET)
-
-1:
-    # Check if clipping is required
-    beqz v1, RSPQ_Loop
-    srl clip_flags, clip_flags_out, 8
-
-    # Jump to the clipping code bootstrapper
-    j _MG_CLIPPING
-    nop
-
-    #undef v___
-    #undef vconst
-    #undef vindices
-    #undef voffsets
-    #undef vvertices
     #undef vtx1
     #undef vtx2
     #undef vtx3
-    #undef clip_flags_out
-    #undef clip_flags
     .endfunc
+
+RSPQ_Triangle_Cull:
+    jr sp
+    nop
 
     #############################################################
     # MgCmd_DrawEnd
@@ -330,4 +312,5 @@ MgCmd_DrawEnd:
 #define RDPQ_TRIANGLE_VTX1_DMEM 0,s1
 #define RDPQ_TRIANGLE_VTX2_DMEM 2,s2
 #define RDPQ_TRIANGLE_VTX3_DMEM 4,s2
+#define RSPQ_Triangle_Clip      _MG_CLIPPING
 #include "rsp_rdpq.inc"

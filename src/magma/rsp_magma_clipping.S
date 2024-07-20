@@ -51,6 +51,7 @@ Mg_Clipping:
     #define vviewoff        $v20
     #define v___            $v29
 
+    srl clip_flags, t3, 8
     li in_list, %lo(MAGMA_CLIP_LIST1)
 
     # Copy the three original vertices to the out_list
@@ -399,7 +400,6 @@ mg_clip_finalize_loop_end:
     #define out_end k0
 
     lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
-    li t8, %lo(MAGMA_OUTPUT_BUFFER)
 
     move out_ptr, out_list
     add out_end, out_list, out_count
@@ -411,16 +411,14 @@ mg_draw_clipped_triangles_loop:
     lhu vtx1, 0(out_list)
     lhu vtx2, 2(out_ptr)
     lhu vtx3, 4(out_ptr)
-    add t9, t7, t8
+    li sp, %lo(tri_cull)
     jal RDPQ_Triangle_Send_Async
-    move s3, t9
+    addi s3, t7, %lo(MAGMA_OUTPUT_BUFFER)
 
-    beq s3, t9, 1f
     xor t7, TRIANGLE_SIZE
-    # If it did, swap the output buffer
     sb t7, %lo(MAGMA_OUTPUT_OFFSET)
 
-1:
+tri_cull:
     b mg_draw_clipped_triangles_loop
     addi out_ptr, 2
     #undef out_list
