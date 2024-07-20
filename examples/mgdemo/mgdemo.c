@@ -88,6 +88,7 @@ void render();
 void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
 void mesh_create(mesh_data *mesh, const char *model_file);
+void update_object_transform(object_data *object);
 
 static surface_t zbuffer;
 
@@ -115,6 +116,7 @@ static float camera_inclination;
 static float camera_distance;
 
 static uint32_t current_object_count = OBJECT_COUNT;
+static bool animation_enabled = false;
 static uint32_t fb_index = 0;
 
 static uint64_t frames = 0;
@@ -234,6 +236,7 @@ void init()
 
         objects[i].rotation_rate = RAND_FLT() * 5.0f;
         objects[i].rotation_angle = RAND_FLT() * M_TWOPI;
+        update_object_transform(&objects[i]);
     }
 
     // Initialize draw calls.
@@ -403,6 +406,11 @@ void mesh_create(mesh_data *mesh, const char *model_file)
     }
 }
 
+void update_object_transform(object_data *object)
+{
+    quat_from_axis_angle(&object->rotation, object->rotation_axis, objects->rotation_angle);
+}
+
 void update(float delta_time)
 {
     joypad_poll();
@@ -436,17 +444,25 @@ void update(float delta_time)
         draw_calls_dirty = true;
     }
 
+    // Start toggles the animation
+    if (btn.start) {
+        animation_enabled = !animation_enabled;
+    }
+
     // L toggles the debug/profiler overlay on/off
     if (btn.l) {
         request_display_metrics = !request_display_metrics;
         if (!request_display_metrics) display_metrics = false;
     }
 
-    // Compute animation based on delta time. It's enough for this demo.
-    for (size_t i = 0; i < current_object_count; i++)
-    {
-        quat_from_axis_angle(&objects[i].rotation, objects[i].rotation_axis, objects[i].rotation_angle);
-        objects[i].rotation_angle = wrap_angle(objects[i].rotation_angle + objects[i].rotation_rate * delta_time);
+
+    if (animation_enabled) {
+        // Compute animation based on delta time. It's enough for this demo.
+        for (size_t i = 0; i < current_object_count; i++)
+        {
+            objects[i].rotation_angle = wrap_angle(objects[i].rotation_angle + objects[i].rotation_rate * delta_time);
+            update_object_transform(&objects[i]);
+        }
     }
 }
 

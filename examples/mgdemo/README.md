@@ -15,6 +15,7 @@ Also note that the specific approach shown in this example may not be suitable f
 | C-down        | Move camera backwards                     |
 | D-pad up      | Increase number of objects                |
 | D-pad down    | Decrease number of objects                |
+| Start         | Toggle animations                         |
 | L             | Toggle profiling overlay (if available)   |
 
 ## Profiling Overlay
