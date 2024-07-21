@@ -58,8 +58,6 @@ MgBeginShader
 
     # TODO: Flexible vertex layout
 
-    emux_trace_start
-
     li t5, %lo(MAGMA_VERTEX_SIZE)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
 
@@ -145,12 +143,8 @@ MgBeginShader
     ldv vnormmask.e0,   0x0,t1
     ldv vnormmask.e4,   0x0,t1
     ldv vnormfactor.e0, 0x8,t1
-    ldv vnormfactor.e4, 0x8,t1
-
-    emux_trace_stop
-
     jal DMAWaitIdle
-    nop
+    ldv vnormfactor.e4, 0x8,t1
 
 vertex_loop:
     bge vtx_in0_ptr, vtx_in_end, RSPQ_Loop
