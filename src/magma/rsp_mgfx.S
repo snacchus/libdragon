@@ -58,93 +58,90 @@ MgBeginShader
 
     # TODO: Flexible vertex layout
 
-    li t5, %lo(MAGMA_VERTEX_SIZE)
+    li t7, %lo(MAGMA_CLIP_FACTORS)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
 
-    # vertex_size,   MAGMA_VTX_SIZE, MAGMA_VTX_SIZE - vertex_size, vertex_size
-    ldv vconst, 0,t5
+    # vertex_size, MAGMA_VTX_SIZE, -vertex_size, vertex_size
+    ldv vconst, 8,t7
 
-    # buffer_offset, cache_offset,   vertex_count,                 vertex_count
+    # buffer_offset, cache_offset, vertex_count, vertex_count
     ldv $v01.e0, 0,t1
     lsv $v01.e3, 4,t1
 
-    lw flags, %lo(MODES_FLAGS)
-
     lhu vtx_size, %lo(MAGMA_VERTEX_SIZE)
+    lw flags, %lo(MODES_FLAGS)
+    li t3, %lo(MATRICES)
+    li t5, %lo(MAGMA_NORMAL_MASK)
 
-    # load clip factors
-    li t1, %lo(MAGMA_CLIP_FACTORS)
-    ldv vclip_factors.e0, 0x0,t1
-    ldv vclip_factors.e4, 0x0,t1
-
-    # buffer_offset * vertex_size, cache_offset * MAGMA_VTX_SIZE, vertex_count * (MAGMA_VTX_SIZE - vertex_size), vertex_count * vertex_size
+    # buffer_offset * vertex_size, cache_offset * MAGMA_VTX_SIZE, vertex_count * -vertex_size, vertex_count * vertex_size
     vmudh $v02, $v01, vconst
-    
-    # load texture transform
-    li t1, %lo(TEXTURING)
-    llv vtexscale.e0,  0x0,t1
-    llv vtexscale.e4,  0x0,t1
-    llv vtexoffset.e0, 0x4,t1
-    llv vtexoffset.e4, 0x4,t1
 
     sll vtx_size2, vtx_size, 1
-
-    li t6, %lo(RSPQ_SCRATCH_MEM)
-    sdv $v02, 0,t6
-
-    # clear VCO_LO 
-    # TODO: Is this necessary?
-    vadd v___, vzero, vzero
-
     lw s0, %lo(MAGMA_VERTEX_BUFFER)
+    li t4, %lo(RSPQ_SCRATCH_MEM)
+    li t6, %lo(TEXTURING)
 
-    # cache_offset * MAGMA_VTX_SIZE + vertex_count * (MAGMA_VTX_SIZE - vertex_size)
-    vadd $v03, $v02, $v02.e2
+    sdv $v02, 0,t4
 
-    lhu t0,          0(t6)
-    lhu t1,          6(t6)
-    lhu vtx_out_ptr, 2(t6)
+    lhu t0,          0(t4)
+    lhu vtx_out_ptr, 2(t4)
+    lh  s4,          4(t4)
+    lhu t1,          6(t4)
 
-    # vertex_buffer + buffer_offset * vertex_size
     add s0, t0
-    # vertex_count * vertex_size - 1
-    addi t0, t1, -1
 
-    mfc2 s4, $v03.e1
+    # Compensate for misalignment in RDRAM pointer
+    andi t0, 0x7
+    add t0, t1
+
+    # Round up to next multiple of 8
+    addi t0, 0x7
+    andi t0, 0xFF8
+    addi t0, -1
 
     addi vtx_out_ptr, %lo(MAGMA_VERTEX_CACHE)
 
-    jal DMAInAsync
-    addi s4, %lo(MAGMA_VERTEX_CACHE)
+    addi s4, %lo(MAGMA_VERTEX_OVERFLOW)
     
-    andi vtx_in0_ptr, s4, 0xFFF
+    jal DMAInAsync
+    andi s4, 0xFF8
+    
+    move vtx_in0_ptr, s4
     add vtx_in_end, vtx_in0_ptr, t1
 
     # load mvp matrix
-    li t1, %lo(MATRICES)
-    ldv vmvp0_i.e0,  0x00,t1
-    ldv vmvp0_i.e4,  0x00,t1
-    ldv vmvp1_i.e0,  0x08,t1
-    ldv vmvp1_i.e4,  0x08,t1
-    ldv vmvp2_i.e0,  0x10,t1
-    ldv vmvp2_i.e4,  0x10,t1
-    ldv vmvp3_i.e0,  0x18,t1
-    ldv vmvp3_i.e4,  0x18,t1
-    ldv vmvp0_f.e0,  0x20,t1
-    ldv vmvp0_f.e4,  0x20,t1
-    ldv vmvp1_f.e0,  0x28,t1
-    ldv vmvp1_f.e4,  0x28,t1
-    ldv vmvp2_f.e0,  0x30,t1
-    ldv vmvp2_f.e4,  0x30,t1
-    ldv vmvp3_f.e0,  0x38,t1
-    ldv vmvp3_f.e4,  0x38,t1
+    ldv vmvp0_i.e0,  0x00,t3
+    ldv vmvp0_i.e4,  0x00,t3
+    ldv vmvp1_i.e0,  0x08,t3
+    ldv vmvp1_i.e4,  0x08,t3
+    ldv vmvp2_i.e0,  0x10,t3
+    ldv vmvp2_i.e4,  0x10,t3
+    ldv vmvp3_i.e0,  0x18,t3
+    ldv vmvp3_i.e4,  0x18,t3
+    ldv vmvp0_f.e0,  0x20,t3
+    ldv vmvp0_f.e4,  0x20,t3
+    ldv vmvp1_f.e0,  0x28,t3
+    ldv vmvp1_f.e4,  0x28,t3
+    ldv vmvp2_f.e0,  0x30,t3
+    ldv vmvp2_f.e4,  0x30,t3
+    ldv vmvp3_f.e0,  0x38,t3
+    ldv vmvp3_f.e4,  0x38,t3
 
-    li t1, %lo(MAGMA_NORMAL_MASK)
-    ldv vnormmask.e0,   0x0,t1
-    ldv vnormmask.e4,   0x0,t1
-    ldv vnormfactor.e0, 0x8,t1
+    ldv vnormmask.e0,   0x0,t5
+    ldv vnormmask.e4,   0x0,t5
+    ldv vnormfactor.e0, 0x8,t5
+    ldv vnormfactor.e4, 0x8,t5
+    
+    # load texture transform
+    llv vtexscale.e0,  0x0,t6
+    llv vtexscale.e4,  0x0,t6
+    llv vtexoffset.e0, 0x4,t6
+    llv vtexoffset.e4, 0x4,t6
+
+    # load clip factors
+    ldv vclip_factors.e0, 0x0,t7
     jal DMAWaitIdle
-    ldv vnormfactor.e4, 0x8,t1
+    ldv vclip_factors.e4, 0x0,t7
 
 vertex_loop:
     bge vtx_in0_ptr, vtx_in_end, RSPQ_Loop

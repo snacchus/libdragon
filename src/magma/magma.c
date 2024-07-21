@@ -263,12 +263,12 @@ void mg_load_shader(const rsp_ucode_t *shader_ucode)
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
     mg_load_shader(pipeline->shader_ucode);
-    uint32_t v0 = pipeline->vertex_size;
-    uint32_t v1 = MAGMA_VTX_SIZE;
-    uint32_t v2 = MAGMA_VTX_SIZE - pipeline->vertex_size;
-    uint32_t v3 = pipeline->vertex_size;
+    int16_t v0 = pipeline->vertex_size;
+    int16_t v1 = MAGMA_VTX_SIZE;
+    int16_t v2 = -pipeline->vertex_size;
+    int16_t v3 = pipeline->vertex_size;
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size), (v0 << 16) | v1);
-    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size) + sizeof(uint16_t)*2, (v2 << 16) | v3);
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size) + sizeof(int16_t)*2, (v2 << 16) | v3);
 }
 
 mg_rsp_viewport_t mg_viewport_to_rsp_state(const mg_viewport_t *viewport)

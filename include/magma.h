@@ -243,7 +243,7 @@ typedef struct
 {
     mg_rsp_viewport_t viewport;
     uint16_t clip_factors[4];
-    uint16_t vertex_size[4];
+    int16_t vertex_size[4];
     uint32_t shader_code;
     uint32_t shader_code_size;
     uint32_t clipping_code;
