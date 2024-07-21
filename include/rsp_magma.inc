@@ -234,11 +234,8 @@ Mg_LoadShader:
 
     .func Mg_LoadOverlay
 Mg_LoadOverlay:
-    li s4, %lo(_MG_OVERLAY)
-    andi t1, s4, 0xFFF
-    add s0, t1
     j DMAIn
-    sub t0, t1
+    li s4, %lo(_MG_OVERLAY)
     .endfunc
 
     #############################################################

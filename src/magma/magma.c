@@ -10,7 +10,8 @@
 
 typedef struct mg_pipeline_s 
 {
-    rsp_ucode_t *shader_ucode;
+    void *shader_code;
+    uint32_t shader_code_size;
     uint32_t vertex_size;
     uint32_t uniform_count;
     mg_uniform_t *uniforms;
@@ -72,15 +73,25 @@ void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
     mg_cmd_write(MG_CMD_DRAW_INDICES, i0, (i1 << 16) | i2);
 }
 
+void mg_get_overlay_span(rsp_ucode_t *ucode, void **code, uint32_t *code_size)
+{
+    uint32_t overlay_offset = RSP_MAGMA__MG_OVERLAY - RSP_MAGMA__start;
+    uint32_t ucode_size = (uint8_t*)ucode->code_end - ucode->code;
+
+    *code = (uint8_t*)ucode->code + overlay_offset;
+    *code_size = ucode_size - overlay_offset;
+}
+
 void mg_init(void)
 {
     mg_overlay_id = rspq_overlay_register(&rsp_magma);
 
     // Pass the location and size of the clipping code overlay to the RSP state
-    uint32_t code = PhysicalAddr(rsp_magma_clipping.code);
-    uint32_t code_size = (uint8_t*)rsp_magma_clipping.code_end - rsp_magma_clipping.code;
-    mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code), code);
-    mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code_size), code_size);
+    void* clipping_code;
+    uint32_t clipping_code_size;
+    mg_get_overlay_span(&rsp_magma_clipping, &clipping_code, &clipping_code_size);
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code), PhysicalAddr(clipping_code));
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code_size), clipping_code_size);
 }
 
 void mg_close(void)
@@ -95,7 +106,9 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
     //       which is obviously not contained in any shader code.
 
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
-    pipeline->shader_ucode = parms->vertex_shader_ucode;
+
+    mg_get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
+
     pipeline->vertex_size = parms->vertex_size;
     pipeline->uniform_count = parms->uniform_count;
 
@@ -253,16 +266,12 @@ void mg_resource_set_free(mg_resource_set_t *resource_set)
     free(resource_set);
 }
 
-void mg_load_shader(const rsp_ucode_t *shader_ucode)
-{
-    uint32_t code = PhysicalAddr(shader_ucode->code);
-    uint32_t code_size = (uint8_t*)shader_ucode->code_end - shader_ucode->code;
-    mg_cmd_write(MG_CMD_SET_SHADER, code, ROUND_UP(code_size, 8) - 1);
-}
-
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
-    mg_load_shader(pipeline->shader_ucode);
+    uint32_t code = PhysicalAddr(pipeline->shader_code);
+    uint32_t code_size = pipeline->shader_code_size;
+    mg_cmd_write(MG_CMD_SET_SHADER, code, ROUND_UP(code_size, 8) - 1);
+
     int16_t v0 = pipeline->vertex_size;
     int16_t v1 = MAGMA_VTX_SIZE;
     int16_t v2 = -pipeline->vertex_size;
