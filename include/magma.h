@@ -89,6 +89,7 @@ typedef struct
 typedef struct
 {
     rsp_ucode_t *vertex_shader_ucode;
+    uint32_t vertex_size;
     uint32_t uniform_count;
     const mg_uniform_t *uniforms;
 } mg_pipeline_parms_t;
@@ -242,6 +243,7 @@ typedef struct
 {
     mg_rsp_viewport_t viewport;
     uint16_t clip_factors[4];
+    uint16_t vertex_size[4];
     uint32_t shader_code;
     uint32_t shader_code_size;
     uint32_t clipping_code;

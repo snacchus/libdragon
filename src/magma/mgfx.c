@@ -9,7 +9,6 @@ _Static_assert(offsetof(mgfx_vertex_t, position) == MGFX_VTX_POS);
 _Static_assert(offsetof(mgfx_vertex_t, packed_normal) == MGFX_VTX_NORM);
 _Static_assert(offsetof(mgfx_vertex_t, color) == MGFX_VTX_RGBA);
 _Static_assert(offsetof(mgfx_vertex_t, texcoord) == MGFX_VTX_TEX);
-_Static_assert(sizeof(mgfx_vertex_t) == MGFX_VTX_SIZE);
 
 _Static_assert(offsetof(mgfx_light_t, position) == MGFX_LIGHT_POSITION);
 _Static_assert(offsetof(mgfx_light_t, color) == MGFX_LIGHT_COLOR);
@@ -64,6 +63,7 @@ mg_pipeline_t *mgfx_create_pipeline(void)
 {
     return mg_pipeline_create(&(mg_pipeline_parms_t) {
         .vertex_shader_ucode = &rsp_mgfx,
+        .vertex_size = sizeof(mgfx_vertex_t),
         .uniform_count = sizeof(mgfx_uniforms)/sizeof(mgfx_uniforms[0]),
         .uniforms = mgfx_uniforms
     });

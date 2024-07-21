@@ -19,6 +19,7 @@ MAGMA_STATE:
         MAGMA_VIEWPORT_SCALE:   .half   0,0,0,0
         MAGMA_VIEWPORT_OFFSET:  .half   0,0,0,0
     MAGMA_CLIP_FACTORS:         .half   1,1,MAGMA_DEFAULT_GUARD_BAND,MAGMA_DEFAULT_GUARD_BAND
+    MAGMA_VERTEX_SIZE:          .half   0,0,0,0 # vertex_size, MAGMA_VTX_SIZE, MAGMA_VTX_SIZE - vertex_size, vertex_size
     MAGMA_SHADER_TEXT:          .word   0
     MAGMA_SHADER_TEXT_SIZE:     .word   0
     MAGMA_CLIPPING_TEXT:        .word   0
@@ -123,7 +124,6 @@ Mg_Clipping:
     .ascii "Code by snacchus"
 
     .align 4
-MAGMA_CONSTANTS:                .half   MAGMA_VTX_SIZE, 0, 0, 0, 0, 0, 0, 0
 MAGMA_NORMAL_MASK:              .half   0xF800, 0x07E0, 0x001F, 0, 1, 1<<5, 1<<11, 0
 MAGMA_CLIP_CACHE_OFFSETS:       .half   2,4,6,8,10,12,14,16,18
 

@@ -11,6 +11,7 @@
 typedef struct mg_pipeline_s 
 {
     rsp_ucode_t *shader_ucode;
+    uint32_t vertex_size;
     uint32_t uniform_count;
     mg_uniform_t *uniforms;
 } mg_pipeline_t;
@@ -95,6 +96,8 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
     pipeline->shader_ucode = parms->vertex_shader_ucode;
+    pipeline->vertex_size = parms->vertex_size;
+    pipeline->uniform_count = parms->uniform_count;
 
     // TODO: Get uniforms from ucode directly somehow.
     //       This could be done by generating a list of symbols at build time and keeping them in a list
@@ -260,6 +263,12 @@ void mg_load_shader(const rsp_ucode_t *shader_ucode)
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
     mg_load_shader(pipeline->shader_ucode);
+    uint32_t v0 = pipeline->vertex_size;
+    uint32_t v1 = MAGMA_VTX_SIZE;
+    uint32_t v2 = MAGMA_VTX_SIZE - pipeline->vertex_size;
+    uint32_t v3 = pipeline->vertex_size;
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size), (v0 << 16) | v1);
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size) + sizeof(uint16_t)*2, (v2 << 16) | v3);
 }
 
 mg_rsp_viewport_t mg_viewport_to_rsp_state(const mg_viewport_t *viewport)
