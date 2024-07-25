@@ -1,5 +1,9 @@
 #include <libdragon.h>
 
+typedef struct {
+    int16_t pos[3];
+} vertex;
+
 int main()
 {
     const resolution_t resolution = RESOLUTION_320x240;
@@ -10,7 +14,9 @@ int main()
     mg_init();
 
     // Get the builtin rendering pipeline
-    mg_pipeline_t *pipeline = mgfx_create_pipeline();
+    mg_pipeline_t *pipeline = mgfx_create_pipeline(&(mgfx_pipeline_parms_t) {
+        .vtx_layout = 0
+    });
 
     // Shader uniforms are not initialized to 0's automatically, so we need to create
     // a resource set that sets everything to sane values.
@@ -79,10 +85,10 @@ int main()
     });
 
     // Create and fill a vertex buffer.
-    mgfx_vertex_t vertices[] = {
-        MGFX_VERTEX(0, -0.5f, 0, 0, 0, 0, 0, 0, 0xFF0000FF),
-        MGFX_VERTEX(-0.5f, 0.5f, 0, 0, 0, 0, 0, 0, 0x00FF00FF),
-        MGFX_VERTEX(0.5f, 0.5f, 0, 0, 0, 0, 0, 0, 0x0000FFFF)
+    vertex vertices[] = {
+        { .pos = MGFX_POS(0, -0.5f, 0) },
+        { .pos = MGFX_POS(-0.5f, 0.5f, 0) },
+        { .pos = MGFX_POS(0.5f, 0.5f, 0) }
     };
     mg_buffer_t *vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
         .size = sizeof(vertices),
@@ -101,8 +107,10 @@ int main()
             rdpq_set_mode_standard();
             rdpq_mode_dithering(DITHER_SQUARE_SQUARE);
             rdpq_mode_antialias(AA_STANDARD);
-            rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+            rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
         rdpq_mode_end();
+
+        rdpq_set_prim_color(color_from_packed32(0xFFFFFFFF));
 
         // Set the vertex pipeline
         mg_bind_pipeline(pipeline);

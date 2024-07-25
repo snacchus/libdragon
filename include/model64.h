@@ -8,10 +8,32 @@
 extern "C" {
 #endif
 
+#define MODEL64_MAX_ATTR_COUNT 5
+
 typedef enum {
     MODEL64_VTX_FMT_GL   = 0,
     MODEL64_VTX_FMT_MGFX = 1
 } model64_vtx_fmt_t;
+
+typedef enum {
+    MODEL64_ATTR_POSITION   = 0,
+    MODEL64_ATTR_COLOR      = 1,
+    MODEL64_ATTR_TEXCOORD   = 2,
+    MODEL64_ATTR_NORMAL     = 3,
+    MODEL64_ATTR_MTX_INDEX  = 4
+} model64_attr_t;
+
+typedef enum {
+    MODEL64_ATTR_TYPE_I8,
+    MODEL64_ATTR_TYPE_U8,
+    MODEL64_ATTR_TYPE_I16,
+    MODEL64_ATTR_TYPE_U16,
+    MODEL64_ATTR_TYPE_FX16,
+    MODEL64_ATTR_TYPE_I32,
+    MODEL64_ATTR_TYPE_U32,
+    MODEL64_ATTR_TYPE_F32,
+    MODEL64_ATTR_TYPE_PACKED_NORMAL_16
+} model64_attr_type_t;
 
 typedef enum {
     MODEL64_ANIM_SLOT_0 = 0,
@@ -31,6 +53,19 @@ typedef struct primitive_s primitive_t;
 
 struct model64_node_s;
 typedef struct model64_node_s model64_node_t;
+
+typedef struct {
+    model64_attr_t attribute;
+    model64_attr_type_t type;
+    uint32_t component_count;
+    uint32_t offset;
+} model64_vertex_attr_t;
+
+typedef struct {
+    model64_vertex_attr_t attributes[MODEL64_MAX_ATTR_COUNT];
+    uint32_t attribute_count;
+    uint32_t stride;
+} model64_vertex_layout_t;
 
 model64_t *model64_load(const char *fn);
 model64_t *model64_load_buf(void *buf, int sz);
@@ -122,6 +157,8 @@ void *model64_get_primitive_indices(primitive_t *primitive);
  * @brief Return the number of indices in this primitive.
  */
 uint32_t model64_get_primitive_index_count(primitive_t *primitive);
+
+void model64_get_primitive_vertex_layout(primitive_t* primitive, model64_vertex_layout_t *layout);
 
 /**
  * @brief Draw an entire model.

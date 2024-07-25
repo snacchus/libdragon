@@ -6,10 +6,18 @@
 
 /* Enums */
 
+typedef enum 
+{
+    // Position is always enabled
+    MGFX_VTX_LAYOUT_NORMAL    = (1<<0),
+    MGFX_VTX_LAYOUT_COLOR     = (1<<1),
+    MGFX_VTX_LAYOUT_TEXCOORDS = (1<<2)
+} mgfx_vtx_layout_t;
+
 typedef enum
 {
-    MGFX_MODES_FLAGS_FOG_ENABLED                = MGFX_FLAG_FOG,
-    MGFX_MODES_FLAGS_ENV_MAP_ENABLED            = MGFX_FLAG_ENV_MAP,
+    MGFX_MODES_FLAGS_FOG_ENABLED        = MGFX_FLAG_FOG,
+    MGFX_MODES_FLAGS_ENV_MAP_ENABLED    = MGFX_FLAG_ENV_MAP,
 } mgfx_modes_flags_t;
 
 /* RSP side uniform structs */
@@ -65,6 +73,11 @@ typedef struct
 
 typedef struct
 {
+    mgfx_vtx_layout_t vtx_layout;
+} mgfx_pipeline_parms_t;
+
+typedef struct
+{
     float start;
     float end;
 } mgfx_fog_parms_t;
@@ -103,14 +116,6 @@ typedef struct
 
 /* Vertex struct */
 
-typedef struct
-{
-    int16_t position[3];
-    uint16_t packed_normal;
-    uint32_t color;
-    int16_t texcoord[2];
-} __attribute__((packed)) mgfx_vertex_t;
-
 #define MGFX_S10_5(v)       ((v)*(1<<5))
 #define MGFX_S8_8(v)        ((v)*(1<<8))
 
@@ -120,20 +125,13 @@ typedef struct
                              (((y) & 0x3F)<<5)  | \
                              (((z) & 0x1F)<<0))
 
-#define MGFX_VERTEX(x, y, z, s, t, nx, ny, nz, c) (mgfx_vertex_t) {\
-    .position = MGFX_POS((x), (y), (z)), \
-    .texcoord = MGFX_TEX((s), (t)), \
-    .packed_normal = MGFX_NRM((nx), (ny), (nz)), \
-    .color = (c) \
-}
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* Functions */
 
-mg_pipeline_t *mgfx_create_pipeline(void);
+mg_pipeline_t *mgfx_create_pipeline(const mgfx_pipeline_parms_t *parms);
 
 /* Convert parameter structs to RSP side uniform structs */
 

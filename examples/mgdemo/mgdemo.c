@@ -9,6 +9,8 @@
 
 #define FB_COUNT    3
 
+#define MAX_PIPELINE_COUNT  (1<<3)
+
 #define ENABLE_RDPQ_DEBUG 0
 #define SINGLE_FRAME      0
 
@@ -51,6 +53,7 @@ typedef struct
     mg_buffer_t *vertex_buffer;
     const uint16_t *indices;
     uint32_t index_count;
+    mgfx_vtx_layout_t vertex_layout;
     rspq_block_t *block;
 } submesh_data;
 
@@ -77,6 +80,7 @@ typedef struct
 
 typedef struct
 {
+    uint32_t pipeline_id;
     uint32_t material_id;
     uint32_t mesh_id;
     uint32_t object_id;
@@ -94,7 +98,7 @@ static surface_t zbuffer;
 
 static mg_viewport_t viewport;
 static mg_culling_parms_t culling;
-static mg_pipeline_t *pipeline;
+static mg_pipeline_t *pipelines[MAX_PIPELINE_COUNT];
 static mg_buffer_t *scene_resource_buffer[FB_COUNT];
 static mg_resource_set_t *scene_resource_set[FB_COUNT];
 
@@ -180,10 +184,6 @@ void init()
         .cull_mode = MG_CULL_MODE_BACK
     };
 
-    // This function returns the builtin pipeline provided by libdragon.
-    // When done rendering with it, the pipeline needs to be freed using mg_pipeline_free.
-    pipeline = mgfx_create_pipeline();
-
     create_scene_resources();
 
     // Initialize lighting parameters
@@ -248,6 +248,24 @@ void init()
     camera_distance = camera_start_distance;
 }
 
+mg_pipeline_t *get_or_create_pipeline(mgfx_vtx_layout_t vtx_layout)
+{
+    if (pipelines[vtx_layout] == NULL) {
+        // This function returns the builtin pipeline provided by libdragon.
+        // When done rendering with it, the pipeline needs to be freed using mg_pipeline_free.
+        pipelines[vtx_layout] = mgfx_create_pipeline(&(mgfx_pipeline_parms_t) {
+            .vtx_layout = vtx_layout
+        });
+    }
+
+    return pipelines[vtx_layout];
+}
+
+mg_pipeline_t *get_default_pipeline()
+{
+    return get_or_create_pipeline(MGFX_VTX_LAYOUT_NORMAL | MGFX_VTX_LAYOUT_COLOR | MGFX_VTX_LAYOUT_TEXCOORDS);
+}
+
 void create_scene_resources()
 {
     // These are resources that are expected to stay constant during the entire scene.
@@ -260,6 +278,8 @@ void create_scene_resources()
     // which is normally the number of framebuffers the display was initialized with.
     // This is necessary so when frame N is being prepared on the CPU we won't overwrite the data for frame N-1, which might still be
     // in the process of being rendered by RSP/RDP.
+
+    mg_pipeline_t *pipeline = get_default_pipeline();
 
     for (size_t i = 0; i < FB_COUNT; i++)
     {
@@ -346,7 +366,7 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     // once the resource set has been created, there is no way to modify the embedded data. But due to the assumption we made,
     // that won't be required anyway.
     material->resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
-        .pipeline = pipeline,
+        .pipeline = get_default_pipeline(),
         .binding_count = ARRAY_COUNT(bindings),
         .bindings = bindings,
     });
@@ -360,6 +380,31 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
 
     material->geometry_flags = geometry_flags;
     material->color = color;
+}
+
+mgfx_vtx_layout_t get_vtx_layout_from_primitive(model64_vertex_layout_t *primitive_layout)
+{
+    mgfx_vtx_layout_t vtx_layout = 0;
+
+    for (size_t i = 0; i < primitive_layout->attribute_count; i++)
+    {
+        switch (primitive_layout->attributes[i].attribute)
+        {
+        case MODEL64_ATTR_NORMAL:
+            vtx_layout |= MGFX_VTX_LAYOUT_NORMAL;
+            break;
+        case MODEL64_ATTR_COLOR:
+            vtx_layout |= MGFX_VTX_LAYOUT_COLOR;
+            break;
+        case MODEL64_ATTR_TEXCOORD:
+            vtx_layout |= MGFX_VTX_LAYOUT_TEXCOORDS;
+            break;
+        default:
+            break;
+        }
+    }
+    
+    return vtx_layout;
 }
 
 void mesh_create(mesh_data *mesh, const char *model_file)
@@ -382,11 +427,18 @@ void mesh_create(mesh_data *mesh, const char *model_file)
         submesh_data *submesh = &mesh->submeshes[i];
         primitive_t *primitive = model64_get_primitive(in_mesh, i);
 
+        model64_vertex_layout_t primitive_layout;
+        model64_get_primitive_vertex_layout(primitive, &primitive_layout);
+        mgfx_vtx_layout_t vertex_layout = get_vtx_layout_from_primitive(&primitive_layout);
+        get_or_create_pipeline(vertex_layout);
+
+        submesh->vertex_layout = vertex_layout;
+
         // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
         // By setting "backing_memory", the buffer will actually use that pointer instead of allocating new memory.
 
         submesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-            .size = sizeof(mgfx_vertex_t) * model64_get_primitive_vertex_count(primitive),
+            .size = primitive_layout.stride * model64_get_primitive_vertex_count(primitive),
             .backing_memory = model64_get_primitive_vertices(primitive),
         });
 
@@ -532,6 +584,8 @@ void update_objects()
 
 int compare_draw_call(const draw_call *a, const draw_call *b)
 {
+    if (a->pipeline_id < b->pipeline_id) return -1;
+    if (a->pipeline_id > b->pipeline_id) return 1;
     if (a->material_id < b->material_id) return -1;
     if (a->material_id > b->material_id) return 1;
     if (a->mesh_id < b->mesh_id) return -1;
@@ -554,6 +608,7 @@ void update_draw_calls()
         for (size_t j = 0; j < mesh->submesh_count; j++)
         {
             draw_calls[draw_call_count++] = (draw_call) {
+                .pipeline_id = mesh->submeshes[j].vertex_layout,
                 .material_id = object->material_ids[j],
                 // Pack both mesh id and submesh id into a 32 bit value for faster comparison
                 .mesh_id = (object->mesh_id << 16) | (j & 0xFFFF),
@@ -562,7 +617,7 @@ void update_draw_calls()
         }
     }
 
-    // Sort draw calls by material, then (sub)mesh
+    // Sort draw calls by pipeline, then material, then (sub)mesh
     qsort(draw_calls, draw_call_count, sizeof(draw_call), (int (*)(const void*, const void*))compare_draw_call);
 
     draw_calls_dirty = false;
@@ -599,12 +654,12 @@ void render()
     mg_set_viewport(&viewport);
     mg_set_culling(&culling);
 
-    // All our materials use the same pipeline in this demo, so bind it once for the entire scene
-    mg_bind_pipeline(pipeline);
-
-    // Bind resources that stay constant for the entire scene (for example lighting)
+    // In this demo, all our materials use variations of the same pipeline which are compatible with respect to their uniforms.
+    // When binding a pipeline, uniforms are not automatically invalidated, which means we can bind resources that stay constant 
+    // for the entire scene here (for example lighting).
     mg_bind_resource_set(scene_resource_set[fb_index]);
 
+    uint32_t current_pipeline_id = -1;
     uint32_t current_material_id = -1;
     uint32_t current_mesh_id = -1;
     uint32_t current_object_id = -1;
@@ -619,6 +674,12 @@ void render()
     {
         draw_call = &draw_calls[i];
         rdpq_debug_log_msg("-----> Draw call");
+
+        // Bind the correct pipeline for the current draw call.
+        if (draw_call->pipeline_id != current_pipeline_id) {
+            current_pipeline_id = draw_call->pipeline_id;
+            mg_bind_pipeline(pipelines[current_pipeline_id]);
+        }
 
         // Swap out the current material resources. This will automatically upload all uniform data to DMEM that is bound to the set.
         // To avoid redundant uploads, we keep track of the current material and only make this call when it actually changes.

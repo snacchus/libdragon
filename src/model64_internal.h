@@ -22,6 +22,8 @@
 /** @brief A special empty value for both local_texture and shared_texture fields */
 #define TEXTURE_INDEX_MISSING 0xFFFFFFLU
 
+#define MGFX_PACKED_NORMAL  0xF000
+
 /** @brief Parameters for a single vertex attribute (part of #primitive_t) */
 typedef struct attribute_s {
     uint32_t size;                  ///< Number of components per vertex. If 0, this attribute is not defined

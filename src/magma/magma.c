@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "rsp_magma.h"
 #include "../rdpq/rdpq_internal.h"
+#include <malloc.h>
 
 // TODO: Documentation on how magma works internally
 
@@ -15,7 +16,14 @@ typedef struct mg_pipeline_s
     uint32_t vertex_size;
     uint32_t uniform_count;
     mg_uniform_t *uniforms;
+    bool is_patched;
 } mg_pipeline_t;
+
+typedef struct mg_pipeline_patcher_s
+{
+    void *code;
+    uint32_t vertex_size;
+} mg_pipeline_patcher_t;
 
 typedef struct mg_buffer_s 
 {
@@ -109,7 +117,28 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 
     mg_get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
 
-    pipeline->vertex_size = parms->vertex_size;
+    uint8_t *vertex_size_ptr = parms->vertex_shader_ucode->data + RSP_MAGMA_MAGMA_VERTEX_SIZE;
+    pipeline->vertex_size = *((uint16_t*)vertex_size_ptr);
+
+    if (parms->patch_func) {
+        // Copy the shader ucode to a new buffer where it will be patched
+        // This is cached memory so copying and patching are faster
+        void *code_copy = memalign(16, ROUND_UP(pipeline->shader_code_size, 16));
+        memcpy(code_copy, pipeline->shader_code, pipeline->shader_code_size);
+
+        mg_pipeline_patcher_t patcher = {
+            .code = code_copy,
+            .vertex_size = pipeline->vertex_size
+        };
+        parms->patch_func(&patcher, parms->patch_ctx);
+        // Flush patched code back to RDRAM
+        data_cache_hit_writeback(code_copy, pipeline->shader_code_size);
+
+        pipeline->shader_code = code_copy;
+        pipeline->vertex_size = patcher.vertex_size;
+        pipeline->is_patched = true;
+    }
+
     pipeline->uniform_count = parms->uniform_count;
 
     // TODO: Get uniforms from ucode directly somehow.
@@ -123,10 +152,38 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
     return pipeline;
 }
 
+inline uint32_t get_shader_code_offset(uint32_t ucode_offset)
+{
+    assertf((ucode_offset&3) == 0, "Patch offset must be aligned to 4 bytes!");
+    return ucode_offset - RSP_MAGMA__MG_OVERLAY;
+}
+
+void mg_pipeline_patch_code(mg_pipeline_patcher_t *patcher, uint32_t offset, uint32_t size, const uint32_t *code)
+{
+    assertf((size&3) == 0, "Patch size must be a multiple of 4 bytes!");
+    // Simply copy the patch into the code. It will be flushed to RDRAM later.
+    uint32_t relative_offset = get_shader_code_offset(offset);
+    memcpy(patcher->code + relative_offset, code, size);
+}
+
+void mg_pipeline_patch_set_op(mg_pipeline_patcher_t *patcher, uint32_t offset, uint32_t op)
+{
+    uint32_t relative_offset = get_shader_code_offset(offset);
+    *(uint32_t*)((uint8_t*)patcher->code + relative_offset) = op;
+}
+
+void mg_pipeline_patch_vertex_size(mg_pipeline_patcher_t *patcher, uint32_t vertex_size)
+{
+    patcher->vertex_size = vertex_size;
+}
+
 void mg_pipeline_free(mg_pipeline_t *pipeline)
 {
     if (pipeline->uniforms) {
         free(pipeline->uniforms);
+    }
+    if (pipeline->is_patched) {
+        free(pipeline->shader_code);
     }
     free(pipeline);
 }
@@ -141,6 +198,11 @@ const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t bi
     }
     
     assertf(0, "Uniform with binding number %ld was not found", binding);
+}
+
+uint32_t mg_pipeline_get_vertex_size(mg_pipeline_t *pipeline)
+{
+    return pipeline->vertex_size;
 }
 
 mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms)

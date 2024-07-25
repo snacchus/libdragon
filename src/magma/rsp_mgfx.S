@@ -1,7 +1,7 @@
 #include <rsp_magma.inc>
 #include <mgfx_constants.h>
 
-MgBeginShaderUniforms
+MgBeginShaderUniforms MGFX_VTX_MAX_SIZE
     MgBeginUniform FOG, MGFX_BINDING_FOG
         FOG_FACTOR_INT:     .half   0
         FOG_OFFSET_INT:     .half   0
@@ -458,8 +458,10 @@ light_loop_end:
     sdv vrgba.e0, 0,vtx_out_ptr
     luv vrgba.e0, 0,vtx_out_ptr
 
-    # TODO: Substitute with "vcopy vrgba, vlight" when color is disabled in the vertex layout
     # multiply vertex color by accumulated final light color
+_MGFX_PATCH_MUL_COLOR:
+    # when vertex colors are disabled, this is patched with
+    # vcopy vrgba, vlight
     vmulf vrgba, vlight
 
     #undef vlight
@@ -527,8 +529,12 @@ light_loop_end:
     #define refl_f      $v23
     #define vdot        $v24
 
-    # TODO: Substitution with "vcopy vtex, vzero" when tex coords are disabled in the vertex layout
     # load texcoords (of two vertices)
+_MGFX_PATCH_LOAD_TEX:
+    # When texcoords are disabled, then this is substituted with
+    # nop
+    # vcopy vtex, vzero
+    # OItherwise, the offset is adapted to the layout
     llv vtex.e0, MGFX_VTX_TEX,vtx_in0_ptr
     llv vtex.e4, MGFX_VTX_TEX,vtx_in1_ptr
 
@@ -645,6 +651,7 @@ light_loop_end:
     #define vviewoff    $v19
 
     # perspective division
+    # TODO: Perspective normalization
     vrcph v___.e3,    vpos_clip_i.e3
     vrcpl vinvw_f.e3, vpos_clip_f.e3
     vrcph vinvw_i.e3, vpos_clip_i.e7

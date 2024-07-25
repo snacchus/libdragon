@@ -2,13 +2,10 @@
 #include <math.h>
 #include <float.h>
 #include "utils.h"
+#include "rsp_mgfx.h"
+#include "rsp_asm.h"
 
 _Static_assert(sizeof(mgfx_matrix_t) == MGFX_MATRIX_SIZE);
-
-_Static_assert(offsetof(mgfx_vertex_t, position) == MGFX_VTX_POS);
-_Static_assert(offsetof(mgfx_vertex_t, packed_normal) == MGFX_VTX_NORM);
-_Static_assert(offsetof(mgfx_vertex_t, color) == MGFX_VTX_RGBA);
-_Static_assert(offsetof(mgfx_vertex_t, texcoord) == MGFX_VTX_TEX);
 
 _Static_assert(offsetof(mgfx_light_t, position) == MGFX_LIGHT_POSITION);
 _Static_assert(offsetof(mgfx_light_t, color) == MGFX_LIGHT_COLOR);
@@ -59,11 +56,47 @@ static const mg_uniform_t mgfx_uniforms[] = {
     }
 };
 
-mg_pipeline_t *mgfx_create_pipeline(void)
+void mgfx_patch_pipeline(mg_pipeline_patcher_t *patcher, const mgfx_pipeline_parms_t *parms)
 {
+    uint32_t vertex_size = sizeof(int16_t) * 3; // pos + normal
+
+    // TODO: Figure out how to decrease vertex size even more if normals are omitted.
+    //       The problem is that if they are omitted, all subsequent attributes are not aligned
+    //       to 4 bytes anymore, which makes loading them impossible without injecting extra instructions
+    //       (because they're all loaded with llv ops which requires the offset to be a multiple of 4).
+
+    if (parms->vtx_layout & MGFX_VTX_LAYOUT_NORMAL) {
+        vertex_size += sizeof(int16_t);
+    }
+
+    if (parms->vtx_layout & MGFX_VTX_LAYOUT_COLOR) {
+        vertex_size += sizeof(uint32_t);
+    } else {
+        mg_pipeline_patch_set_op(patcher, RSP_MGFX__MGFX_PATCH_MUL_COLOR, rsp_asm_vcopy(14, 23));
+    }
+
+    if (parms->vtx_layout & MGFX_VTX_LAYOUT_TEXCOORDS) {
+        mg_pipeline_patch_set_op(patcher, RSP_MGFX__MGFX_PATCH_LOAD_TEX + 0, rsp_asm_llv(14, 0, vertex_size>>2, 17));
+        mg_pipeline_patch_set_op(patcher, RSP_MGFX__MGFX_PATCH_LOAD_TEX + 4, rsp_asm_llv(14, 8, vertex_size>>2, 21));
+        vertex_size += sizeof(int16_t)*2;
+    } else {
+        mg_pipeline_patch_set_op(patcher, RSP_MGFX__MGFX_PATCH_LOAD_TEX + 0, 0);
+        mg_pipeline_patch_set_op(patcher, RSP_MGFX__MGFX_PATCH_LOAD_TEX + 4, rsp_asm_vcopy(14, 0));
+    }
+
+    mg_pipeline_patch_vertex_size(patcher, vertex_size);
+}
+
+mg_pipeline_t *mgfx_create_pipeline(const mgfx_pipeline_parms_t *parms)
+{
+    mgfx_vtx_layout_t all_attributes = MGFX_VTX_LAYOUT_NORMAL | MGFX_VTX_LAYOUT_COLOR | MGFX_VTX_LAYOUT_TEXCOORDS;
+    bool all_attributes_set = (parms->vtx_layout & all_attributes) == all_attributes;
+    mg_pipeline_patch_func_t patch_func = all_attributes_set ? NULL : (mg_pipeline_patch_func_t)mgfx_patch_pipeline;
+
     return mg_pipeline_create(&(mg_pipeline_parms_t) {
         .vertex_shader_ucode = &rsp_mgfx,
-        .vertex_size = sizeof(mgfx_vertex_t),
+        .patch_func = patch_func,
+        .patch_ctx = (void*)parms,
         .uniform_count = sizeof(mgfx_uniforms)/sizeof(mgfx_uniforms[0]),
         .uniforms = mgfx_uniforms
     });

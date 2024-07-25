@@ -25,6 +25,8 @@
 #define MGFX_VTX_RGBA           8
 #define MGFX_VTX_TEX            12
 
+#define MGFX_VTX_MAX_SIZE       16
+
 #define MGFX_VTX_POS_SHIFT      5
 
 #endif

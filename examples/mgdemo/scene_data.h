@@ -48,9 +48,9 @@ static const mgfx_modes_flags_t material_flags[] = {
 
 /* Meshes */
 static const char *mesh_files[] = {
-    "rom:/pipe.model64",
-    "rom:/crate.model64",
-    "rom:/sphere.model64",
+    "rom:/pipe.model64",    // 256 Verts, 512 Tris
+    "rom:/crate.model64",   // 56 Verts, 108 Tris
+    "rom:/sphere.model64",  // 42 Verts, 80 Tris
 };
 
 

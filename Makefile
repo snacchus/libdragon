@@ -74,12 +74,20 @@ LIBDRAGON_OBJS += \
 
 include $(SOURCE_DIR)/audio/libdragon.mk
 
+# TODO: de-duplicate these and make them generically available in n64.mk somehow
 $(SOURCE_DIR)/magma/rsp_magma.h: $(BUILD_DIR)/magma/rsp_magma.o
 	$(N64_NM) -n $(BUILD_DIR)/magma/rsp_magma.elf \
-		| awk 'BEGIN {print("#ifndef __RSP_MGFX_SYMBOLS\n#define __RSP_MGFX_SYMBOLS") } $$2 ~ /[dDbtT]/ {printf("#define RSP_MAGMA_%s 0x%s\n", $$3, substr($$1,13,4))} END {print("#endif")}' \
+		| awk 'BEGIN {print("#ifndef __RSP_MAGMA_SYMBOLS\n#define __RSP_MAGMA_SYMBOLS") } $$2 ~ /[dDbtT]/ {printf("#define RSP_MAGMA_%s 0x%s\n", $$3, substr($$1,13,4))} END {print("#endif")}' \
 		> $@
 
 $(BUILD_DIR)/magma/magma.o: $(SOURCE_DIR)/magma/rsp_magma.h
+
+$(SOURCE_DIR)/magma/rsp_mgfx.h: $(BUILD_DIR)/magma/rsp_mgfx.o
+	$(N64_NM) -n $(BUILD_DIR)/magma/rsp_mgfx.elf \
+		| awk 'BEGIN {print("#ifndef __RSP_MGFX_SYMBOLS\n#define __RSP_MGFX_SYMBOLS") } $$2 ~ /[dDbtT]/ {printf("#define RSP_MGFX_%s 0x%s\n", $$3, substr($$1,13,4))} END {print("#endif")}' \
+		> $@
+
+$(BUILD_DIR)/magma/mgfx.o: $(SOURCE_DIR)/magma/rsp_mgfx.h
 
 libdragon.a: $(LIBDRAGON_OBJS)
 

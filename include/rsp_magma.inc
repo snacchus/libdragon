@@ -4,7 +4,7 @@
 #define TRIANGLE_SIZE       0xB0
 #define MAX_UNIFORMS_SIZE   0x400
 
-.macro MgBeginShaderUniforms
+.macro MgBeginShaderUniforms vertex_size
     .data
 
     RSPQ_BeginSavedState
@@ -19,7 +19,7 @@ MAGMA_STATE:
         MAGMA_VIEWPORT_SCALE:   .half   0,0,0,0
         MAGMA_VIEWPORT_OFFSET:  .half   0,0,0,0
     MAGMA_CLIP_FACTORS:         .half   1,1,MAGMA_DEFAULT_GUARD_BAND,MAGMA_DEFAULT_GUARD_BAND
-    MAGMA_VERTEX_SIZE:          .half   0,0,0,0 # vertex_size, MAGMA_VTX_SIZE, MAGMA_VTX_SIZE - vertex_size, vertex_size
+    MAGMA_VERTEX_SIZE:          .half   \vertex_size,0,0,0
     MAGMA_SHADER_TEXT:          .word   0
     MAGMA_SHADER_TEXT_SIZE:     .word   0
     MAGMA_CLIPPING_TEXT:        .word   0
@@ -65,7 +65,7 @@ _MG_BINDING_\binding:
 # This is needed to make space for uniforms once in the initial overlay.
 # Whenever shaders are loaded, they will be reading/writing from that area automatically.
 .macro _MgDefineUniformRegion
-    MgBeginShaderUniforms
+    MgBeginShaderUniforms 0
         .fill MAX_UNIFORMS_SIZE
     MgEndShaderUniforms
 .endm
