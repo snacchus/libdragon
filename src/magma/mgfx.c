@@ -19,43 +19,6 @@ _Static_assert(sizeof(mgfx_light_t) == MGFX_LIGHT_SIZE);
 
 DEFINE_RSP_UCODE(rsp_mgfx);
 
-typedef struct 
-{
-    mgfx_fog_t fog;
-    mgfx_lighting_t lighting;
-    mgfx_texturing_t texturing;
-    mgfx_modes_t modes;
-    mgfx_matrices_t matrices;
-} mgfx_state_t;
-
-static const mg_uniform_t mgfx_uniforms[] = {
-    (mg_uniform_t) {
-        .binding = MGFX_BINDING_FOG,
-        .offset = offsetof(mgfx_state_t, fog),
-        .size = sizeof(mgfx_fog_t)
-    },
-    (mg_uniform_t) {
-        .binding = MGFX_BINDING_LIGHTING,
-        .offset = offsetof(mgfx_state_t, lighting),
-        .size = sizeof(mgfx_lighting_t)
-    },
-    (mg_uniform_t) {
-        .binding = MGFX_BINDING_TEXTURING,
-        .offset = offsetof(mgfx_state_t, texturing),
-        .size = sizeof(mgfx_texturing_t)
-    },
-    (mg_uniform_t) {
-        .binding = MGFX_BINDING_MODES,
-        .offset = offsetof(mgfx_state_t, modes),
-        .size = sizeof(mgfx_modes_t)
-    },
-    (mg_uniform_t) {
-        .binding = MGFX_BINDING_MATRICES,
-        .offset = offsetof(mgfx_state_t, matrices),
-        .size = sizeof(mgfx_matrices_t)
-    }
-};
-
 void mgfx_patch_pipeline(mg_pipeline_patcher_t *patcher, const mgfx_pipeline_parms_t *parms)
 {
     uint32_t vertex_size = sizeof(int16_t) * 3; // pos + normal
@@ -97,8 +60,6 @@ mg_pipeline_t *mgfx_create_pipeline(const mgfx_pipeline_parms_t *parms)
         .vertex_shader_ucode = &rsp_mgfx,
         .patch_func = patch_func,
         .patch_ctx = (void*)parms,
-        .uniform_count = sizeof(mgfx_uniforms)/sizeof(mgfx_uniforms[0]),
-        .uniforms = mgfx_uniforms
     });
 }
 
@@ -215,39 +176,39 @@ void mgfx_get_matrices(mgfx_matrices_t *dst, const mgfx_matrices_parms_t *parms)
     mgfx_convert_matrix(&dst->normal, parms->normal);
 }
 
-void mgfx_set_fog_inline(const mgfx_fog_parms_t *parms)
+void mgfx_set_fog_inline(const mg_uniform_t *uniform, const mgfx_fog_parms_t *parms)
 {
     mgfx_fog_t fog = {};
     mgfx_get_fog(&fog, parms);
-    mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_FOG], &fog);
+    mg_inline_uniform(uniform, &fog);
 }
 
-void mgfx_set_lighting_inline(const mgfx_lighting_parms_t *parms)
+void mgfx_set_lighting_inline(const mg_uniform_t *uniform, const mgfx_lighting_parms_t *parms)
 {
     mgfx_lighting_t lighting = {};
     mgfx_get_lighting(&lighting, parms);
-    mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_LIGHTING], &lighting);
+    mg_inline_uniform(uniform, &lighting);
 }
 
-void mgfx_set_texturing_inline(const mgfx_texturing_parms_t *parms)
+void mgfx_set_texturing_inline(const mg_uniform_t *uniform, const mgfx_texturing_parms_t *parms)
 {
     mgfx_texturing_t texturing = {};
     mgfx_get_texturing(&texturing, parms);
-    mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_TEXTURING], &texturing);
+    mg_inline_uniform(uniform, &texturing);
 }
 
-void mgfx_set_modes_inline(const mgfx_modes_parms_t *parms)
+void mgfx_set_modes_inline(const mg_uniform_t *uniform, const mgfx_modes_parms_t *parms)
 {
     mgfx_modes_t modes = {};
     mgfx_get_modes(&modes, parms);
-    mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_MODES], &modes);
+    mg_inline_uniform(uniform, &modes);
 }
 
-void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms)
+void mgfx_set_matrices_inline(const mg_uniform_t *uniform, const mgfx_matrices_parms_t *parms)
 {
     mgfx_matrices_t matrices = {};
     mgfx_get_matrices(&matrices, parms);
-    mg_inline_uniform(&mgfx_uniforms[MGFX_BINDING_MATRICES], &matrices);
+    mg_inline_uniform(uniform, &matrices);
 }
 
 // TODO: RSP side matrix manipulation.

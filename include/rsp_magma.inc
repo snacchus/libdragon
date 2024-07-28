@@ -5,6 +5,9 @@
 #define MAX_UNIFORMS_SIZE   0x400
 
 .macro MgBeginShaderUniforms vertex_size
+    .section .meta.uniforms
+_MG_META_UNIFORMS:
+    .equ _mg_uniform_count, 0
     .data
 
     RSPQ_BeginSavedState
@@ -48,9 +51,14 @@ _MG_VTX_SHADER_UNIFORMS_END:
     .endif
     .equ _mg_defining_uniform, 1
 
+    .equ _mg_uniform_count, _mg_uniform_count+1
+
+    .section .meta.uniforms
+    .long \binding
+    .long \name - _MG_VTX_SHADER_UNIFORMS
+    .data
     .align 4
 \name:
-_MG_BINDING_\binding:
 .endm
 
 .macro MgEndUniform
@@ -59,6 +67,12 @@ _MG_BINDING_\binding:
         .exitm
     .endif
     .equ _mg_defining_uniform, 0
+
+    .section .meta.uniforms
+    .long _MG_UNIFORM_END\@ - _MG_VTX_SHADER_UNIFORMS
+    .data
+    .align 3
+_MG_UNIFORM_END\@ :
 .endm
 
 # Defines the uniform region using the maximum allowable size, but filled with zeroes.
@@ -71,6 +85,10 @@ _MG_BINDING_\binding:
 .endm
 
 .macro MgBeginShader
+    .section .meta
+_MG_META_START:
+    .long _mg_uniform_count
+    .long _MG_META_UNIFORMS - _MG_META_START
     .section .text.magma_vertex_shader
     .align 3
 _MG_OVERLAY:

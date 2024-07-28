@@ -101,6 +101,7 @@ static mg_culling_parms_t culling;
 static mg_pipeline_t *pipelines[MAX_PIPELINE_COUNT];
 static mg_buffer_t *scene_resource_buffer[FB_COUNT];
 static mg_resource_set_t *scene_resource_set[FB_COUNT];
+static const mg_uniform_t *matrices_uniform;
 
 static sprite_t *textures[TEXTURE_COUNT];
 static material_data materials[MATERIAL_COUNT];
@@ -280,6 +281,7 @@ void create_scene_resources()
     // in the process of being rendered by RSP/RDP.
 
     mg_pipeline_t *pipeline = get_default_pipeline();
+    matrices_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_MATRICES);
 
     for (size_t i = 0; i < FB_COUNT; i++)
     {
@@ -720,7 +722,7 @@ void render()
             // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
             // If we were to use resource sets for matrices as well, we would have to manually synchronize updating them on the CPU.
             // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
-            mgfx_set_matrices_inline(&(mgfx_matrices_parms_t) {
+            mgfx_set_matrices_inline(matrices_uniform, &(mgfx_matrices_parms_t) {
                 .model_view_projection = current_object->mvp_matrix.m[0],
                 .model_view = current_object->mv_matrix.m[0],
                 .normal = current_object->mv_matrix.m[0],

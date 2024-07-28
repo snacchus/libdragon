@@ -39,6 +39,19 @@ typedef struct mg_resource_set_s
     void *embedded_data;
 } mg_resource_set_t;
 
+typedef struct
+{
+    uint32_t binding;
+    uint32_t start;
+    uint32_t end;
+} mg_meta_uniform_t;
+
+typedef struct
+{
+    uint32_t uniform_count;
+    uint32_t uniforms_offset;
+} mg_meta_header_t;
+
 DEFINE_RSP_UCODE(rsp_magma);
 DEFINE_RSP_UCODE(rsp_magma_clipping);
 
@@ -139,14 +152,21 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
         pipeline->is_patched = true;
     }
 
-    pipeline->uniform_count = parms->uniform_count;
+    // Extract uniform definitions from ucode metadata
+    mg_meta_header_t *meta_header = (mg_meta_header_t*)parms->vertex_shader_ucode->meta;
+    mg_meta_uniform_t *uniforms = (mg_meta_uniform_t*)(parms->vertex_shader_ucode->meta + meta_header->uniforms_offset);
 
-    // TODO: Get uniforms from ucode directly somehow.
-    //       This could be done by generating a list of symbols at build time and keeping them in a list
-    //       that is accessible at run time. Will require some makefile wizardry.
-    if (parms->uniform_count > 0) {
-        pipeline->uniforms = calloc(parms->uniform_count, sizeof(mg_uniform_t));
-        memcpy(pipeline->uniforms, parms->uniforms, parms->uniform_count * sizeof(mg_uniform_t));
+    pipeline->uniform_count = meta_header->uniform_count;
+
+    if (pipeline->uniform_count > 0) {
+        pipeline->uniforms = calloc(pipeline->uniform_count, sizeof(mg_uniform_t));
+        
+        for (size_t i = 0; i < pipeline->uniform_count; i++)
+        {
+            pipeline->uniforms[i].binding = uniforms[i].binding;
+            pipeline->uniforms[i].offset = uniforms[i].start;
+            pipeline->uniforms[i].size = uniforms[i].end - uniforms[i].start;
+        }
     }
 
     return pipeline;

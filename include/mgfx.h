@@ -143,11 +143,11 @@ void mgfx_get_matrices(mgfx_matrices_t *dst, const mgfx_matrices_parms_t *parms)
 
 /* Set uniforms directly inline */
 
-void mgfx_set_fog_inline(const mgfx_fog_parms_t *parms);
-void mgfx_set_lighting_inline(const mgfx_lighting_parms_t *parms);
-void mgfx_set_texturing_inline(const mgfx_texturing_parms_t *parms);
-void mgfx_set_modes_inline(const mgfx_modes_parms_t *parms);
-void mgfx_set_matrices_inline(const mgfx_matrices_parms_t *parms);
+void mgfx_set_fog_inline(const mg_uniform_t *uniform, const mgfx_fog_parms_t *parms);
+void mgfx_set_lighting_inline(const mg_uniform_t *uniform, const mgfx_lighting_parms_t *parms);
+void mgfx_set_texturing_inline(const mg_uniform_t *uniform, const mgfx_texturing_parms_t *parms);
+void mgfx_set_modes_inline(const mg_uniform_t *uniform, const mgfx_modes_parms_t *parms);
+void mgfx_set_matrices_inline(const mg_uniform_t *uniform, const mgfx_matrices_parms_t *parms);
 
 #ifdef __cplusplus
 }

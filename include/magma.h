@@ -95,8 +95,6 @@ typedef struct
     rsp_ucode_t *vertex_shader_ucode;
     mg_pipeline_patch_func_t patch_func;
     void *patch_ctx;
-    uint32_t uniform_count;
-    const mg_uniform_t *uniforms;
 } mg_pipeline_parms_t;
 
 typedef struct
