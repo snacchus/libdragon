@@ -133,6 +133,17 @@ void mg_close(void)
     rspq_overlay_unregister(mg_overlay_id);
 }
 
+void check_shader_binary_compatibility(rsp_ucode_t *shader_ucode)
+{
+    // FIXME: This currently doesn't work because .bss addresses can vary in shaders.
+    //        The core problem is that in shaders, uniforms rarely take up exactly the maximum allowed amount of memory,
+    //        so the .bss addresses that follow them will shift towards 0.
+#if 0
+    assertf(memcmp(shader_ucode->code, rsp_magma.code, RSP_MAGMA__MG_OVERLAY - RSP_MAGMA__start) == 0, "Common code of shader %s does not match!", shader_ucode->name);
+    assertf(memcmp(shader_ucode->data, rsp_magma.data, RSP_MAGMA__MG_VTX_SHADER_UNIFORMS - RSP_MAGMA__data_start) == 0, "Common data of shader %s does not match!", shader_ucode->name);
+#endif
+}
+
 const mg_meta_attribute_t *find_meta_attribute_by_input(const mg_meta_attribute_t *attributes, uint32_t attribute_count, uint32_t input)
 {
     for (size_t i = 0; i < attribute_count; i++)
@@ -267,9 +278,7 @@ void extract_pipeline_uniforms(mg_pipeline_t *pipeline, mg_meta_header_t *meta_h
 
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 {
-    // TODO: Check for binary compatibility.
-    //       This might be tricky because of the shader bootstrapping code in rsp_magma.S,
-    //       which is obviously not contained in any shader code.
+    check_shader_binary_compatibility(parms->vertex_shader_ucode);
 
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
 
