@@ -73,8 +73,6 @@ MgBeginShader
     #define vnormmask       $v12
     #define vnormfactor     $v13
 
-    # TODO: Flexible vertex layout
-
     li t7, %lo(MAGMA_CLIP_FACTORS)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
 
