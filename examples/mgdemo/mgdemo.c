@@ -9,7 +9,8 @@
 
 #define FB_COUNT    3
 
-#define MAX_PIPELINE_COUNT  (1<<3)
+#define MAX_PIPELINE_COUNT          (1<<3)
+#define MAX_VERTEX_ATTRIBUTE_COUNT  3
 
 #define ENABLE_RDPQ_DEBUG 0
 #define SINGLE_FRAME      0
@@ -40,6 +41,12 @@ typedef struct
 
 typedef struct
 {
+    mg_vertex_attribute_t attributes[MAX_VERTEX_ATTRIBUTE_COUNT];
+    mg_vertex_input_parms_t vertex_input_parms;
+} vertex_layout;
+
+typedef struct
+{
     mg_resource_set_t *resource_set;
     sprite_t *texture;
     rdpq_texparms_t rdpq_tex_parms;
@@ -53,7 +60,7 @@ typedef struct
     mg_buffer_t *vertex_buffer;
     const uint16_t *indices;
     uint32_t index_count;
-    mgfx_vtx_layout_t vertex_layout;
+    uint32_t pipeline_id;
     rspq_block_t *block;
 } submesh_data;
 
@@ -91,18 +98,19 @@ void update(float delta_time);
 void render();
 void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
-void mesh_create(mesh_data *mesh, const char *model_file);
+void mesh_create(mesh_data *mesh, const char *model_file, vertex_layout *vertex_layout_cache);
 void update_object_transform(object_data *object);
 
 static surface_t zbuffer;
 
 static mg_viewport_t viewport;
 static mg_culling_parms_t culling;
-static mg_pipeline_t *pipelines[MAX_PIPELINE_COUNT];
 static mg_buffer_t *scene_resource_buffer[FB_COUNT];
 static mg_resource_set_t *scene_resource_set[FB_COUNT];
 static const mg_uniform_t *matrices_uniform;
 
+static uint32_t pipelines_count = 0;
+static mg_pipeline_t *pipelines[MAX_PIPELINE_COUNT];
 static sprite_t *textures[TEXTURE_COUNT];
 static material_data materials[MATERIAL_COUNT];
 static mesh_data meshes[MESH_COUNT];
@@ -185,14 +193,21 @@ void init()
         .cull_mode = MG_CULL_MODE_BACK
     };
 
-    create_scene_resources();
-
     // Initialize lighting parameters
     for (size_t i = 0; i < LIGHT_COUNT; i++)
     {
         lights[i].color = color_from_packed32(light_colors[i]);
         lights[i].radius = light_radii[i];
     }
+
+    // Create meshes and initialize pipelines
+    vertex_layout vertex_layout_cache[MAX_PIPELINE_COUNT];
+    for (size_t i = 0; i < MESH_COUNT; i++)
+    {
+        mesh_create(&meshes[i], mesh_files[i], vertex_layout_cache);
+    }
+
+    assertf(pipelines_count > 0, "No pipelines were created during scene initialization!");
 
     // Load textures
     for (size_t i = 0; i < TEXTURE_COUNT; i++)
@@ -213,11 +228,7 @@ void init()
             color_from_packed32(material_diffuse_colors[i]));
     }
 
-    // Create meshes
-    for (size_t i = 0; i < MESH_COUNT; i++)
-    {
-        mesh_create(&meshes[i], mesh_files[i]);
-    }
+    create_scene_resources();
 
     // Initialize objects
     for (size_t i = 0; i < OBJECT_COUNT; i++)
@@ -249,24 +260,6 @@ void init()
     camera_distance = camera_start_distance;
 }
 
-mg_pipeline_t *get_or_create_pipeline(mgfx_vtx_layout_t vtx_layout)
-{
-    if (pipelines[vtx_layout] == NULL) {
-        // This function returns the builtin pipeline provided by libdragon.
-        // When done rendering with it, the pipeline needs to be freed using mg_pipeline_free.
-        pipelines[vtx_layout] = mgfx_create_pipeline(&(mgfx_pipeline_parms_t) {
-            .vtx_layout = vtx_layout
-        });
-    }
-
-    return pipelines[vtx_layout];
-}
-
-mg_pipeline_t *get_default_pipeline()
-{
-    return get_or_create_pipeline(MGFX_VTX_LAYOUT_NORMAL | MGFX_VTX_LAYOUT_COLOR | MGFX_VTX_LAYOUT_TEXCOORDS);
-}
-
 void create_scene_resources()
 {
     // These are resources that are expected to stay constant during the entire scene.
@@ -280,8 +273,7 @@ void create_scene_resources()
     // This is necessary so when frame N is being prepared on the CPU we won't overwrite the data for frame N-1, which might still be
     // in the process of being rendered by RSP/RDP.
 
-    mg_pipeline_t *pipeline = get_default_pipeline();
-    matrices_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_MATRICES);
+    matrices_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_MATRICES);
 
     for (size_t i = 0; i < FB_COUNT; i++)
     {
@@ -315,7 +307,7 @@ void create_scene_resources()
         // (for example by detecting that some bindings can be coalesced into a contiguous DMA). During rendering, 
         // the set can be "bound" with a single function call, which will load all attached resources into DMEM at once.
         scene_resource_set[i] = mg_resource_set_create(&(mg_resource_set_parms_t) {
-            .pipeline = pipeline,
+            .pipeline = pipelines[0],
             .binding_count = ARRAY_COUNT(scene_bindings),
             .bindings = scene_bindings
         });
@@ -368,7 +360,7 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     // once the resource set has been created, there is no way to modify the embedded data. But due to the assumption we made,
     // that won't be required anyway.
     material->resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
-        .pipeline = get_default_pipeline(),
+        .pipeline = pipelines[0],
         .binding_count = ARRAY_COUNT(bindings),
         .bindings = bindings,
     });
@@ -384,32 +376,110 @@ void material_create(material_data *material, sprite_t *texture, mgfx_modes_parm
     material->color = color;
 }
 
-mgfx_vtx_layout_t get_vtx_layout_from_primitive(model64_vertex_layout_t *primitive_layout)
+void get_vertex_layout_from_primitive_layout(const model64_vertex_layout_t *primitive_layout, vertex_layout *vertex_layout)
 {
-    mgfx_vtx_layout_t vtx_layout = 0;
+    uint32_t attribute_count = 0;
 
     for (size_t i = 0; i < primitive_layout->attribute_count; i++)
     {
-        switch (primitive_layout->attributes[i].attribute)
+        const model64_vertex_attr_t *prim_attribute = &primitive_layout->attributes[i];
+
+        switch (prim_attribute->attribute)
         {
+        case MODEL64_ATTR_POSITION:
+            assertf(prim_attribute->component_count == 3, "Postition must consist of 3 components!");
+            assertf(prim_attribute->type == MODEL64_ATTR_TYPE_FX16, "Postition must be in fixed point format!");
+
+            vertex_layout->attributes[attribute_count++] = (mg_vertex_attribute_t) {
+                .input = MGFX_ATTRIBUTE_POS_NORM,
+                .offset = prim_attribute->offset
+            };
+            break;
+
         case MODEL64_ATTR_NORMAL:
-            vtx_layout |= MGFX_VTX_LAYOUT_NORMAL;
+            assertf(prim_attribute->component_count == 3, "Normal must consist of 3 components!");
+            assertf(prim_attribute->type == MODEL64_ATTR_TYPE_PACKED_NORMAL_16, "Normal must be in packed format!");
             break;
+
         case MODEL64_ATTR_COLOR:
-            vtx_layout |= MGFX_VTX_LAYOUT_COLOR;
+            assertf(prim_attribute->component_count == 4, "Color must consist of 4 components!");
+            assertf(prim_attribute->type == MODEL64_ATTR_TYPE_U8, "Color must be in u8 format!");
+
+            vertex_layout->attributes[attribute_count++] = (mg_vertex_attribute_t) {
+                .input = MGFX_ATTRIBUTE_COLOR,
+                .offset = prim_attribute->offset
+            };
             break;
+
         case MODEL64_ATTR_TEXCOORD:
-            vtx_layout |= MGFX_VTX_LAYOUT_TEXCOORDS;
+            assertf(prim_attribute->component_count == 2, "Texcoord must consist of 2 components!");
+            assertf(prim_attribute->type == MODEL64_ATTR_TYPE_FX16, "Texcoord must be in fixed point format!");
+
+            vertex_layout->attributes[attribute_count++] = (mg_vertex_attribute_t) {
+                .input = MGFX_ATTRIBUTE_TEXCOORD,
+                .offset = prim_attribute->offset
+            };
             break;
+
         default:
             break;
         }
     }
-    
-    return vtx_layout;
+
+    vertex_layout->vertex_input_parms = (mg_vertex_input_parms_t) {
+        .attribute_count = attribute_count,
+        .attributes = vertex_layout->attributes,
+        .stride = primitive_layout->stride
+    };
 }
 
-void mesh_create(mesh_data *mesh, const char *model_file)
+bool are_input_parms_equal(const mg_vertex_input_parms_t *p0, const mg_vertex_input_parms_t *p1)
+{
+    if (p0->stride != p1->stride) return false;
+    if (p0->attribute_count != p1->attribute_count) return false;
+
+    for (size_t i = 0; i < p0->attribute_count; i++)
+    {
+        const mg_vertex_attribute_t *a0 = &p0->attributes[i];
+        const mg_vertex_attribute_t *a1 = &p1->attributes[i];
+
+        // TODO: handle differently ordered attributes
+        if (a0->input != a1->input) return false;
+        if (a0->offset != a1->offset) return false;
+    }
+    
+    return true;
+}
+
+uint32_t get_or_create_pipeline_from_primitive_layout(const model64_vertex_layout_t *primitive_layout, vertex_layout *vertex_layout_cache)
+{
+    // Convert the primitive layout to magma vertex layout
+    static vertex_layout tmp_vertex_layout;
+    get_vertex_layout_from_primitive_layout(primitive_layout, &tmp_vertex_layout);
+
+    // Try to find a pipeline with the same vertex layout
+    for (uint32_t i = 0; i < pipelines_count; i++)
+    {
+        if (are_input_parms_equal(&tmp_vertex_layout.vertex_input_parms, &vertex_layout_cache[i].vertex_input_parms)) {
+            return i;
+        }
+    }
+
+    // If none was found, create a new pipeline with the vertex layout.
+    // Internally, magma will patch the shader ucode to be compatible with the configured vertex layout,
+    // which is why a separate pipeline needs to be created for each layout.
+    pipelines[pipelines_count] = mg_pipeline_create(&(mg_pipeline_parms_t) {
+        .vertex_shader_ucode = mgfx_get_shader_ucode(),
+        .vertex_input = tmp_vertex_layout.vertex_input_parms
+    });
+
+    // Store the vertex layout in the cache
+    vertex_layout_cache[pipelines_count] = tmp_vertex_layout;
+
+    return pipelines_count++;
+}
+
+void mesh_create(mesh_data *mesh, const char *model_file, vertex_layout *vertex_layout_cache)
 {
     model64_t *model = model64_load(model_file);
 
@@ -429,12 +499,11 @@ void mesh_create(mesh_data *mesh, const char *model_file)
         submesh_data *submesh = &mesh->submeshes[i];
         primitive_t *primitive = model64_get_primitive(in_mesh, i);
 
+        // Some meshes might have different vertex layouts. To account for this, we need to create a separate pipeline for each distinct layout.
+
         model64_vertex_layout_t primitive_layout;
         model64_get_primitive_vertex_layout(primitive, &primitive_layout);
-        mgfx_vtx_layout_t vertex_layout = get_vtx_layout_from_primitive(&primitive_layout);
-        get_or_create_pipeline(vertex_layout);
-
-        submesh->vertex_layout = vertex_layout;
+        submesh->pipeline_id = get_or_create_pipeline_from_primitive_layout(&primitive_layout, vertex_layout_cache);
 
         // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
         // By setting "backing_memory", the buffer will actually use that pointer instead of allocating new memory.
@@ -610,7 +679,7 @@ void update_draw_calls()
         for (size_t j = 0; j < mesh->submesh_count; j++)
         {
             draw_calls[draw_call_count++] = (draw_call) {
-                .pipeline_id = mesh->submeshes[j].vertex_layout,
+                .pipeline_id = mesh->submeshes[j].pipeline_id,
                 .material_id = object->material_ids[j],
                 // Pack both mesh id and submesh id into a 32 bit value for faster comparison
                 .mesh_id = (object->mesh_id << 16) | (j & 0xFFFF),

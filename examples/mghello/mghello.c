@@ -13,9 +13,19 @@ int main()
     rdpq_init();
     mg_init();
 
-    // Get the builtin rendering pipeline
-    mg_pipeline_t *pipeline = mgfx_create_pipeline(&(mgfx_pipeline_parms_t) {
-        .vtx_layout = 0
+    // Get the builtin rendering pipeline.
+    // We need to configure the layout of our vertex data. Magma will then patch the pipeline according to this layout.
+    mg_vertex_attribute_t vertex_attributes[] = {
+        {
+            .input = MGFX_ATTRIBUTE_POS_NORM,
+            .offset = offsetof(vertex, pos)
+        },
+    };
+    mg_pipeline_t *pipeline = mg_pipeline_create(&(mg_pipeline_parms_t) {
+        .vertex_shader_ucode = mgfx_get_shader_ucode(),
+        .vertex_input.attribute_count = sizeof(vertex_attributes)/sizeof(vertex_attributes[0]),
+        .vertex_input.attributes = vertex_attributes,
+        .vertex_input.stride = sizeof(vertex)
     });
 
     // Shader uniforms are not initialized to 0's automatically, so we need to create
@@ -132,7 +142,7 @@ int main()
 
         // Configure the type of triangles that should be emitted to the RDP.
         // We just want vertex colors, so use SHADE.
-        mg_set_geometry_flags(MG_GEOMETRY_FLAGS_SHADE_ENABLED);
+        mg_set_geometry_flags(0);
 
         // Apply the resource set that was created above. This must be done
         // every frame to guarantee that the uniforms have the desired values.
