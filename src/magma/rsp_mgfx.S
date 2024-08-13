@@ -1,7 +1,7 @@
 #include <rsp_magma.inc>
 #include <mgfx_constants.h>
 
-MgBeginShaderUniforms MGFX_VTX_MAX_SIZE
+MgBeginShaderUniforms
     MgBeginUniform FOG, MGFX_BINDING_FOG
         FOG_FACTOR_INT:     .half   0
         FOG_OFFSET_INT:     .half   0
@@ -170,9 +170,9 @@ vertex_loop:
 
     # load vertex position (of two vertices)
 LOAD_POS_NORM0:
-    ldv vpos_in.e0, MGFX_VTX_POS,vtx_in0_ptr
+    ldv vpos_in.e0, 0,vtx_in0_ptr
 LOAD_POS_NORM1:
-    ldv vpos_in.e4, MGFX_VTX_POS,vtx_in1_ptr
+    ldv vpos_in.e4, 0,vtx_in1_ptr
 
     # Unpack normal
     vand v___, vnormmask, vpos_in.h3
@@ -471,9 +471,9 @@ light_loop_end:
     # load rgba (of two vertices)
     # shuffle values around so they can be loaded in a single luv op
 LOAD_COLOR0:
-    llv vrgba_in.e0, MGFX_VTX_RGBA, vtx_in0_ptr
+    llv vrgba_in.e0, 0, vtx_in0_ptr
 LOAD_COLOR1:
-    llv vrgba_in.e2, MGFX_VTX_RGBA, vtx_in1_ptr
+    llv vrgba_in.e2, 0, vtx_in1_ptr
     sdv vrgba_in.e0, 0,vtx_out_ptr
     luv vrgba_in.e0, 0,vtx_out_ptr
 
@@ -548,9 +548,9 @@ PATCH_COLOR0:
 
     # load texcoords (of two vertices)
 LOAD_TEXCOORD0:
-    llv vtex.e0, MGFX_VTX_TEX,vtx_in0_ptr
+    llv vtex.e0, 0,vtx_in0_ptr
 LOAD_TEXCOORD1:
-    llv vtex.e4, MGFX_VTX_TEX,vtx_in1_ptr
+    llv vtex.e4, 0,vtx_in1_ptr
 
     andi t0, flags, MGFX_FLAG_ENV_MAP
     beqz t0, 1f
