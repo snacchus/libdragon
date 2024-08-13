@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "rsp_magma.h"
 #include "../rdpq/rdpq_internal.h"
+#include "rsp_asm.h"
 #include <malloc.h>
 
 // TODO: Documentation on how magma works internally
@@ -13,17 +14,10 @@ typedef struct mg_pipeline_s
 {
     void *shader_code;
     uint32_t shader_code_size;
-    uint32_t vertex_size;
+    uint32_t vertex_stride;
     uint32_t uniform_count;
     mg_uniform_t *uniforms;
-    bool is_patched;
 } mg_pipeline_t;
-
-typedef struct mg_pipeline_patcher_s
-{
-    void *code;
-    uint32_t vertex_size;
-} mg_pipeline_patcher_t;
 
 typedef struct mg_buffer_s 
 {
@@ -48,8 +42,27 @@ typedef struct
 
 typedef struct
 {
+    uint32_t address;
+    uint32_t replacement;
+} mg_meta_attribute_patch_t;
+
+typedef struct
+{
+    uint32_t input;
+    uint32_t is_optional;
+    uint32_t loaders_offset;
+    uint32_t patches_offset;
+    uint32_t loader_count;
+    uint32_t patches_count;
+} mg_meta_attribute_t;
+
+
+typedef struct
+{
     uint32_t uniform_count;
     uint32_t uniforms_offset;
+    uint32_t attribute_count;
+    uint32_t attributes_offset;
 } mg_meta_header_t;
 
 DEFINE_RSP_UCODE(rsp_magma);
@@ -120,6 +133,76 @@ void mg_close(void)
     rspq_overlay_unregister(mg_overlay_id);
 }
 
+const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_input_parms_t *input_parms, uint32_t input)
+{
+    for (size_t i = 0; i < input_parms->attribute_count; i++)
+    {
+        if (input_parms->attributes[i].input == input) {
+            return &input_parms->attributes[i];
+        }
+    }
+
+    return NULL;
+}
+
+inline uint32_t get_shader_code_offset(uint32_t ucode_offset)
+{
+    assertf((ucode_offset&3) == 0, "Patch offset must be aligned to 4 bytes!");
+    return ucode_offset - RSP_MAGMA__MG_OVERLAY;
+}
+
+uint32_t get_vector_load_offset_shift(uint32_t opcode)
+{
+    switch (opcode) {
+    case VLOAD_BYTE:
+        return 0;
+    case VLOAD_HALF:
+        return 1;
+    case VLOAD_LONG:
+        return 2;
+    case VLOAD_DOUBLE:
+    case VLOAD_PACK:
+    case VLOAD_UPACK:
+        return 3;
+    case VLOAD_QUAD:
+    case VLOAD_REST:
+    case VLOAD_HPACK:
+    case VLOAD_FPACK:
+    case VLOAD_TRANSPOSE:
+        return 4;
+    default:
+        assertf(0, "Invalid vector loader opcode!");
+    }
+}
+
+void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_offset, const mg_vertex_attribute_t *vertex_attribute)
+{
+    uint32_t *loader_ptr = (uint32_t*)((uint8_t*)shader_code + loader_offset);
+    uint32_t loader_op = *loader_ptr;
+
+    uint32_t opcode = loader_op >> 26;
+    
+    switch (opcode) {
+    case LB:
+    case LH:
+    case LW:
+    case LBU:
+    case LHU:
+    case LWU:
+        *loader_ptr = (loader_op & 0xFFFF0000) | (vertex_attribute->offset & 0xFFFF);
+        break;
+    case LWC2:
+        uint32_t vl_opcode = (loader_op >> 11) & 0x1F;
+        uint32_t offset_shift = get_vector_load_offset_shift(vl_opcode);
+        assertf((vertex_attribute->offset & ((1<<offset_shift)-1)) == 0, "Offset of attribute %ld must be aligned to %d bytes!", vertex_attribute->input, 1<<offset_shift);
+        uint32_t offset = vertex_attribute->offset >> offset_shift;
+        *loader_ptr = (loader_op & 0xFFFFFF80) | (offset & 0x7F);
+        break;
+    default:
+        assertf(0, "Invalid loader opcode!");
+    }
+}
+
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 {
     // TODO: Check for binary compatibility.
@@ -127,30 +210,13 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
     //       which is obviously not contained in any shader code.
 
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
-
+    
     mg_get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
 
-    uint8_t *vertex_size_ptr = parms->vertex_shader_ucode->data + RSP_MAGMA_MAGMA_VERTEX_SIZE;
-    pipeline->vertex_size = *((uint16_t*)vertex_size_ptr);
-
-    if (parms->patch_func) {
-        // Copy the shader ucode to a new buffer where it will be patched
-        // This is cached memory so copying and patching are faster
-        void *code_copy = memalign(16, ROUND_UP(pipeline->shader_code_size, 16));
-        memcpy(code_copy, pipeline->shader_code, pipeline->shader_code_size);
-
-        mg_pipeline_patcher_t patcher = {
-            .code = code_copy,
-            .vertex_size = pipeline->vertex_size
-        };
-        parms->patch_func(&patcher, parms->patch_ctx);
-        // Flush patched code back to RDRAM
-        data_cache_hit_writeback(code_copy, pipeline->shader_code_size);
-
-        pipeline->shader_code = code_copy;
-        pipeline->vertex_size = patcher.vertex_size;
-        pipeline->is_patched = true;
-    }
+    // Copy the shader ucode to a new buffer where it will be patched
+    // This is cached memory so copying and patching are faster
+    void *code_copy = memalign(16, ROUND_UP(pipeline->shader_code_size, 16));
+    memcpy(code_copy, pipeline->shader_code, pipeline->shader_code_size);
 
     // Extract uniform definitions from ucode metadata
     mg_meta_header_t *meta_header = (mg_meta_header_t*)parms->vertex_shader_ucode->meta;
@@ -169,32 +235,35 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
         }
     }
 
+    mg_meta_attribute_t *attributes = (mg_meta_attribute_t*)(parms->vertex_shader_ucode->meta + meta_header->attributes_offset);
+    for (size_t i = 0; i < meta_header->attribute_count; i++)
+    {
+        const mg_vertex_attribute_t *vertex_attribute = find_vertex_attribute_by_input(&parms->vertex_input, attributes[i].input);
+        if (vertex_attribute != NULL) {
+            // If the vertex attribute is enabled, patch all loaders with the correct offset
+            uint32_t *loaders = (uint32_t*)((uint8_t*)attributes + attributes[i].loaders_offset);
+            for (size_t j = 0; j < attributes[i].loader_count; j++)
+            {
+                patch_vertex_attribute_loader(code_copy, loaders[j], vertex_attribute);
+            }
+        } else {
+            assertf(attributes[i].is_optional, "Vertex attribute %ld is not optional!", attributes[i].input);
+            // Otherwise, if the vertex attribute is disabled, apply all patches
+            mg_meta_attribute_patch_t *patches = (mg_meta_attribute_patch_t*)((uint8_t*)attributes + attributes[i].patches_offset);
+            for (size_t j = 0; j < attributes[i].patches_count; j++)
+            {
+                *(uint32_t*)((uint8_t*)code_copy + patches[j].address) = patches[j].replacement;
+            }
+        }
+    }
+    data_cache_hit_writeback(code_copy, pipeline->shader_code_size);
+
+    // TODO: Assert invalid attributes in parms
+    
+    pipeline->shader_code = code_copy;
+    pipeline->vertex_stride = parms->vertex_input.stride;
+
     return pipeline;
-}
-
-inline uint32_t get_shader_code_offset(uint32_t ucode_offset)
-{
-    assertf((ucode_offset&3) == 0, "Patch offset must be aligned to 4 bytes!");
-    return ucode_offset - RSP_MAGMA__MG_OVERLAY;
-}
-
-void mg_pipeline_patch_code(mg_pipeline_patcher_t *patcher, uint32_t offset, uint32_t size, const uint32_t *code)
-{
-    assertf((size&3) == 0, "Patch size must be a multiple of 4 bytes!");
-    // Simply copy the patch into the code. It will be flushed to RDRAM later.
-    uint32_t relative_offset = get_shader_code_offset(offset);
-    memcpy(patcher->code + relative_offset, code, size);
-}
-
-void mg_pipeline_patch_set_op(mg_pipeline_patcher_t *patcher, uint32_t offset, uint32_t op)
-{
-    uint32_t relative_offset = get_shader_code_offset(offset);
-    *(uint32_t*)((uint8_t*)patcher->code + relative_offset) = op;
-}
-
-void mg_pipeline_patch_vertex_size(mg_pipeline_patcher_t *patcher, uint32_t vertex_size)
-{
-    patcher->vertex_size = vertex_size;
 }
 
 void mg_pipeline_free(mg_pipeline_t *pipeline)
@@ -202,9 +271,7 @@ void mg_pipeline_free(mg_pipeline_t *pipeline)
     if (pipeline->uniforms) {
         free(pipeline->uniforms);
     }
-    if (pipeline->is_patched) {
-        free(pipeline->shader_code);
-    }
+    free(pipeline->shader_code);
     free(pipeline);
 }
 
@@ -218,11 +285,6 @@ const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t bi
     }
     
     assertf(0, "Uniform with binding number %ld was not found", binding);
-}
-
-uint32_t mg_pipeline_get_vertex_size(mg_pipeline_t *pipeline)
-{
-    return pipeline->vertex_size;
 }
 
 mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms)
@@ -354,10 +416,10 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline)
     uint32_t code_size = pipeline->shader_code_size;
     mg_cmd_write(MG_CMD_SET_SHADER, code, ROUND_UP(code_size, 8) - 1);
 
-    int16_t v0 = pipeline->vertex_size;
+    int16_t v0 = pipeline->vertex_stride;
     int16_t v1 = MAGMA_VTX_SIZE;
-    int16_t v2 = -pipeline->vertex_size;
-    int16_t v3 = pipeline->vertex_size;
+    int16_t v2 = -pipeline->vertex_stride;
+    int16_t v3 = pipeline->vertex_stride;
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size), (v0 << 16) | v1);
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size) + sizeof(int16_t)*2, (v2 << 16) | v3);
 }

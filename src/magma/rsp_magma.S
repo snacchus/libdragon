@@ -2,7 +2,7 @@
 
 _MgDefineUniformRegion
 
-MgBeginShader
+_MgBeginShader
     # Bootstrap shader code
     # This code is only executed when the magma ucode has just been switched to.
     # Otherwise, if magma is already loaded, the shader code replaces this one.

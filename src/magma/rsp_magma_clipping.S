@@ -2,7 +2,7 @@
 
 _MgDefineUniformRegion
 
-MgBeginShader
+_MgBeginShader
     # We also need to bootstrap the shader here, so that it gets reloaded when required after clipping is done.
     _MgBootstrapShader
 

@@ -8,11 +8,21 @@ typedef enum {
     VLOAD_HALF      = 0b00001,
     VLOAD_LONG      = 0b00010,
     VLOAD_DOUBLE    = 0b00011,
-    VLOAD_QUAD      = 0b00100
+    VLOAD_QUAD      = 0b00100,
+    VLOAD_REST      = 0b00101,
+    VLOAD_PACK      = 0b00110,
+    VLOAD_UPACK     = 0b00111,
+    VLOAD_HPACK     = 0b01000,
+    VLOAD_FPACK     = 0b01001,
+    VLOAD_TRANSPOSE = 0b01011,
 } vload_size_t;
 
-#define LBU  0b100100
+#define LB   0b100000
+#define LH   0b100001
 #define LW   0b100011
+#define LBU  0b100100
+#define LHU  0b100101
+#define LWU  0b100111
 #define LWC2 0b110010
 #define ADDI 0b001000
 #define COP2 0b010010

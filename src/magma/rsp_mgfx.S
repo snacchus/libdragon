@@ -31,6 +31,23 @@ MgBeginShaderUniforms MGFX_VTX_MAX_SIZE
     MgEndUniform
 MgEndShaderUniforms
 
+MgBeginVertexInput
+    MgBeginVertexAttribute MGFX_ATTRIBUTE_POS_NORM
+        MgVertexAttributeLoaders LOAD_POS_NORM0, LOAD_POS_NORM1
+    MgEndVertexAttribute 
+
+    MgBeginVertexAttribute MGFX_ATTRIBUTE_COLOR, 1
+        MgVertexAttributeLoaders LOAD_COLOR0, LOAD_COLOR1
+        MgBeginVertexAttributePatch PATCH_COLOR0
+            vnop
+        MgEndVertexAttributePatch
+    MgEndVertexAttribute 
+
+    MgBeginVertexAttribute MGFX_ATTRIBUTE_TEXCOORD, 1
+        MgVertexAttributeLoaders LOAD_TEXCOORD0, LOAD_TEXCOORD1
+    MgEndVertexAttribute 
+MgEndVertexInput
+
 MgBeginShader
     #define flags           v0
     #define vtx_size        k0
@@ -154,7 +171,9 @@ vertex_loop:
     #define vpos_clip_i     $v27
 
     # load vertex position (of two vertices)
+LOAD_POS_NORM0:
     ldv vpos_in.e0, MGFX_VTX_POS,vtx_in0_ptr
+LOAD_POS_NORM1:
     ldv vpos_in.e4, MGFX_VTX_POS,vtx_in1_ptr
 
     # Unpack normal
@@ -295,7 +314,7 @@ vertex_loop:
 
     #define vinvdist_i  $v21
     #define vinvdist_f  $v22
-    #define vlight      $v23
+    #define vrgba      $v23
 
     # Initialize the third lane of vinvdist to 1.0
     vxor vinvdist_f, vinvdist_f
@@ -304,8 +323,8 @@ vertex_loop:
 
     lw t6, %lo(LIGHTING_COUNT)
     li s0, %lo(LIGHTING_LIGHTS)
-    ldv vlight.e0, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
-    ldv vlight.e4, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
+    ldv vrgba.e0, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
+    ldv vrgba.e4, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
 light_loop:
     #define vlpos   $v14
 
@@ -433,7 +452,7 @@ light_loop:
     vmadh vlcol, vlcol, vatt_i.h0
 
     # Accumulate final light color
-    vadd vlight, vlcol
+    vadd vrgba, vlcol
 
     addi t6, -1
     b light_loop
@@ -449,26 +468,26 @@ light_loop_end:
     #undef vinvdist_i
     #undef vinvdist_f
 
-    #define vrgba $v14
+    #define vrgba_in $v14
 
     # load rgba (of two vertices)
     # shuffle values around so they can be loaded in a single luv op
-    llv vrgba.e0, MGFX_VTX_RGBA, vtx_in0_ptr
-    llv vrgba.e2, MGFX_VTX_RGBA, vtx_in1_ptr
-    sdv vrgba.e0, 0,vtx_out_ptr
-    luv vrgba.e0, 0,vtx_out_ptr
+LOAD_COLOR0:
+    llv vrgba_in.e0, MGFX_VTX_RGBA, vtx_in0_ptr
+LOAD_COLOR1:
+    llv vrgba_in.e2, MGFX_VTX_RGBA, vtx_in1_ptr
+    sdv vrgba_in.e0, 0,vtx_out_ptr
+    luv vrgba_in.e0, 0,vtx_out_ptr
 
     # multiply vertex color by accumulated final light color
-_MGFX_PATCH_MUL_COLOR:
-    # when vertex colors are disabled, this is patched with
-    # vcopy vrgba, vlight
-    vmulf vrgba, vlight
+PATCH_COLOR0:
+    vmulf vrgba, vrgba_in
 
-    #undef vlight
+    #undef vrgba_in
 
-    #define vtmp    $v15
-    #define vfog_i  $v16
-    #define vfog_f  $v17
+    #define vtmp    $v14
+    #define vfog_i  $v15
+    #define vfog_f  $v16
     andi t0, flags, MGFX_FLAG_FOG
     beqz t0, 1f
     li t1, %lo(FOG)
@@ -530,12 +549,9 @@ _MGFX_PATCH_MUL_COLOR:
     #define vdot        $v24
 
     # load texcoords (of two vertices)
-_MGFX_PATCH_LOAD_TEX:
-    # When texcoords are disabled, then this is substituted with
-    # nop
-    # vcopy vtex, vzero
-    # OItherwise, the offset is adapted to the layout
+LOAD_TEXCOORD0:
     llv vtex.e0, MGFX_VTX_TEX,vtx_in0_ptr
+LOAD_TEXCOORD1:
     llv vtex.e4, MGFX_VTX_TEX,vtx_in1_ptr
 
     andi t0, flags, MGFX_FLAG_ENV_MAP

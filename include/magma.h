@@ -11,8 +11,6 @@
 /** @brief An instance of the magma pipeline, with an attached vertex shader */
 typedef struct mg_pipeline_s            mg_pipeline_t;
 
-typedef struct mg_pipeline_patcher_s    mg_pipeline_patcher_t;
-
 /** @brief A linear array of data, which can be bound to a pipeline for various purposes */
 typedef struct mg_buffer_s              mg_buffer_t;
 
@@ -65,8 +63,6 @@ typedef enum
     MG_RESOURCE_TYPE_EMBEDDED_UNIFORM       = 2,
 } mg_resource_type_t;
 
-typedef void (*mg_pipeline_patch_func_t)(mg_pipeline_patcher_t*,void*);
-
 typedef struct
 {
     mg_cull_mode_t cull_mode;
@@ -92,9 +88,21 @@ typedef struct
 
 typedef struct
 {
+    uint32_t input;
+    uint32_t offset;
+} mg_vertex_attribute_t;
+
+typedef struct
+{
+    uint32_t stride;
+    uint32_t attribute_count;
+    const mg_vertex_attribute_t *attributes;
+} mg_vertex_input_parms_t;
+
+typedef struct
+{
     rsp_ucode_t *vertex_shader_ucode;
-    mg_pipeline_patch_func_t patch_func;
-    void *patch_ctx;
+    mg_vertex_input_parms_t vertex_input;
 } mg_pipeline_parms_t;
 
 typedef struct
@@ -137,15 +145,9 @@ void mg_close(void);
 
 /* Pipelines */
 
-// TODO: Rename "pipeline" to "shader"?
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
 const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding);
-uint32_t mg_pipeline_get_vertex_size(mg_pipeline_t *pipeline);
-
-void mg_pipeline_patch_code(mg_pipeline_patcher_t *patcher, uint32_t offset, uint32_t size, const uint32_t *code);
-void mg_pipeline_patch_set_op(mg_pipeline_patcher_t *patcher, uint32_t offset, uint32_t op);
-void mg_pipeline_patch_vertex_size(mg_pipeline_patcher_t *patcher, uint32_t vertex_size);
 
 /* Buffers */
 

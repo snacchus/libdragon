@@ -84,11 +84,73 @@ _MG_UNIFORM_END\@ :
     MgEndShaderUniforms
 .endm
 
+.macro MgBeginVertexInput
+    .section .meta.attributes
+_MG_META_ATTRIBUTES:
+    .equ _mg_attribute_count, 0
+.endm
+
+.macro MgEndVertexInput
+.endm
+
+.macro MgBeginVertexAttribute input is_optional=0
+    .equ _mg_attribute_count, _mg_attribute_count + 1
+
+    .equ _mg_attribute_loader_count, 0
+    .equ _mg_attribute_patches_count, 0
+
+    .subsection 0
+    .long \input
+    .long \is_optional
+    .long _MG_ATTRIBUTE_LOADERS\input - _MG_META_ATTRIBUTES
+    .long _MG_ATTRIBUTE_PATCHES\input - _MG_META_ATTRIBUTES
+
+    .subsection 1
+_MG_ATTRIBUTE_LOADERS\input:
+
+    .subsection 2
+_MG_ATTRIBUTE_PATCHES\input:
+.endm
+
+.macro MgEndVertexAttribute
+    .subsection 0
+    .long _mg_attribute_loader_count
+    .long _mg_attribute_patches_count
+.endm
+
+.macro _MgAttrLoader first rest:vararg
+    .ifnb \first
+        .equ _mg_attribute_loader_count, _mg_attribute_loader_count + 1
+        .long \first - _MG_OVERLAY
+        _MgAttrLoader \rest
+    .endif
+.endm
+
+.macro MgVertexAttributeLoaders loaders:vararg
+    .subsection 1
+    _MgAttrLoader \loaders
+.endm
+
+.macro MgBeginVertexAttributePatch address
+    .subsection 2
+    .equ _mg_attribute_patches_count, _mg_attribute_patches_count + 1
+    .long \address - _MG_OVERLAY
+.endm
+
+.macro MgEndVertexAttributePatch
+.endm
+
 .macro MgBeginShader
     .section .meta
 _MG_META_START:
     .long _mg_uniform_count
     .long _MG_META_UNIFORMS - _MG_META_START
+    .long _mg_attribute_count
+    .long _MG_META_ATTRIBUTES - _MG_META_START
+    _MgBeginShader
+.endm
+
+.macro _MgBeginShader
     .section .text.magma_vertex_shader
     .align 3
 _MG_OVERLAY:

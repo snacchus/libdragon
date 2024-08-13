@@ -6,14 +6,6 @@
 
 /* Enums */
 
-typedef enum 
-{
-    // Position is always enabled
-    MGFX_VTX_LAYOUT_NORMAL    = (1<<0),
-    MGFX_VTX_LAYOUT_COLOR     = (1<<1),
-    MGFX_VTX_LAYOUT_TEXCOORDS = (1<<2)
-} mgfx_vtx_layout_t;
-
 typedef enum
 {
     MGFX_MODES_FLAGS_FOG_ENABLED        = MGFX_FLAG_FOG,
@@ -73,11 +65,6 @@ typedef struct
 
 typedef struct
 {
-    mgfx_vtx_layout_t vtx_layout;
-} mgfx_pipeline_parms_t;
-
-typedef struct
-{
     float start;
     float end;
 } mgfx_fog_parms_t;
@@ -131,7 +118,7 @@ extern "C" {
 
 /* Functions */
 
-mg_pipeline_t *mgfx_create_pipeline(const mgfx_pipeline_parms_t *parms);
+rsp_ucode_t *mgfx_get_shader_ucode();
 
 /* Convert parameter structs to RSP side uniform structs */
 

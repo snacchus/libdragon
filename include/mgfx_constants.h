@@ -1,6 +1,10 @@
 #ifndef __MGFX_CONSTANTS
 #define __MGFX_CONSTANTS
 
+#define MGFX_ATTRIBUTE_POS_NORM         0
+#define MGFX_ATTRIBUTE_COLOR            1
+#define MGFX_ATTRIBUTE_TEXCOORD         2
+
 #define MGFX_BINDING_FOG                0
 #define MGFX_BINDING_LIGHTING           1
 #define MGFX_BINDING_TEXTURING          2
