@@ -133,6 +133,18 @@ void mg_close(void)
     rspq_overlay_unregister(mg_overlay_id);
 }
 
+const mg_meta_attribute_t *find_meta_attribute_by_input(const mg_meta_attribute_t *attributes, uint32_t attribute_count, uint32_t input)
+{
+    for (size_t i = 0; i < attribute_count; i++)
+    {
+        if (attributes[i].input == input) {
+            return &attributes[i];
+        }
+    }
+    
+    return NULL;
+}
+
 const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_input_parms_t *input_parms, uint32_t input)
 {
     for (size_t i = 0; i < input_parms->attribute_count; i++)
@@ -194,7 +206,7 @@ void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_offset, co
     case LWC2:
         uint32_t vl_opcode = (loader_op >> 11) & 0x1F;
         uint32_t offset_shift = get_vector_load_offset_shift(vl_opcode);
-        assertf((vertex_attribute->offset & ((1<<offset_shift)-1)) == 0, "Offset of attribute %ld must be aligned to %d bytes!", vertex_attribute->input, 1<<offset_shift);
+        assertf((vertex_attribute->offset & ((1<<offset_shift)-1)) == 0, "Offset of attribute with input number %ld must be aligned to %d bytes!", vertex_attribute->input, 1<<offset_shift);
         uint32_t offset = vertex_attribute->offset >> offset_shift;
         *loader_ptr = (loader_op & 0xFFFFFF80) | (offset & 0x7F);
         break;
@@ -203,24 +215,41 @@ void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_offset, co
     }
 }
 
-mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
+void patch_shader_with_vertex_layout(void *shader_code, const mg_meta_header_t *meta_header, const mg_vertex_input_parms_t *parms)
 {
-    // TODO: Check for binary compatibility.
-    //       This might be tricky because of the shader bootstrapping code in rsp_magma.S,
-    //       which is obviously not contained in any shader code.
+    // Check that all attributes in the configuration are valid
+    const mg_meta_attribute_t *attributes = (const mg_meta_attribute_t*)((uint8_t*)meta_header + meta_header->attributes_offset);
+    for (size_t i = 0; i < parms->attribute_count; i++)
+    {
+        const mg_meta_attribute_t *meta_attribute = find_meta_attribute_by_input(attributes, meta_header->attribute_count, parms->attributes[i].input);
+        assertf(meta_attribute != NULL, "Vertex attribute with input number %ld could not be found!", parms->attributes[i].input);
+    }
 
-    mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
-    
-    mg_get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
+    for (size_t i = 0; i < meta_header->attribute_count; i++)
+    {
+        const mg_vertex_attribute_t *vertex_attribute = find_vertex_attribute_by_input(parms, attributes[i].input);
+        if (vertex_attribute != NULL) {
+            // If the vertex attribute is enabled, patch all loaders with the correct offset
+            uint32_t *loaders = (uint32_t*)((uint8_t*)attributes + attributes[i].loaders_offset);
+            for (size_t j = 0; j < attributes[i].loader_count; j++)
+            {
+                patch_vertex_attribute_loader(shader_code, loaders[j], vertex_attribute);
+            }
+        } else {
+            assertf(attributes[i].is_optional, "The vertex attribute with input number %ld is not optional!", attributes[i].input);
+            // Otherwise, if the vertex attribute is disabled, apply all patches
+            mg_meta_attribute_patch_t *patches = (mg_meta_attribute_patch_t*)((uint8_t*)attributes + attributes[i].patches_offset);
+            for (size_t j = 0; j < attributes[i].patches_count; j++)
+            {
+                *(uint32_t*)((uint8_t*)shader_code + patches[j].address) = patches[j].replacement;
+            }
+        }
+    }
+}
 
-    // Copy the shader ucode to a new buffer where it will be patched
-    // This is cached memory so copying and patching are faster
-    void *code_copy = memalign(16, ROUND_UP(pipeline->shader_code_size, 16));
-    memcpy(code_copy, pipeline->shader_code, pipeline->shader_code_size);
-
-    // Extract uniform definitions from ucode metadata
-    mg_meta_header_t *meta_header = (mg_meta_header_t*)parms->vertex_shader_ucode->meta;
-    mg_meta_uniform_t *uniforms = (mg_meta_uniform_t*)(parms->vertex_shader_ucode->meta + meta_header->uniforms_offset);
+void extract_pipeline_uniforms(mg_pipeline_t *pipeline, mg_meta_header_t *meta_header)
+{
+    const mg_meta_uniform_t *uniforms = (const mg_meta_uniform_t*)((uint8_t*)meta_header + meta_header->uniforms_offset);
 
     pipeline->uniform_count = meta_header->uniform_count;
 
@@ -234,34 +263,34 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
             pipeline->uniforms[i].size = uniforms[i].end - uniforms[i].start;
         }
     }
+}
 
-    mg_meta_attribute_t *attributes = (mg_meta_attribute_t*)(parms->vertex_shader_ucode->meta + meta_header->attributes_offset);
-    for (size_t i = 0; i < meta_header->attribute_count; i++)
-    {
-        const mg_vertex_attribute_t *vertex_attribute = find_vertex_attribute_by_input(&parms->vertex_input, attributes[i].input);
-        if (vertex_attribute != NULL) {
-            // If the vertex attribute is enabled, patch all loaders with the correct offset
-            uint32_t *loaders = (uint32_t*)((uint8_t*)attributes + attributes[i].loaders_offset);
-            for (size_t j = 0; j < attributes[i].loader_count; j++)
-            {
-                patch_vertex_attribute_loader(code_copy, loaders[j], vertex_attribute);
-            }
-        } else {
-            assertf(attributes[i].is_optional, "Vertex attribute %ld is not optional!", attributes[i].input);
-            // Otherwise, if the vertex attribute is disabled, apply all patches
-            mg_meta_attribute_patch_t *patches = (mg_meta_attribute_patch_t*)((uint8_t*)attributes + attributes[i].patches_offset);
-            for (size_t j = 0; j < attributes[i].patches_count; j++)
-            {
-                *(uint32_t*)((uint8_t*)code_copy + patches[j].address) = patches[j].replacement;
-            }
-        }
-    }
-    data_cache_hit_writeback(code_copy, pipeline->shader_code_size);
+mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
+{
+    // TODO: Check for binary compatibility.
+    //       This might be tricky because of the shader bootstrapping code in rsp_magma.S,
+    //       which is obviously not contained in any shader code.
 
-    // TODO: Assert invalid attributes in parms
-    
-    pipeline->shader_code = code_copy;
+    mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
+
     pipeline->vertex_stride = parms->vertex_input.stride;
+    
+    mg_get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
+
+    // Copy the shader ucode to a new buffer where it will be patched
+    // This is cached memory so copying and patching are faster
+    void *code_copy = memalign(16, ROUND_UP(pipeline->shader_code_size, 16));
+    memcpy(code_copy, pipeline->shader_code, pipeline->shader_code_size);
+
+    mg_meta_header_t *meta_header = (mg_meta_header_t*)parms->vertex_shader_ucode->meta;
+
+    // Patch shader ucode according to configured vertex layout
+    patch_shader_with_vertex_layout(code_copy, meta_header, &parms->vertex_input);
+    data_cache_hit_writeback(code_copy, pipeline->shader_code_size);
+    pipeline->shader_code = code_copy;
+
+    // Extract uniform definitions from ucode metadata
+    extract_pipeline_uniforms(pipeline, meta_header);
 
     return pipeline;
 }
