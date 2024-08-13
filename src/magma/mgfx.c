@@ -43,7 +43,7 @@ void mgfx_get_fog(mgfx_fog_t *dst, const mgfx_fog_parms_t *parms)
     dst->offset_frac = 0;
 }
 
-inline void color_to_i16(int16_t *dst, color_t color)
+static inline void color_to_i16(int16_t *dst, color_t color)
 {
     dst[0] = U8_TO_I16(color.r);
     dst[1] = U8_TO_I16(color.g);
@@ -51,7 +51,7 @@ inline void color_to_i16(int16_t *dst, color_t color)
     dst[3] = U8_TO_I16(color.a);
 }
 
-void mgfx_get_light(mgfx_light_t *dst, const mgfx_light_parms_t *parms)
+static void mgfx_get_light(mgfx_light_t *dst, const mgfx_light_parms_t *parms)
 {
     color_to_i16(dst->color, parms->color);
 
@@ -119,7 +119,7 @@ void mgfx_get_modes(mgfx_modes_t *dst, const mgfx_modes_parms_t *parms)
     dst->flags = parms->flags;
 }
 
-void mgfx_convert_matrix(mgfx_matrix_t *dst, const float *src)
+static void mgfx_convert_matrix(mgfx_matrix_t *dst, const float *src)
 {
     for (uint32_t i = 0; i < 16; i++)
     {

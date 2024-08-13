@@ -107,7 +107,7 @@ void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
     mg_cmd_write(MG_CMD_DRAW_INDICES, i0, (i1 << 16) | i2);
 }
 
-void mg_get_overlay_span(rsp_ucode_t *ucode, void **code, uint32_t *code_size)
+static void get_overlay_span(rsp_ucode_t *ucode, void **code, uint32_t *code_size)
 {
     uint32_t overlay_offset = RSP_MAGMA__MG_OVERLAY - RSP_MAGMA__start;
     uint32_t ucode_size = (uint8_t*)ucode->code_end - ucode->code;
@@ -123,7 +123,7 @@ void mg_init(void)
     // Pass the location and size of the clipping code overlay to the RSP state
     void* clipping_code;
     uint32_t clipping_code_size;
-    mg_get_overlay_span(&rsp_magma_clipping, &clipping_code, &clipping_code_size);
+    get_overlay_span(&rsp_magma_clipping, &clipping_code, &clipping_code_size);
     mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code), PhysicalAddr(clipping_code));
     mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code_size), clipping_code_size);
 }
@@ -133,7 +133,7 @@ void mg_close(void)
     rspq_overlay_unregister(mg_overlay_id);
 }
 
-void check_shader_binary_compatibility(rsp_ucode_t *shader_ucode)
+static void check_shader_binary_compatibility(rsp_ucode_t *shader_ucode)
 {
     // FIXME: This currently doesn't work because .bss addresses can vary in shaders.
     //        The core problem is that in shaders, uniforms rarely take up exactly the maximum allowed amount of memory,
@@ -144,7 +144,7 @@ void check_shader_binary_compatibility(rsp_ucode_t *shader_ucode)
 #endif
 }
 
-const mg_meta_attribute_t *find_meta_attribute_by_input(const mg_meta_attribute_t *attributes, uint32_t attribute_count, uint32_t input)
+static const mg_meta_attribute_t *find_meta_attribute_by_input(const mg_meta_attribute_t *attributes, uint32_t attribute_count, uint32_t input)
 {
     for (size_t i = 0; i < attribute_count; i++)
     {
@@ -156,7 +156,7 @@ const mg_meta_attribute_t *find_meta_attribute_by_input(const mg_meta_attribute_
     return NULL;
 }
 
-const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_input_parms_t *input_parms, uint32_t input)
+static const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_input_parms_t *input_parms, uint32_t input)
 {
     for (size_t i = 0; i < input_parms->attribute_count; i++)
     {
@@ -168,13 +168,7 @@ const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_inpu
     return NULL;
 }
 
-inline uint32_t get_shader_code_offset(uint32_t ucode_offset)
-{
-    assertf((ucode_offset&3) == 0, "Patch offset must be aligned to 4 bytes!");
-    return ucode_offset - RSP_MAGMA__MG_OVERLAY;
-}
-
-uint32_t get_vector_load_offset_shift(uint32_t opcode)
+static uint32_t get_vector_load_offset_shift(uint32_t opcode)
 {
     switch (opcode) {
     case VLOAD_BYTE:
@@ -198,7 +192,7 @@ uint32_t get_vector_load_offset_shift(uint32_t opcode)
     }
 }
 
-void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_offset, const mg_vertex_attribute_t *vertex_attribute)
+static void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_offset, const mg_vertex_attribute_t *vertex_attribute)
 {
     uint32_t *loader_ptr = (uint32_t*)((uint8_t*)shader_code + loader_offset);
     uint32_t loader_op = *loader_ptr;
@@ -226,7 +220,7 @@ void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_offset, co
     }
 }
 
-void patch_shader_with_vertex_layout(void *shader_code, const mg_meta_header_t *meta_header, const mg_vertex_input_parms_t *parms)
+static void patch_shader_with_vertex_layout(void *shader_code, const mg_meta_header_t *meta_header, const mg_vertex_input_parms_t *parms)
 {
     // Check that all attributes in the configuration are valid
     const mg_meta_attribute_t *attributes = (const mg_meta_attribute_t*)((uint8_t*)meta_header + meta_header->attributes_offset);
@@ -258,7 +252,7 @@ void patch_shader_with_vertex_layout(void *shader_code, const mg_meta_header_t *
     }
 }
 
-void extract_pipeline_uniforms(mg_pipeline_t *pipeline, mg_meta_header_t *meta_header)
+static void extract_pipeline_uniforms(mg_pipeline_t *pipeline, mg_meta_header_t *meta_header)
 {
     const mg_meta_uniform_t *uniforms = (const mg_meta_uniform_t*)((uint8_t*)meta_header + meta_header->uniforms_offset);
 
@@ -284,7 +278,7 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 
     pipeline->vertex_stride = parms->vertex_input.stride;
     
-    mg_get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
+    get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
 
     // Copy the shader ucode to a new buffer where it will be patched
     // This is cached memory so copying and patching are faster
@@ -462,7 +456,7 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline)
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size) + sizeof(int16_t)*2, (v2 << 16) | v3);
 }
 
-mg_rsp_viewport_t mg_viewport_to_rsp_state(const mg_viewport_t *viewport)
+static mg_rsp_viewport_t viewport_to_rsp_state(const mg_viewport_t *viewport)
 {
     float half_width = viewport->width / 2;
     float half_height = viewport->height / 2;
@@ -487,7 +481,7 @@ mg_rsp_viewport_t mg_viewport_to_rsp_state(const mg_viewport_t *viewport)
 
 void mg_set_viewport(const mg_viewport_t *viewport)
 {
-    mg_rsp_viewport_t rsp_viewport = mg_viewport_to_rsp_state(viewport);
+    mg_rsp_viewport_t rsp_viewport = viewport_to_rsp_state(viewport);
     uint32_t value0 = (rsp_viewport.scale[0] << 16) | rsp_viewport.scale[1];
     uint32_t value1 = (rsp_viewport.scale[2] << 16) | rsp_viewport.scale[3];
     uint32_t value2 = (rsp_viewport.offset[0] << 16) | rsp_viewport.offset[1];
