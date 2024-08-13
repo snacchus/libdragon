@@ -74,7 +74,7 @@ LIBDRAGON_OBJS += \
 
 include $(SOURCE_DIR)/audio/libdragon.mk
 
-# TODO: de-duplicate these and make them generically available in n64.mk somehow
+# TODO: Make this generically available in n64.mk somehow
 $(SOURCE_DIR)/magma/rsp_magma.h: $(BUILD_DIR)/magma/rsp_magma.o
 	$(N64_NM) -n $(BUILD_DIR)/magma/rsp_magma.elf \
 		| awk 'BEGIN {print("#ifndef __RSP_MAGMA_SYMBOLS\n#define __RSP_MAGMA_SYMBOLS") } $$2 ~ /[dDbtT]/ {printf("#define RSP_MAGMA_%s 0x%s\n", $$3, substr($$1,13,4))} END {print("#endif")}' \
