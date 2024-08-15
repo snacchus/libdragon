@@ -77,6 +77,8 @@ typedef struct
     float height;
     float minDepth;
     float maxDepth;
+    float z_near;
+    float z_far;
 } mg_viewport_t;
 
 typedef struct

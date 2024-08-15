@@ -462,12 +462,14 @@ static mg_rsp_viewport_t viewport_to_rsp_state(const mg_viewport_t *viewport)
     float half_height = viewport->height / 2;
     float depth_diff = viewport->maxDepth - viewport->minDepth;
     float half_depth = depth_diff / 2;
+    float z_planes_sum = viewport->z_near + viewport->z_far;
+    float w_norm_factor = z_planes_sum > 0.0f ? 2.0f / z_planes_sum : 1.0f;
     return (mg_rsp_viewport_t) {
         .scale = {
             half_width * 8,
             half_height * 8,
             half_depth * 0x7FFF * 2,
-            2
+            (uint16_t)(w_norm_factor * 0xFFFF)
         },
         .offset = {
             (viewport->x + half_width) * 4,

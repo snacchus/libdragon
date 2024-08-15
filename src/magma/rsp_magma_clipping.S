@@ -48,7 +48,9 @@ Mg_Clipping:
     #define vcache1         $v17
     #define vclip_factors   $v18
     #define vviewscale      $v19
-    #define vviewoff        $v20
+    #define vviewscale_i    $v20
+    #define vviewscale_f    $v21
+    #define vviewoff        $v22
     #define v___            $v29
 
     srl clip_flags, t3, 8
@@ -80,6 +82,9 @@ Mg_Clipping:
     li t0, %lo(MAGMA_VIEWPORT)
     ldv vviewscale, 0,t0
     ldv vviewoff,   8,t0
+
+    vmudm vviewscale_i, vviewscale, vviewscale.h3
+    vmadn vviewscale_f, vzero, vzero
 
     li t0, %lo(MAGMA_CLIP_FACTORS)
     ldv vclip_factors.e0, 0x0,t0
@@ -313,10 +318,12 @@ mg_clip_plane_loop_end:
 
     #define cache_vtx   s3
     #define cache_end   s5
-    #define vinvw_i     $v21
-    #define vinvw_f     $v22
-    #define vpos_scr_i  $v23
-    #define vpos_scr_f  $v24
+    #define vinvw_i     $v23
+    #define vinvw_f     $v24
+    #define vpos_scr_i  $v25
+    #define vpos_scr_f  $v26
+    #define vnormw_i    $v27
+    #define vnormw_f    $v28
 
     # Calculate screen space values for new vertices (in the clip cache)
     # TODO: maybe iterate over out_list instead
@@ -330,8 +337,12 @@ mg_clip_finalize_loop:
     ldv vint_i,  MAGMA_VTX_CS_POSi,cache_vtx
     ldv vint_f,  MAGMA_VTX_CS_POSf,cache_vtx
 
-    vrcph v___.e3,    vint_i.e3
-    vrcpl vinvw_f.e3, vint_f.e3
+    vmudl v___,     vint_f, vviewscale.h3
+    vmadm vnormw_i, vint_i, vviewscale.h3
+    vmadn vnormw_f, vzero, vzero
+
+    vrcph v___.e3,    vnormw_i.e3
+    vrcpl vinvw_f.e3, vnormw_f.e3
     vrcph vinvw_i.e3, vzero.e0
 
     vmudl v___,       vint_f, vinvw_f.h3
@@ -340,14 +351,16 @@ mg_clip_finalize_loop:
     vmadh vpos_scr_i, vint_i, vinvw_i.h3
 
     vmudh v___, vviewoff, K1
-    vmadn vpos_scr_f, vviewscale
-    vmadh vpos_scr_i, vviewscale
+    vmadl v___, vpos_scr_f, vviewscale_f
+    vmadm v___, vpos_scr_i, vviewscale_f
+    vmadn vpos_scr_f, vpos_scr_f, vviewscale_i
+    vmadh vpos_scr_i, vpos_scr_i, vviewscale_i
 
-    sdv vpos_scr_i, MAGMA_VTX_XYZ,  cache_vtx
-    ssv vint_i.e3,  MAGMA_VTX_Wi,   cache_vtx
-    ssv vint_f.e3,  MAGMA_VTX_Wf,   cache_vtx
-    ssv vinvw_i.e3, MAGMA_VTX_INVWi,cache_vtx
-    ssv vinvw_f.e3, MAGMA_VTX_INVWf,cache_vtx
+    sdv vpos_scr_i,  MAGMA_VTX_XYZ,  cache_vtx
+    ssv vnormw_i.e3, MAGMA_VTX_Wi,   cache_vtx
+    ssv vnormw_f.e3, MAGMA_VTX_Wf,   cache_vtx
+    ssv vinvw_i.e3,  MAGMA_VTX_INVWi,cache_vtx
+    ssv vinvw_f.e3,  MAGMA_VTX_INVWf,cache_vtx
     sh zero, MAGMA_VTX_CLIP_CODE(cache_vtx)
 
 mg_clip_finalize_loop_end:

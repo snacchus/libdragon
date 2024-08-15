@@ -186,6 +186,8 @@ void init()
         .height = resolution.height,
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
+        .z_near = camera_near_plane,
+        .z_far = camera_far_plane
     };
     
     // Initialize culling mode

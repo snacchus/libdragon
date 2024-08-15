@@ -57,27 +57,14 @@ MgBeginShader
     #define vtx_in_end      s2
     #define vtx_out_ptr     s3
     #define v___            $v29
-    #define vconst          $v28
 
-    #define vmvp0_i         $v01
-    #define vmvp0_f         $v02
-    #define vmvp1_i         $v03
-    #define vmvp1_f         $v04
-    #define vmvp2_i         $v05
-    #define vmvp2_f         $v06
-    #define vmvp3_i         $v07
-    #define vmvp3_f         $v08
-    #define vclip_factors   $v09
-    #define vtexscale       $v10
-    #define vtexoffset      $v11
-    #define vnormmask       $v12
-    #define vnormfactor     $v13
-
-    li t7, %lo(MAGMA_CLIP_FACTORS)
+    li t7, %lo(MAGMA_STATE)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
 
+    #define vvtx_size       $v03
+
     # vertex_size, MAGMA_VTX_SIZE, -vertex_size, vertex_size
-    ldv vconst, 8,t7
+    ldv vvtx_size, 0x18,t7
 
     # buffer_offset, cache_offset, vertex_count, vertex_count
     ldv $v01.e0, 0,t1
@@ -89,7 +76,7 @@ MgBeginShader
     li t5, %lo(MAGMA_NORMAL_MASK)
 
     # buffer_offset * vertex_size, cache_offset * MAGMA_VTX_SIZE, vertex_count * -vertex_size, vertex_count * vertex_size
-    vmudh $v02, $v01, vconst
+    vmudh $v02, $v01, vvtx_size
 
     sll vtx_size2, vtx_size, 1
     lw s0, %lo(MAGMA_VERTEX_BUFFER)
@@ -97,6 +84,8 @@ MgBeginShader
     li t6, %lo(TEXTURING)
 
     sdv $v02, 0,t4
+
+    #undef vvtx_size
 
     lhu t0,          0(t4)
     lhu vtx_out_ptr, 2(t4)
@@ -123,6 +112,21 @@ MgBeginShader
     
     move vtx_in0_ptr, s4
     add vtx_in_end, vtx_in0_ptr, t1
+
+    #define vmvp0_i         $v01
+    #define vmvp0_f         $v02
+    #define vmvp1_i         $v03
+    #define vmvp1_f         $v04
+    #define vmvp2_i         $v05
+    #define vmvp2_f         $v06
+    #define vmvp3_i         $v07
+    #define vmvp3_f         $v08
+    #define vclip_factors   $v09
+    #define vtexscale       $v10
+    #define vtexoffset      $v11
+    #define vnormmask       $v12
+    #define vnormfactor     $v13
+    #define vviewscale      $v28
 
     # load mvp matrix
     ldv vmvp0_i.e0,  0x00,t3
@@ -153,20 +157,25 @@ MgBeginShader
     llv vtexoffset.e0, 0x4,t6
     llv vtexoffset.e4, 0x4,t6
 
+    # load viewport scale, which includes the W-normalization factor in the W-component
+    ldv vviewscale.e0, 0x0,t7
+    ldv vviewscale.e4, 0x0,t7
+
     # load clip factors
-    ldv vclip_factors.e0, 0x0,t7
+    ldv vclip_factors.e0, 0x10,t7
     jal DMAWaitIdle
-    ldv vclip_factors.e4, 0x0,t7
+    ldv vclip_factors.e4, 0x10,t7
 
 vertex_loop:
     bge vtx_in0_ptr, vtx_in_end, RSPQ_Loop
     add vtx_in1_ptr, vtx_in0_ptr, vtx_size
 
-    #define vpos_in         $v23
     #define vpos_eye        $v24
     #define vnorm           $v25
     #define vpos_clip_f     $v26
     #define vpos_clip_i     $v27
+
+    #define vpos_in         $v14
 
     # load vertex position (of two vertices)
 LOAD_POS_NORM0:
@@ -182,14 +191,14 @@ LOAD_POS_NORM1:
     vmov vpos_in.e3, K32
     vmov vpos_in.e7, K32
 
-    #define vmmv0_i $v14
-    #define vmmv0_f $v15
-    #define vmmv1_i $v16
-    #define vmmv1_f $v17
-    #define vmmv2_i $v18
-    #define vmmv2_f $v19
-    #define vmmv3_i $v20
-    #define vmmv3_f $v21
+    #define vmmv0_i $v15
+    #define vmmv0_f $v16
+    #define vmmv1_i $v17
+    #define vmmv1_f $v18
+    #define vmmv2_i $v19
+    #define vmmv2_f $v20
+    #define vmmv3_i $v21
+    #define vmmv3_f $v22
 
     # transform vertex position to eye space
     li t1, %lo(MATRICES_MV)
@@ -312,7 +321,7 @@ LOAD_POS_NORM1:
 
     #define vinvdist_i  $v21
     #define vinvdist_f  $v22
-    #define vrgba      $v23
+    #define vrgba       $v23
 
     # Initialize the third lane of vinvdist to 1.0
     vxor vinvdist_f, vinvdist_f
@@ -651,26 +660,40 @@ LOAD_TEXCOORD1:
     sdv vpos_clip_i.e4,  MAGMA_VTX_CS_POSi + MAGMA_VTX_SIZE,vtx_out_ptr
     sdv vpos_clip_f.e4,  MAGMA_VTX_CS_POSf + MAGMA_VTX_SIZE,vtx_out_ptr
 
-    # store W to vertex cache
-    ssv vpos_clip_i.e3, MAGMA_VTX_Wi + 0,             vtx_out_ptr
-    ssv vpos_clip_f.e3, MAGMA_VTX_Wf + 0,             vtx_out_ptr
-    ssv vpos_clip_i.e7, MAGMA_VTX_Wi + MAGMA_VTX_SIZE,vtx_out_ptr
-    ssv vpos_clip_f.e7, MAGMA_VTX_Wf + MAGMA_VTX_SIZE,vtx_out_ptr
+    #define vnormw_i        $v14
+    #define vnormw_f        $v15
+    #define vinvw_i         $v16
+    #define vinvw_f         $v17
+    #define vpos_scr_i      $v18
+    #define vpos_scr_f      $v19
+    #define vviewoff        $v20
+    #define vviewscale_i    $v21
+    #define vviewscale_f    $v22
 
-    #define vinvw_i     $v14
-    #define vinvw_f     $v15
-    #define vpos_scr_i  $v16
-    #define vpos_scr_f  $v17
-    #define vviewscale  $v18
-    #define vviewoff    $v19
+    # Normalize W component with the W-normalization factor
+    vmudl v___,     vpos_clip_f, vviewscale.h3
+    vmadm vnormw_i, vpos_clip_i, vviewscale.h3
+    vmadn vnormw_f, vzero, vzero
 
-    # perspective division
-    # TODO: Perspective normalization
-    vrcph v___.e3,    vpos_clip_i.e3
-    vrcpl vinvw_f.e3, vpos_clip_f.e3
-    vrcph vinvw_i.e3, vpos_clip_i.e7
-    vrcpl vinvw_f.e7, vpos_clip_f.e7
+    # store (normalized) W to vertex cache
+    ssv vnormw_i.e3, MAGMA_VTX_Wi + 0,             vtx_out_ptr
+    ssv vnormw_f.e3, MAGMA_VTX_Wf + 0,             vtx_out_ptr
+    ssv vnormw_i.e7, MAGMA_VTX_Wi + MAGMA_VTX_SIZE,vtx_out_ptr
+    ssv vnormw_f.e7, MAGMA_VTX_Wf + MAGMA_VTX_SIZE,vtx_out_ptr
+
+    # perspective division, with improved precision thanks to W-normalization
+    vrcph v___.e3,    vnormw_i.e3
+    vrcpl vinvw_f.e3, vnormw_f.e3
+    vrcph vinvw_i.e3, vnormw_i.e7
+    vrcpl vinvw_f.e7, vnormw_f.e7
     vrcph vinvw_i.e7, vzero.e0
+
+    # Pre-multiply the viewport scale with W-normalization factor, to compensate for the W-normalization above.
+    # This is just as fast as doing the multiplication on CPU and storing the scale as 32-bit values,
+    # And saves some DMEM.
+    # Preferably, this would be done outside the vertex loop, but we are short on VU-registers.
+    vmudm vviewscale_i, vviewscale, vviewscale.h3
+    vmadn vviewscale_f, vzero, vzero
 
     # store inverse W to vertex cache
     ssv vinvw_i.e3, MAGMA_VTX_INVWi + 0,             vtx_out_ptr
@@ -683,28 +706,30 @@ LOAD_TEXCOORD1:
     vmadn vpos_scr_f, vpos_clip_f, vinvw_i.h3
     vmadh vpos_scr_i, vpos_clip_i, vinvw_i.h3
 
-    # load viewport
-    li t1, %lo(MAGMA_VIEWPORT)
-    ldv vviewscale.e0, 0x0,t1
-    ldv vviewscale.e4, 0x0,t1
-    ldv vviewoff.e0,   0x8,t1
-    ldv vviewoff.e4,   0x8,t1
+    # load viewport offset
+    ldv vviewoff.e0,   0x8,t7
+    ldv vviewoff.e4,   0x8,t7
 
     # transform to screen space
     vmudh v___, vviewoff, K1
-    vmadn vpos_scr_f, vviewscale
-    vmadh vpos_scr_i, vviewscale
+    vmadl v___, vpos_scr_f, vviewscale_f
+    vmadm v___, vpos_scr_i, vviewscale_f
+    vmadn vpos_scr_f, vpos_scr_f, vviewscale_i
+    vmadh vpos_scr_i, vpos_scr_i, vviewscale_i
 
     # store screen space position to vertex cache
     sdv vpos_scr_i.e0,  MAGMA_VTX_XYZ + 0,             vtx_out_ptr
     sdv vpos_scr_i.e4,  MAGMA_VTX_XYZ + MAGMA_VTX_SIZE,vtx_out_ptr
 
+    #undef vnormw_i
+    #undef vnormw_f
     #undef vinvw_i
     #undef vinvw_f
     #undef vpos_scr_i
     #undef vpos_scr_f
-    #undef vviewscale
     #undef vviewoff
+    #undef vviewscale_i
+    #undef vviewscale_f
 
     #define vguard_i        $v14
     #define vguard_f        $v15
@@ -754,5 +779,4 @@ LOAD_TEXCOORD1:
     add vtx_in0_ptr, vtx_size2
 
     #undef v___
-    #undef vconst
 MgEndShader
