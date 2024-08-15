@@ -369,7 +369,7 @@ MgCmd_DrawIndices:
     #undef vtx3
     .endfunc
 
-RSPQ_Triangle_Cull:
+RDPQ_Triangle_Cull:
     jr sp
     nop
 
@@ -389,5 +389,5 @@ MgCmd_DrawEnd:
 #define RDPQ_TRIANGLE_VTX1_DMEM 0,s1
 #define RDPQ_TRIANGLE_VTX2_DMEM 2,s2
 #define RDPQ_TRIANGLE_VTX3_DMEM 4,s2
-#define RSPQ_Triangle_Clip      _MG_CLIPPING
+#define RDPQ_Triangle_Clip      _MG_CLIPPING
 #include "rsp_rdpq.inc"
