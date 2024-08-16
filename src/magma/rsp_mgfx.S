@@ -61,14 +61,18 @@ MgBeginShader
     li t7, %lo(MAGMA_STATE)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
 
-    #define vvtx_size       $v03
+    #define vvtx_size       $v01
+    #define vinputs         $v02
+    #define vproducts       $v03
+    #define vbuf_offset_hi  $v04
+    #define vbuf_offset_lo  $v05
 
     # vertex_size, MAGMA_VTX_SIZE, -vertex_size, vertex_size
     ldv vvtx_size, 0x18,t7
 
     # buffer_offset, cache_offset, vertex_count, vertex_count
-    ldv $v01.e0, 0,t1
-    lsv $v01.e3, 4,t1
+    ldv vinputs.e0, 0,t1
+    lsv vinputs.e3, 4,t1
 
     lhu vtx_size, %lo(MAGMA_VERTEX_SIZE)
     lw flags, %lo(MODES_FLAGS)
@@ -76,18 +80,22 @@ MgBeginShader
     li t5, %lo(MAGMA_NORMAL_MASK)
 
     # buffer_offset * vertex_size, cache_offset * MAGMA_VTX_SIZE, vertex_count * -vertex_size, vertex_count * vertex_size
-    vmudh $v02, $v01, vvtx_size
+    vmudh vproducts, vinputs, vvtx_size;        sll vtx_size2, vtx_size, 1
+    vsar vbuf_offset_hi, COP2_ACC_HI;           lw s0, %lo(MAGMA_VERTEX_BUFFER)
+    vsar vbuf_offset_lo, COP2_ACC_MD;           li t4, %lo(RSPQ_SCRATCH_MEM)
+                                                li t6, %lo(TEXTURING)
 
-    sll vtx_size2, vtx_size, 1
-    lw s0, %lo(MAGMA_VERTEX_BUFFER)
-    li t4, %lo(RSPQ_SCRATCH_MEM)
-    li t6, %lo(TEXTURING)
-
-    sdv $v02, 0,t4
+    sdv vproducts, 0,t4
+    ssv vbuf_offset_hi.e0, 8,t4
+    ssv vbuf_offset_lo.e0, 10,t4
 
     #undef vvtx_size
+    #undef vinputs
+    #undef vproducts
+    #undef vbuf_offset_hi
+    #undef vbuf_offset_lo
 
-    lhu t0,          0(t4)
+    lw  t0,          8(t4)
     lhu vtx_out_ptr, 2(t4)
     lh  s4,          4(t4)
     lhu t1,          6(t4)
