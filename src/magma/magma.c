@@ -89,20 +89,20 @@ void mg_draw_end(void)
 void mg_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count)
 {
     assertf(count > 0, "count must be greater than 0");
-    assertf(count <= MAGMA_VERTEX_CACHE_COUNT, "too many vertices");
-    assertf(cache_offset + count <= MAGMA_VERTEX_CACHE_COUNT, "offset out of range");
+    assertf(count <= MG_VERTEX_CACHE_COUNT, "too many vertices");
+    assertf(cache_offset + count <= MG_VERTEX_CACHE_COUNT, "offset out of range");
     mg_cmd_write(MG_CMD_LOAD_VERTICES, buffer_offset, (cache_offset<<16) | count);
 }
 
 void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
 {
-    assertf(index0 <= MAGMA_VERTEX_CACHE_COUNT, "index0 is out of range");
-    assertf(index1 <= MAGMA_VERTEX_CACHE_COUNT, "index1 is out of range");
-    assertf(index2 <= MAGMA_VERTEX_CACHE_COUNT, "index2 is out of range");
+    assertf(index0 <= MG_VERTEX_CACHE_COUNT, "index0 is out of range");
+    assertf(index1 <= MG_VERTEX_CACHE_COUNT, "index1 is out of range");
+    assertf(index2 <= MG_VERTEX_CACHE_COUNT, "index2 is out of range");
 
-    uint16_t i0 = index0 * MAGMA_VTX_SIZE + RSP_MAGMA_MAGMA_VERTEX_CACHE;
-    uint16_t i1 = index1 * MAGMA_VTX_SIZE + RSP_MAGMA_MAGMA_VERTEX_CACHE;
-    uint16_t i2 = index2 * MAGMA_VTX_SIZE + RSP_MAGMA_MAGMA_VERTEX_CACHE;
+    uint16_t i0 = index0 * MG_VTX_SIZE + RSP_MAGMA_MG_VERTEX_CACHE;
+    uint16_t i1 = index1 * MG_VTX_SIZE + RSP_MAGMA_MG_VERTEX_CACHE;
+    uint16_t i2 = index2 * MG_VTX_SIZE + RSP_MAGMA_MG_VERTEX_CACHE;
 
     mg_cmd_write(MG_CMD_DRAW_INDICES, i0, (i1 << 16) | i2);
 }
@@ -449,7 +449,7 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline)
     mg_cmd_write(MG_CMD_SET_SHADER, code, ROUND_UP(code_size, 8) - 1);
 
     int16_t v0 = pipeline->vertex_stride;
-    int16_t v1 = MAGMA_VTX_SIZE;
+    int16_t v1 = MG_VTX_SIZE;
     int16_t v2 = -pipeline->vertex_stride;
     int16_t v3 = pipeline->vertex_stride;
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_size), (v0 << 16) | v1);
@@ -500,12 +500,12 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
 {
     assertf((offset&7) == 0, "offset must be a multiple of 8");
     assertf((size&3) == 0, "size must be a multiple of 4");
-    assertf(size <= MAGMA_MAX_UNIFORM_PAYLOAD_SIZE, "size must not be greater than %d", MAGMA_MAX_UNIFORM_PAYLOAD_SIZE);
+    assertf(size <= MG_MAX_UNIFORM_PAYLOAD_SIZE, "size must not be greater than %d", MG_MAX_UNIFORM_PAYLOAD_SIZE);
 
     uint32_t aligned_size = ROUND_UP(size, 8);
 
     uint32_t command_id = MG_CMD_INLINE_UNIFORM_MAX;
-    uint32_t command_size = MAGMA_MAX_UNIFORM_PAYLOAD_SIZE;
+    uint32_t command_size = MG_MAX_UNIFORM_PAYLOAD_SIZE;
 
     if (aligned_size <= 8) {
         command_id = MG_CMD_INLINE_UNIFORM_8;
@@ -524,7 +524,7 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
         command_size = 128;
     }
 
-    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, (MAGMA_INLINE_UNIFORM_HEADER + command_size)/4);
+    rspq_write_t w = rspq_write_begin(mg_overlay_id, command_id, (MG_INLINE_UNIFORM_HEADER + command_size)/4);
 
     // We want to place the payload at an 8-byte aligned address after the end of the command itself
     // w.pointer is already +1 from the actual start of the command
@@ -557,7 +557,7 @@ void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
     mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer->memory) + offset);
 }
 
-#define TRI_LIST_ADVANCE_COUNT ROUND_DOWN(MAGMA_VERTEX_CACHE_COUNT, 3)
+#define TRI_LIST_ADVANCE_COUNT ROUND_DOWN(MG_VERTEX_CACHE_COUNT, 3)
 
 void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex)
 {
@@ -571,12 +571,12 @@ void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t ver
         batch_size = TRI_LIST_ADVANCE_COUNT;
         break;
     case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
-        advance_count = MAGMA_VERTEX_CACHE_COUNT - 2;
-        batch_size = MAGMA_VERTEX_CACHE_COUNT;
+        advance_count = MG_VERTEX_CACHE_COUNT - 2;
+        batch_size = MG_VERTEX_CACHE_COUNT;
         break;
     case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
-        advance_count = MAGMA_VERTEX_CACHE_COUNT - 1;
-        batch_size = MAGMA_VERTEX_CACHE_COUNT;
+        advance_count = MG_VERTEX_CACHE_COUNT - 1;
+        batch_size = MG_VERTEX_CACHE_COUNT;
         break;
     }
 
@@ -623,7 +623,7 @@ typedef struct vertex_cache_block_s
 
 typedef struct 
 {
-    vertex_cache_block blocks[MAGMA_VERTEX_CACHE_COUNT];
+    vertex_cache_block blocks[MG_VERTEX_CACHE_COUNT];
     vertex_cache_block *head;
     vertex_cache_block *unused;
     uint32_t total_count;
@@ -633,11 +633,11 @@ typedef struct
 static void vertex_cache_clear(vertex_cache *cache)
 {
     cache->total_count = 0;
-    for (size_t i = 0; i < MAGMA_VERTEX_CACHE_COUNT-1; i++)
+    for (size_t i = 0; i < MG_VERTEX_CACHE_COUNT-1; i++)
     {
         cache->blocks[i].next = &cache->blocks[i+1];
     }
-    cache->blocks[MAGMA_VERTEX_CACHE_COUNT-1].next = NULL;
+    cache->blocks[MG_VERTEX_CACHE_COUNT-1].next = NULL;
     cache->unused = &cache->blocks[0];
     cache->head = NULL;
 }
@@ -694,7 +694,7 @@ static void vertex_cache_merge_with_next(vertex_cache *cache, vertex_cache_block
 
 static bool vertex_cache_try_insert(vertex_cache *cache, uint16_t index)
 {
-    if (cache->total_count >= MAGMA_VERTEX_CACHE_COUNT) {
+    if (cache->total_count >= MG_VERTEX_CACHE_COUNT) {
         return false;
     }
 
@@ -795,7 +795,7 @@ static void vertex_cache_load(const vertex_cache *cache, int32_t offset, uint32_
     }
 }
 
-#ifdef MAGMA_DEBUG_VERTEX_CACHE
+#ifdef MG_DEBUG_VERTEX_CACHE
 static void vertex_cache_dump(const vertex_cache *cache)
 {
     debugf("vertex cache dump:\n");
@@ -838,7 +838,7 @@ static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, ui
             continue;
         }
 
-        if (cache->total_count + need_insertion + cache_offset > MAGMA_VERTEX_CACHE_COUNT) {
+        if (cache->total_count + need_insertion + cache_offset > MG_VERTEX_CACHE_COUNT) {
             break;
         }
 
@@ -850,12 +850,12 @@ static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, ui
         count += required;
         required = advance;
 
-        #ifdef MAGMA_DEBUG_VERTEX_CACHE
+        #ifdef MG_DEBUG_VERTEX_CACHE
         vertex_cache_dump(cache);
         #endif
     }
 
-    assertf(cache->total_count + cache_offset <= MAGMA_VERTEX_CACHE_COUNT, "Vertex batch is too big! This is a bug within magma.");
+    assertf(cache->total_count + cache_offset <= MG_VERTEX_CACHE_COUNT, "Vertex batch is too big! This is a bug within magma.");
 
     vertex_cache_load(cache, vertex_offset, cache_offset);
     return count;

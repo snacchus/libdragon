@@ -58,7 +58,7 @@ MgBeginShader
     #define vtx_out_ptr     s3
     #define v___            $v29
 
-    li t7, %lo(MAGMA_STATE)
+    li t7, %lo(MG_STATE)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
 
     #define vvtx_size       $v01
@@ -67,21 +67,21 @@ MgBeginShader
     #define vbuf_offset_hi  $v04
     #define vbuf_offset_lo  $v05
 
-    # vertex_size, MAGMA_VTX_SIZE, -vertex_size, vertex_size
+    # vertex_size, MG_VTX_SIZE, -vertex_size, vertex_size
     ldv vvtx_size, 0x18,t7
 
     # buffer_offset, cache_offset, vertex_count, vertex_count
     ldv vinputs.e0, 0,t1
     lsv vinputs.e3, 4,t1
 
-    lhu vtx_size, %lo(MAGMA_VERTEX_SIZE)
+    lhu vtx_size, %lo(MG_VERTEX_SIZE)
     lw flags, %lo(MODES_FLAGS)
     li t3, %lo(MATRICES)
-    li t5, %lo(MAGMA_NORMAL_MASK)
+    li t5, %lo(MG_NORMAL_MASK)
 
-    # buffer_offset * vertex_size, cache_offset * MAGMA_VTX_SIZE, vertex_count * -vertex_size, vertex_count * vertex_size
+    # buffer_offset * vertex_size, cache_offset * MG_VTX_SIZE, vertex_count * -vertex_size, vertex_count * vertex_size
     vmudh vproducts, vinputs, vvtx_size;        sll vtx_size2, vtx_size, 1
-    vsar vbuf_offset_hi, COP2_ACC_HI;           lw s0, %lo(MAGMA_VERTEX_BUFFER)
+    vsar vbuf_offset_hi, COP2_ACC_HI;           lw s0, %lo(MG_VERTEX_BUFFER)
     vsar vbuf_offset_lo, COP2_ACC_MD;           li t4, %lo(RSPQ_SCRATCH_MEM)
                                                 li t6, %lo(TEXTURING)
 
@@ -111,9 +111,9 @@ MgBeginShader
     andi t0, 0xFF8
     addi t0, -1
 
-    addi vtx_out_ptr, %lo(MAGMA_VERTEX_CACHE)
+    addi vtx_out_ptr, %lo(MG_VERTEX_CACHE)
 
-    addi s4, %lo(MAGMA_VERTEX_OVERFLOW)
+    addi s4, %lo(MG_VERTEX_OVERFLOW)
     
     jal DMAInAsync
     andi s4, 0xFF8
@@ -546,8 +546,8 @@ PATCH_COLOR0:
 
     # store rgba to vertex cache
     # CAUTION: this also overwrites the next 4 bytes after the rgba value
-    suv vrgba.e0, MAGMA_VTX_RGBA + 0,             vtx_out_ptr
-    suv vrgba.e4, MAGMA_VTX_RGBA + MAGMA_VTX_SIZE,vtx_out_ptr
+    suv vrgba.e0, MG_VTX_RGBA + 0,             vtx_out_ptr
+    suv vrgba.e4, MG_VTX_RGBA + MG_VTX_SIZE,vtx_out_ptr
 
     #undef vrgba
 
@@ -657,16 +657,16 @@ LOAD_TEXCOORD1:
     vmadh vtex, vtex, vtexscale
 
     # store texcoords to vertex cache
-    slv vtex.e0, MAGMA_VTX_ST + 0,             vtx_out_ptr
-    slv vtex.e4, MAGMA_VTX_ST + MAGMA_VTX_SIZE,vtx_out_ptr
+    slv vtex.e0, MG_VTX_ST + 0,             vtx_out_ptr
+    slv vtex.e4, MG_VTX_ST + MG_VTX_SIZE,vtx_out_ptr
 
     #undef vtex
 
     # store clip space position to vertex cache
-    sdv vpos_clip_i.e0,  MAGMA_VTX_CS_POSi + 0,             vtx_out_ptr
-    sdv vpos_clip_f.e0,  MAGMA_VTX_CS_POSf + 0,             vtx_out_ptr
-    sdv vpos_clip_i.e4,  MAGMA_VTX_CS_POSi + MAGMA_VTX_SIZE,vtx_out_ptr
-    sdv vpos_clip_f.e4,  MAGMA_VTX_CS_POSf + MAGMA_VTX_SIZE,vtx_out_ptr
+    sdv vpos_clip_i.e0,  MG_VTX_CS_POSi + 0,             vtx_out_ptr
+    sdv vpos_clip_f.e0,  MG_VTX_CS_POSf + 0,             vtx_out_ptr
+    sdv vpos_clip_i.e4,  MG_VTX_CS_POSi + MG_VTX_SIZE,vtx_out_ptr
+    sdv vpos_clip_f.e4,  MG_VTX_CS_POSf + MG_VTX_SIZE,vtx_out_ptr
 
     #define vnormw_i        $v14
     #define vnormw_f        $v15
@@ -684,10 +684,10 @@ LOAD_TEXCOORD1:
     vmadn vnormw_f, vzero, vzero
 
     # store (normalized) W to vertex cache
-    ssv vnormw_i.e3, MAGMA_VTX_Wi + 0,             vtx_out_ptr
-    ssv vnormw_f.e3, MAGMA_VTX_Wf + 0,             vtx_out_ptr
-    ssv vnormw_i.e7, MAGMA_VTX_Wi + MAGMA_VTX_SIZE,vtx_out_ptr
-    ssv vnormw_f.e7, MAGMA_VTX_Wf + MAGMA_VTX_SIZE,vtx_out_ptr
+    ssv vnormw_i.e3, MG_VTX_Wi + 0,             vtx_out_ptr
+    ssv vnormw_f.e3, MG_VTX_Wf + 0,             vtx_out_ptr
+    ssv vnormw_i.e7, MG_VTX_Wi + MG_VTX_SIZE,vtx_out_ptr
+    ssv vnormw_f.e7, MG_VTX_Wf + MG_VTX_SIZE,vtx_out_ptr
 
     # perspective division, with improved precision thanks to W-normalization
     vrcph v___.e3,    vnormw_i.e3
@@ -704,10 +704,10 @@ LOAD_TEXCOORD1:
     vmadn vviewscale_f, vzero, vzero
 
     # store inverse W to vertex cache
-    ssv vinvw_i.e3, MAGMA_VTX_INVWi + 0,             vtx_out_ptr
-    ssv vinvw_f.e3, MAGMA_VTX_INVWf + 0,             vtx_out_ptr
-    ssv vinvw_i.e7, MAGMA_VTX_INVWi + MAGMA_VTX_SIZE,vtx_out_ptr
-    ssv vinvw_f.e7, MAGMA_VTX_INVWf + MAGMA_VTX_SIZE,vtx_out_ptr
+    ssv vinvw_i.e3, MG_VTX_INVWi + 0,             vtx_out_ptr
+    ssv vinvw_f.e3, MG_VTX_INVWf + 0,             vtx_out_ptr
+    ssv vinvw_i.e7, MG_VTX_INVWi + MG_VTX_SIZE,vtx_out_ptr
+    ssv vinvw_f.e7, MG_VTX_INVWf + MG_VTX_SIZE,vtx_out_ptr
 
     vmudl v___,       vpos_clip_f, vinvw_f.h3
     vmadm v___,       vpos_clip_i, vinvw_f.h3
@@ -726,8 +726,8 @@ LOAD_TEXCOORD1:
     vmadh vpos_scr_i, vpos_scr_i, vviewscale_i
 
     # store screen space position to vertex cache
-    sdv vpos_scr_i.e0,  MAGMA_VTX_XYZ + 0,             vtx_out_ptr
-    sdv vpos_scr_i.e4,  MAGMA_VTX_XYZ + MAGMA_VTX_SIZE,vtx_out_ptr
+    sdv vpos_scr_i.e0,  MG_VTX_XYZ + 0,             vtx_out_ptr
+    sdv vpos_scr_i.e4,  MG_VTX_XYZ + MG_VTX_SIZE,vtx_out_ptr
 
     #undef vnormw_i
     #undef vnormw_f
@@ -760,8 +760,8 @@ LOAD_TEXCOORD1:
     #undef vguard_f
 
     # store clip codes to vertex cache
-    sb t0, MAGMA_VTX_CLIP_CODE +              0(vtx_out_ptr)
-    sb t2, MAGMA_VTX_CLIP_CODE + MAGMA_VTX_SIZE(vtx_out_ptr)
+    sb t0, MG_VTX_CLIP_CODE +              0(vtx_out_ptr)
+    sb t2, MG_VTX_CLIP_CODE + MG_VTX_SIZE(vtx_out_ptr)
 
     # calculate inverted trivial rejection codes
     vch v___, vpos_clip_i, vpos_clip_i.h3
@@ -776,13 +776,13 @@ LOAD_TEXCOORD1:
     or t2, t3
 
     # store trivial rejection codes to vertex cache
-    sb t0, MAGMA_VTX_TR_CODE +              0(vtx_out_ptr)
-    sb t2, MAGMA_VTX_TR_CODE + MAGMA_VTX_SIZE(vtx_out_ptr)
+    sb t0, MG_VTX_TR_CODE +              0(vtx_out_ptr)
+    sb t2, MG_VTX_TR_CODE + MG_VTX_SIZE(vtx_out_ptr)
 
     #undef vpos_clip_i
     #undef vpos_clip_f
     
-    addi vtx_out_ptr, MAGMA_VTX_SIZE*2
+    addi vtx_out_ptr, MG_VTX_SIZE*2
     b vertex_loop
     add vtx_in0_ptr, vtx_size2
 

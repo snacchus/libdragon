@@ -5,7 +5,7 @@
 #define MAX_UNIFORMS_SIZE   0x400
 
 .macro MgBeginShaderUniforms
-    .section .meta.uniforms
+    .section .meta.mg_uniforms
 _MG_META_UNIFORMS:
     .equ _mg_uniform_count, 0
     .data
@@ -13,24 +13,24 @@ _MG_META_UNIFORMS:
     RSPQ_BeginSavedState
     
     .align 3
-    MAGMA_VERTEX_CACHE:         .dcb.b  MAGMA_VERTEX_CACHE_COUNT * MAGMA_VTX_SIZE
-    MAGMA_VERTEX_OVERFLOW:      .dcb.b  MAGMA_VTX_SIZE
+    MG_VERTEX_CACHE:            .dcb.b  MG_VERTEX_CACHE_COUNT * MG_VTX_SIZE
+    MG_VERTEX_OVERFLOW:         .dcb.b  MG_VTX_SIZE
 
     .align 4
-MAGMA_STATE:
-    MAGMA_VIEWPORT:
-        MAGMA_VIEWPORT_SCALE:   .half   0,0,0,0
-        MAGMA_VIEWPORT_OFFSET:  .half   0,0,0,0
-    MAGMA_CLIP_FACTORS:         .half   1,1,MAGMA_DEFAULT_GUARD_BAND,MAGMA_DEFAULT_GUARD_BAND
-    MAGMA_VERTEX_SIZE:          .half   0,0,0,0
-    MAGMA_SHADER_TEXT:          .word   0
-    MAGMA_SHADER_TEXT_SIZE:     .word   0
-    MAGMA_CLIPPING_TEXT:        .word   0
-    MAGMA_CLIPPING_TEXT_SIZE:   .word   0
-    MAGMA_VERTEX_BUFFER:        .word   0
-    MAGMA_TRI_CMD:              .half   0x800
-    MAGMA_CULL_MODE:            .byte   0
-    MAGMA_OUTPUT_OFFSET:        .byte   0
+MG_STATE:
+    MG_VIEWPORT:
+        MG_VIEWPORT_SCALE:      .half   0,0,0,0
+        MG_VIEWPORT_OFFSET:     .half   0,0,0,0
+    MG_CLIP_FACTORS:            .half   1,1,MG_DEFAULT_GUARD_BAND,MG_DEFAULT_GUARD_BAND
+    MG_VERTEX_SIZE:             .half   0,0,0,0
+    MG_SHADER_TEXT:             .word   0
+    MG_SHADER_TEXT_SIZE:        .word   0
+    MG_CLIPPING_TEXT:           .word   0
+    MG_CLIPPING_TEXT_SIZE:      .word   0
+    MG_VERTEX_BUFFER:           .word   0
+    MG_TRI_CMD:                 .half   0x800
+    MG_CULL_MODE:               .byte   0
+    MG_OUTPUT_OFFSET:           .byte   0
 
     .align 4
 _MG_VTX_SHADER_UNIFORMS:
@@ -53,7 +53,7 @@ _MG_VTX_SHADER_UNIFORMS_END:
 
     .equ _mg_uniform_count, _mg_uniform_count+1
 
-    .section .meta.uniforms
+    .section .meta.mg_uniforms
     .long \binding
     .long \name - _MG_VTX_SHADER_UNIFORMS
     .data
@@ -68,7 +68,7 @@ _MG_VTX_SHADER_UNIFORMS_END:
     .endif
     .equ _mg_defining_uniform, 0
 
-    .section .meta.uniforms
+    .section .meta.mg_uniforms
     .long _MG_UNIFORM_END\@ - _MG_VTX_SHADER_UNIFORMS
     .data
     .align 3
@@ -85,7 +85,7 @@ _MG_UNIFORM_END\@ :
 .endm
 
 .macro MgBeginVertexInput
-    .section .meta.attributes
+    .section .meta.mg_attributes
 _MG_META_ATTRIBUTES:
     .equ _mg_attribute_count, 0
 .endm
@@ -151,7 +151,7 @@ _MG_META_START:
 .endm
 
 .macro _MgBeginShader
-    .section .text.magma_vertex_shader
+    .section .text.mg_overlay
     .align 3
 _MG_OVERLAY:
 
@@ -168,8 +168,8 @@ _MG_VTX_SHADER:
     # Place the clipping code bootstrapper in each shader so it can get loaded when required.
 Mg_Clipping:
     # Bootstrap the clipping code.
-    lw s0, %lo(MAGMA_CLIPPING_TEXT)
-    lw t0, %lo(MAGMA_CLIPPING_TEXT_SIZE)
+    lw s0, %lo(MG_CLIPPING_TEXT)
+    lw t0, %lo(MG_CLIPPING_TEXT_SIZE)
     jal_and_j Mg_LoadOverlay, _MG_CLIPPING
 .endm
 
@@ -191,11 +191,11 @@ Mg_Clipping:
         RSPQ_DefineCommand MgCmd_DrawIndices,   8
         RSPQ_DefineCommand MgCmd_DrawEnd,       4
         RSPQ_DefineCommand MgCmd_LoadUniform,   8
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 8
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 16
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 32
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 64
-        RSPQ_DefineCommand MgCmd_LoadUniform,   MAGMA_INLINE_UNIFORM_HEADER + 128
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MG_INLINE_UNIFORM_HEADER + 8
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MG_INLINE_UNIFORM_HEADER + 16
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MG_INLINE_UNIFORM_HEADER + 32
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MG_INLINE_UNIFORM_HEADER + 64
+        RSPQ_DefineCommand MgCmd_LoadUniform,   MG_INLINE_UNIFORM_HEADER + 128
         RSPQ_DefineCommand MgCmd_LoadUniform,   248 # TODO: get rid of magic number
 	RSPQ_EndOverlayHeader
 
@@ -204,10 +204,10 @@ Mg_Clipping:
     .ascii "Code by snacchus"
 
     .align 4
-MAGMA_NORMAL_MASK:              .half   0xF800, 0x07E0, 0x001F, 0, 1, 1<<5, 1<<11, 0
-MAGMA_CLIP_CACHE_OFFSETS:       .half   2,4,6,8,10,12,14,16,18
+MG_NORMAL_MASK:                 .half   0xF800, 0x07E0, 0x001F, 0, 1, 1<<5, 1<<11, 0
+MG_CLIP_CACHE_OFFSETS:          .half   2,4,6,8,10,12,14,16,18
 
-MAGMA_CLIP_PLANES:              
+MG_CLIP_PLANES:              
     .half 1, 0, 0,  1
     .half 0, 1, 0,  1
     .half 0, 0, 1,  1
@@ -217,15 +217,15 @@ MAGMA_CLIP_PLANES:
 
     .bss
     .align 4
-MAGMA_CLIP_CACHE_USED:          .dcb.w  16
+MG_CLIP_CACHE_USED:             .dcb.w  16
     .align 3
-MAGMA_OUTPUT_BUFFER:            .dcb.b  TRIANGLE_SIZE * 2
+MG_OUTPUT_BUFFER:               .dcb.b  TRIANGLE_SIZE * 2
 
-MAGMA_CLIP_CACHE:               .dcb.b  MAGMA_VTX_SIZE * MAGMA_CLIP_CACHE_SIZE
-MAGMA_CLIP_CACHE_END:
+MG_CLIP_CACHE:                  .dcb.b  MG_VTX_SIZE * MG_CLIP_CACHE_SIZE
+MG_CLIP_CACHE_END:
 
-MAGMA_CLIP_LIST0:               .dcb.w  MAGMA_CLIP_CACHE_SIZE
-MAGMA_CLIP_LIST1:               .dcb.w  MAGMA_CLIP_CACHE_SIZE
+MG_CLIP_LIST0:                  .dcb.w  MG_CLIP_CACHE_SIZE
+MG_CLIP_LIST1:                  .dcb.w  MG_CLIP_CACHE_SIZE
 
     .text
 
@@ -235,7 +235,7 @@ MAGMA_CLIP_LIST1:               .dcb.w  MAGMA_CLIP_CACHE_SIZE
     .func MgCmd_SetByte
 MgCmd_SetByte:
     jr ra
-    sb a1, %lo(MAGMA_STATE)(a0)
+    sb a1, %lo(MG_STATE)(a0)
     .endfunc
 
     #############################################################
@@ -244,7 +244,7 @@ MgCmd_SetByte:
     .func MgCmd_SetShort
 MgCmd_SetShort:
     jr ra
-    sh a1, %lo(MAGMA_STATE)(a0)
+    sh a1, %lo(MG_STATE)(a0)
     .endfunc
 
     #############################################################
@@ -253,7 +253,7 @@ MgCmd_SetShort:
     .func MgCmd_SetWord
 MgCmd_SetWord:
     jr ra
-    sw a1, %lo(MAGMA_STATE)(a0)
+    sw a1, %lo(MG_STATE)(a0)
     .endfunc
 
     #############################################################
@@ -264,7 +264,7 @@ MgCmd_SetQuad:
     addi s0, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER)
     lqv $v01, -0x10,s0
     lrv $v01,  0x00,s0
-    addi a0, %lo(MAGMA_STATE)
+    addi a0, %lo(MG_STATE)
     jr ra
     sqv $v01,  0x00,a0
     .endfunc
@@ -300,15 +300,15 @@ MgCmd_SetShader:
     #       1) Disable this optimization when profiling is enabled.
     #       2) Move the profiler buffer to the beginning of the saved state.
     #       Provided it doesn't break anything, the second option would be preferred.
-    sw a0, %lo(MAGMA_SHADER_TEXT)
-    sw a1, %lo(MAGMA_SHADER_TEXT_SIZE)
+    sw a0, %lo(MG_SHADER_TEXT)
+    sw a1, %lo(MG_SHADER_TEXT_SIZE)
     # fallthrough
     .endfunc
 
     .func Mg_LoadShader
 Mg_LoadShader:
-    lw s0, %lo(MAGMA_SHADER_TEXT)
-    lw t0, %lo(MAGMA_SHADER_TEXT_SIZE)
+    lw s0, %lo(MG_SHADER_TEXT)
+    lw t0, %lo(MG_SHADER_TEXT_SIZE)
     # fallthrough
     .endfunc
 
@@ -352,18 +352,18 @@ MgCmd_DrawIndices:
     srl a2, a1, 16
     addi s1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
     move s2, s1
-    lbu v0, %lo(MAGMA_CULL_MODE)
+    lbu v0, %lo(MG_CULL_MODE)
     
-    lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
-    addi s3, t7, %lo(MAGMA_OUTPUT_BUFFER)
+    lbu t7, %lo(MG_OUTPUT_OFFSET)
+    addi s3, t7, %lo(MG_OUTPUT_BUFFER)
 
     li sp, %lo(RSPQ_Loop)
     jal RDPQ_Triangle_Send_Async
-    lhu a3, %lo(MAGMA_TRI_CMD)
+    lhu a3, %lo(MG_TRI_CMD)
 
     xor t7, TRIANGLE_SIZE
     j RSPQ_Loop
-    sb t7, %lo(MAGMA_OUTPUT_OFFSET)
+    sb t7, %lo(MG_OUTPUT_OFFSET)
     #undef vtx1
     #undef vtx2
     #undef vtx3
@@ -379,7 +379,7 @@ RDPQ_Triangle_Cull:
     .func MgCmd_DrawEnd
 MgCmd_DrawEnd:
     j RDPQ_Triangle_Send_End
-    sb zero, %lo(MAGMA_OUTPUT_OFFSET)
+    sb zero, %lo(MG_OUTPUT_OFFSET)
     .endfunc
 
 #define RDPQ_TRIANGLE_VTX1      a0

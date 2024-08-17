@@ -54,39 +54,39 @@ Mg_Clipping:
     #define v___            $v29
 
     srl clip_flags, t3, 8
-    li in_list, %lo(MAGMA_CLIP_LIST1)
+    li in_list, %lo(MG_CLIP_LIST1)
 
     # Copy the three original vertices to the out_list
     # (after the initial swap they will be in the in_list)
-    li out_list, %lo(MAGMA_CLIP_LIST0)
+    li out_list, %lo(MG_CLIP_LIST0)
     li out_count, 3*2
     addi t0, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
     ldv v___, 0,t0
     sdv v___, 0,out_list
 
-    li plane, %lo(MAGMA_CLIP_PLANES)
+    li plane, %lo(MG_CLIP_PLANES)
     li plane_flag, 1
 
     # Load cache offsets    
-    li t0, %lo(MAGMA_CLIP_CACHE_OFFSETS)
+    li t0, %lo(MG_CLIP_CACHE_OFFSETS)
     vxor voff1, voff1
     lqv voff0,  0,t0
     lsv voff1, 16,t0
 
     # Temporarily use the output buffer as a map of which cache slots are used
     # Init to zero
-    li t0, %lo(MAGMA_CLIP_CACHE_USED)
+    li t0, %lo(MG_CLIP_CACHE_USED)
     sqv vzero,  0,t0
     sqv vzero, 16,t0
 
-    li t0, %lo(MAGMA_VIEWPORT)
+    li t0, %lo(MG_VIEWPORT)
     ldv vviewscale, 0,t0
     ldv vviewoff,   8,t0
 
     vmudm vviewscale_i, vviewscale, vviewscale.h3
     vmadn vviewscale_f, vzero, vzero
 
-    li t0, %lo(MAGMA_CLIP_FACTORS)
+    li t0, %lo(MG_CLIP_FACTORS)
     ldv vclip_factors.e0, 0x0,t0
     ldv vclip_factors.e4, 0x0,t0
 
@@ -126,8 +126,8 @@ mg_clip_edge_loop:
     # Check which side of the plane the two vertices are on
     lhu cur_vtx, 0(cur_ptr)
     lhu prev_vtx, 0(prev_ptr)
-    lbu cur_flag, MAGMA_VTX_CLIP_CODE(cur_vtx)
-    lbu prev_flag, MAGMA_VTX_CLIP_CODE(prev_vtx)
+    lbu cur_flag, MG_VTX_CLIP_CODE(cur_vtx)
+    lbu prev_flag, MG_VTX_CLIP_CODE(prev_vtx)
     and cur_flag, plane_flag
     and prev_flag, plane_flag
 
@@ -149,27 +149,27 @@ mg_clip_edge_loop:
 1:
     # Calculate intersection of the line segment and the plane
 
-    li t0, %lo(MAGMA_CLIP_CACHE_USED)
+    li t0, %lo(MG_CLIP_CACHE_USED)
     lqv vcache0,    0,t0
     lqv vcache1,   16,t0
 
     # vpos: x0  y0  z0  w0  x1  y1  z1  w1
-    ldv vpos_i.e0,  MAGMA_VTX_CS_POSi,p0
-    ldv vpos_f.e0,  MAGMA_VTX_CS_POSf,p0
-    ldv vpos_i.e4,  MAGMA_VTX_CS_POSi,p1
-    ldv vpos_f.e4,  MAGMA_VTX_CS_POSf,p1
+    ldv vpos_i.e0,  MG_VTX_CS_POSi,p0
+    ldv vpos_f.e0,  MG_VTX_CS_POSf,p0
+    ldv vpos_i.e4,  MG_VTX_CS_POSi,p1
+    ldv vpos_f.e4,  MG_VTX_CS_POSf,p1
 
     # vint: x1  y1  z1  w1
-    ldv vint_i.e0,  MAGMA_VTX_CS_POSi,p1
-    ldv vint_f.e0,  MAGMA_VTX_CS_POSf,p1
+    ldv vint_i.e0,  MG_VTX_CS_POSi,p1
+    ldv vint_f.e0,  MG_VTX_CS_POSf,p1
 
     # vattr0: r0  g0  b0  a0  s0  t0
-    luv vattr0.e0,  MAGMA_VTX_RGBA   ,p0
-    llv vattr0.e4,  MAGMA_VTX_ST     ,p0
+    luv vattr0.e0,  MG_VTX_RGBA   ,p0
+    llv vattr0.e4,  MG_VTX_ST     ,p0
 
     # vattr1: r1  g1  b1  a1  s1  t1
-    luv vattr1.e0,  MAGMA_VTX_RGBA   ,p1
-    llv vattr1.e4,  MAGMA_VTX_ST     ,p1
+    luv vattr1.e0,  MG_VTX_RGBA   ,p1
+    llv vattr1.e4,  MG_VTX_ST     ,p1
 
     # Find first free slot in clip cache
 
@@ -190,7 +190,7 @@ mg_clip_edge_loop:
 
     # Mark slot as used by storing some large value (careful of overflows!)
     li t1, 0xFF
-    sh t1, %lo(MAGMA_CLIP_CACHE_USED)-2(t0)
+    sh t1, %lo(MG_CLIP_CACHE_USED)-2(t0)
 
     # t0 is the index multiplied by 2
     # intersection = t0 * 20 = t0 * 16 + t0 * 4
@@ -202,11 +202,11 @@ mg_clip_edge_loop:
     # because one of them is the previous point, which could have been marked unused
     # in the previous iteration. As long as we don't access p0 or p1 after writing to
     # intersection, this is fine.
-    addi intersection, %lo(MAGMA_CLIP_CACHE) - MAGMA_VTX_SIZE
+    addi intersection, %lo(MG_CLIP_CACHE) - MG_VTX_SIZE
 
     # Store the cache offset in unused memory (used later when finding the cache slot to mark as unused)
     ori t0, 0x80
-    sb t0, MAGMA_VTX_TR_CODE(intersection)
+    sb t0, MG_VTX_TR_CODE(intersection)
 
     # Compute dot products of both positions with the clip plane
     # vdot.e0: d0 = dot(p0, plane)
@@ -262,10 +262,10 @@ mg_clip_edge_loop:
     vaddc vattr0, vattr1
 
     # Store results
-    sdv vint_i.e0,  MAGMA_VTX_CS_POSi,intersection
-    sdv vint_f.e0,  MAGMA_VTX_CS_POSf,intersection
-    suv vattr0.e0,  MAGMA_VTX_RGBA   ,intersection
-    slv vattr0.e4,  MAGMA_VTX_ST     ,intersection
+    sdv vint_i.e0,  MG_VTX_CS_POSi,intersection
+    sdv vint_f.e0,  MG_VTX_CS_POSf,intersection
+    suv vattr0.e0,  MG_VTX_RGBA   ,intersection
+    slv vattr0.e4,  MG_VTX_ST     ,intersection
 
     # Re-calculate clip codes
     vmudn vint_f, vclip_factors
@@ -276,7 +276,7 @@ mg_clip_edge_loop:
     andi t0, 0x707
     srl t1, t0, 5
     or t0, t1
-    sb t0, MAGMA_VTX_CLIP_CODE(intersection)
+    sb t0, MG_VTX_CLIP_CODE(intersection)
 
     # Add intersection to the output list
     add t0, out_list, out_count
@@ -295,14 +295,14 @@ mg_clip_no_intersection:
 
 1:
     # Check if the vertex is stored in the clip cache
-    lb t0, MAGMA_VTX_TR_CODE(cur_vtx)
+    lb t0, MG_VTX_TR_CODE(cur_vtx)
     bgez t0, mg_clip_edge_loop_end
     andi t0, 0x7F
 
     # Reset the padding field to zero, so the screen space values won't be recalculated below
-    sb zero, MAGMA_VTX_TR_CODE(cur_vtx)
+    sb zero, MG_VTX_TR_CODE(cur_vtx)
     # If so, mark it as unused
-    sh zero, %lo(MAGMA_CLIP_CACHE_USED)-2(t0)
+    sh zero, %lo(MG_CLIP_CACHE_USED)-2(t0)
     
 mg_clip_edge_loop_end:
     # Advance to the next edge
@@ -313,8 +313,8 @@ mg_clip_edge_loop_end:
 mg_clip_plane_loop_end:
     # Advance to the next clipping plane
     sll plane_flag, 1
-    blt plane_flag, (1<<MAGMA_CLIP_PLANE_COUNT), mg_clip_plane_loop
-    addi plane, MAGMA_CLIP_PLANE_SIZE
+    blt plane_flag, (1<<MG_CLIP_PLANE_COUNT), mg_clip_plane_loop
+    addi plane, MG_CLIP_PLANE_SIZE
 
     #define cache_vtx   s3
     #define cache_end   s5
@@ -327,15 +327,15 @@ mg_clip_plane_loop_end:
 
     # Calculate screen space values for new vertices (in the clip cache)
     # TODO: maybe iterate over out_list instead
-    li cache_vtx, %lo(MAGMA_CLIP_CACHE)
-    li cache_end, %lo(MAGMA_CLIP_CACHE_END) - MAGMA_VTX_SIZE
+    li cache_vtx, %lo(MG_CLIP_CACHE)
+    li cache_end, %lo(MG_CLIP_CACHE_END) - MG_VTX_SIZE
 mg_clip_finalize_loop:
-    lb t0, MAGMA_VTX_TR_CODE(cache_vtx)
+    lb t0, MG_VTX_TR_CODE(cache_vtx)
 
     # Only calculate screen space values if the vertex is actually used
     beqz t0, mg_clip_finalize_loop_end
-    ldv vint_i,  MAGMA_VTX_CS_POSi,cache_vtx
-    ldv vint_f,  MAGMA_VTX_CS_POSf,cache_vtx
+    ldv vint_i,  MG_VTX_CS_POSi,cache_vtx
+    ldv vint_f,  MG_VTX_CS_POSf,cache_vtx
 
     vmudl v___,     vint_f, vviewscale.h3
     vmadm vnormw_i, vint_i, vviewscale.h3
@@ -356,16 +356,16 @@ mg_clip_finalize_loop:
     vmadn vpos_scr_f, vpos_scr_f, vviewscale_i
     vmadh vpos_scr_i, vpos_scr_i, vviewscale_i
 
-    sdv vpos_scr_i,  MAGMA_VTX_XYZ,  cache_vtx
-    ssv vnormw_i.e3, MAGMA_VTX_Wi,   cache_vtx
-    ssv vnormw_f.e3, MAGMA_VTX_Wf,   cache_vtx
-    ssv vinvw_i.e3,  MAGMA_VTX_INVWi,cache_vtx
-    ssv vinvw_f.e3,  MAGMA_VTX_INVWf,cache_vtx
-    sh zero, MAGMA_VTX_CLIP_CODE(cache_vtx)
+    sdv vpos_scr_i,  MG_VTX_XYZ,  cache_vtx
+    ssv vnormw_i.e3, MG_VTX_Wi,   cache_vtx
+    ssv vnormw_f.e3, MG_VTX_Wf,   cache_vtx
+    ssv vinvw_i.e3,  MG_VTX_INVWi,cache_vtx
+    ssv vinvw_f.e3,  MG_VTX_INVWf,cache_vtx
+    sh zero, MG_VTX_CLIP_CODE(cache_vtx)
 
 mg_clip_finalize_loop_end:
     blt cache_vtx, cache_end, mg_clip_finalize_loop
-    addi cache_vtx, MAGMA_VTX_SIZE
+    addi cache_vtx, MG_VTX_SIZE
 
     #undef cache_vtx
     #undef cache_end
@@ -412,24 +412,24 @@ mg_clip_finalize_loop_end:
     #define out_ptr s2
     #define out_end k0
 
-    lbu t7, %lo(MAGMA_OUTPUT_OFFSET)
+    lbu t7, %lo(MG_OUTPUT_OFFSET)
 
     move out_ptr, out_list
     add out_end, out_list, out_count
     addi out_end, -4
 mg_draw_clipped_triangles_loop:
     bge out_ptr, out_end, RSPQ_Loop
-    lhu a3, %lo(MAGMA_TRI_CMD)
-    lbu v0, %lo(MAGMA_CULL_MODE)
+    lhu a3, %lo(MG_TRI_CMD)
+    lbu v0, %lo(MG_CULL_MODE)
     lhu vtx1, 0(out_list)
     lhu vtx2, 2(out_ptr)
     lhu vtx3, 4(out_ptr)
     li sp, %lo(tri_cull)
     jal RDPQ_Triangle_Send_Async
-    addi s3, t7, %lo(MAGMA_OUTPUT_BUFFER)
+    addi s3, t7, %lo(MG_OUTPUT_BUFFER)
 
     xor t7, TRIANGLE_SIZE
-    sb t7, %lo(MAGMA_OUTPUT_OFFSET)
+    sb t7, %lo(MG_OUTPUT_OFFSET)
 
 tri_cull:
     b mg_draw_clipped_triangles_loop
