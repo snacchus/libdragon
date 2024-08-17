@@ -173,14 +173,22 @@ static void bzero8(void *mem)
     asm ("sdl $0, 0(%0); sdr $0, 7(%0);" :: "r"(mem));
 }
 
-static void rsp_bzero_init(void)
+static void rsp_bzero_init(bool bbplayer)
 {
-    // We run a DMA from RDRAM address > 8MiB where many areas return 0 on read.
-    // Notice that we can do this only after RI has been initialized.
     while (*SP_DMA_BUSY) {} 
-    *SP_RSP_ADDR = 0x1000;
-    *SP_DRAM_ADDR = 8*1024*1024 + 0x2000;
-    *SP_RD_LEN = 4096-1;
+    if (!bbplayer) {
+        // We run a DMA from RDRAM address > 8MiB where many areas return 0 on read.
+        // Notice that we can do this only after RI has been initialized.
+        *SP_RSP_ADDR = 0x1000;
+        *SP_DRAM_ADDR = 8*1024*1024 + 0x2000;
+        *SP_RD_LEN = 4096-1;
+    } else {
+        // iQue RAM is mirrored instead, so we can't use the above trick. Just use
+        // CPU to clear IMEM.
+        for (int i=0; i<4096/4; i++) {
+            SP_IMEM[i] = 0;
+        }
+    }
 }
 
 // Clear memory using RSP DMA. We use IMEM as source address, which
@@ -222,7 +230,7 @@ static void mem_bank_init(int chip_id, bool last)
 {
     if (chip_id == -1) {
         // First call, we clear SP_IMEM that will be used later.
-        rsp_bzero_init();
+        rsp_bzero_init(false);
         return;
     }
  
@@ -270,6 +278,11 @@ void stage1(void)
         memsize = rdram_init(mem_bank_init);
     } else {
         if (bbplayer) {
+            // iQue doesn't have a IPL2 and the OS provides boot flags already in lowmem.
+            // Read the ones we need for our bootflags.
+            ipl2_tvType    = *(uint32_t *)0xA0000300;
+            ipl2_resetType = *(uint32_t *)0xA000030C;
+
             // iQue OS put the memory size in a special location. This is the
             // amount of memory that the OS has assigned to the application, so it
             // could be less than the physical total memory. Anyway, it's the value
@@ -315,7 +328,7 @@ void stage1(void)
         // with this even if Everdrive itself doesn't use this IPL3 (but
         // might boot a game that does, and that game shouldn't clear
         // 0x80000318).
-        rsp_bzero_init();
+        rsp_bzero_init(bbplayer);
         rsp_bzero_async(0xA0000400, memsize-0x400-TOTAL_RESERVED_SIZE);
     }
 
@@ -345,16 +358,18 @@ void stage1(void)
 #ifndef COMPAT
     bootinfo_t *bootinfo = (bootinfo_t*)0xA4000000;
     bootinfo->memory_size = memsize;
-    bootinfo->flags = (ipl2_tvType << 16) | (ipl2_resetType << 8) | (bbplayer ? 1 : 0);
+    bootinfo->flags = (ipl2_romType << 24) | (ipl2_tvType << 16) | (ipl2_resetType << 8) | (bbplayer ? 1 : 0);
     bootinfo->padding = 0;
 #else
-    *(volatile uint32_t *)0x80000300 = ipl2_tvType;
-    *(volatile uint32_t *)0x80000304 = ipl2_romType;
-    *(volatile uint32_t *)0x80000308 = ipl2_romType ? 0x06000000 : 0x10000000;
-    *(volatile uint32_t *)0x8000030C = ipl2_resetType;
-    *(volatile uint32_t *)0x80000314 = ipl2_version;
-    *(volatile uint32_t *)0x80000318 = memsize;
-    data_cache_hit_writeback_invalidate((void*)0x80000300, 0x20);
+    if (!bbplayer) {
+        *(volatile uint32_t *)0x80000300 = ipl2_tvType;
+        *(volatile uint32_t *)0x80000304 = ipl2_romType;
+        *(volatile uint32_t *)0x80000308 = ipl2_romType ? 0xA6000000 : 0xB0000000;
+        *(volatile uint32_t *)0x8000030C = ipl2_resetType;
+        *(volatile uint32_t *)0x80000314 = ipl2_version;
+        *(volatile uint32_t *)0x80000318 = memsize;
+        data_cache_hit_writeback_invalidate((void*)0x80000300, 0x20);
+    }
 #endif
 
     // Wait until stage 2 is fully loaded into RDRAM

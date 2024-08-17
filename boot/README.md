@@ -48,6 +48,12 @@ actually loading the main binary and run it.
 
 (for each version, the md5 of ipl3_prod.z64 is reported)
 
+r8 (419c213307cdb855934852c67759102b)
+* Add ROM type to bootflags (byte 8). This will allow in the future to use
+  IPL3 as part of a replacement 64DD IPL.
+* Fix regression on memory clearing on iQue (introduced in r7)
+* Fix TV type and reset type bootflags on iQue (they have always been wrong)
+
 r7 (7f014ed41cc53bb1a5e44f211f8c3dec)
 * Fix RDRAM clearing to fully cover the whole memory (because of a bug,
   some zones were not cleaned at all before).
@@ -124,7 +130,7 @@ the following rules:
    - Byte 0..3: Amount of memory, in bytes. On iQue, this number is adjusted
      to report the amount of memory allocated to the application by the OS.
    - Byte 4..7: 32-bit random number (entropy collected during boot)
-   - Byte 8: reserved
+   - Byte 8: ROM type (0: Cartridge at 0x10000000, 1: 64DD IPL at 0x06000000)
    - Byte 9: TV type (0:PAL, 1:NTSC, 2:MPAL)
    - Byte 10: Reset type (0:cold, 1:warm)
    - Byte 11: Console type (0:n64, 1:iQue)
