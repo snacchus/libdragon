@@ -10,9 +10,9 @@ Also note that the specific approach shown in this example may not be suitable f
 
 | Input         | Action                                    |
 | ------------- | ----------------------------------------- |
-| Analog Stick  | Rotate camera                             |
-| C-up          | Move camera forwards                      |
-| C-down        | Move camera backwards                     |
+| Analog Stick  | Move camera                               |
+| C-buttons     | Rotate camera                             |
+| Z             | Hold to move the camera slowly            |
 | D-pad up      | Increase number of objects                |
 | D-pad down    | Decrease number of objects                |
 | Start         | Toggle animations                         |

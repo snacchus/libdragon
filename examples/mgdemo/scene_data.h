@@ -30,7 +30,7 @@ static const char *texture_files[] = {
 static const uint32_t material_texture_indices[] = {
     0, 0, 1, 2, 3
 };
-static const uint32_t material_diffuse_colors[] = { // Currently unused
+static const uint32_t material_diffuse_colors[] = {
     0xffffffff,
     0x5a81e6ff,
     0x3b5c34ff,
@@ -108,6 +108,6 @@ static const float fog_end = 100.0f;
 static const float camera_fov = 65.0f;
 static const float camera_near_plane = 1.0f;
 static const float camera_far_plane = 100.0f;
-static const float camera_start_distance = 30.0f;
+static const float camera_start_position[] = {0,0,30};
 
 #endif

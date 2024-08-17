@@ -25,13 +25,12 @@
 #define STICK_DEADZONE       10
 #define IGNORE_DEADZONE(v)   ((v) > STICK_DEADZONE || (v) < -STICK_DEADZONE ? (v) : 0)
 
-#define CAMERA_AZIMUTH_SPEED        0.02f
-#define CAMERA_INCLINATION_SPEED    0.02f
-#define CAMERA_DISTANCE_SPEED       0.5f
+#define CAMERA_AZIMUTH_SPEED        0.015f
+#define CAMERA_INCLINATION_SPEED    0.015f
+#define CAMERA_DISTANCE_SPEED       0.05f
+#define CAMERA_DISTANCE_SPEED_FAST  0.5f
 #define CAMERA_MIN_INCLINATION      (-M_PI_2 * 0.9)
 #define CAMERA_MAX_INCLINATION      (M_PI_2 * 0.9)
-#define CAMERA_MIN_DISTANCE         1.0f
-#define CAMERA_MAX_DISTANCE         100.0f
 
 typedef struct
 {
@@ -124,9 +123,11 @@ static bool draw_calls_dirty = true;
 static mat4x4_t projection_matrix;
 static mat4x4_t view_matrix;
 static mat4x4_t vp_matrix;
+
+static float camera_position[3];
+static quat_t camera_rotation;
 static float camera_azimuth;
 static float camera_inclination;
-static float camera_distance;
 
 static uint32_t current_object_count = OBJECT_COUNT;
 static bool animation_enabled = false;
@@ -259,7 +260,7 @@ void init()
     // Initialize camera properties
     float aspect_ratio = (float)resolution.width / (float)resolution.height;
     mat4x4_make_projection(&projection_matrix, camera_fov, aspect_ratio, camera_near_plane, camera_far_plane);
-    camera_distance = camera_start_distance;
+    memcpy(camera_position, camera_start_position, sizeof(camera_position));
 }
 
 void create_scene_resources()
@@ -544,11 +545,11 @@ void update(float delta_time)
 
     int8_t stick_x = IGNORE_DEADZONE(inputs.stick_x);
     int8_t stick_y = IGNORE_DEADZONE(inputs.stick_y);
+    int8_t cstick_x = IGNORE_DEADZONE(inputs.cstick_x);
     int8_t cstick_y = IGNORE_DEADZONE(inputs.cstick_y);
 
-    camera_azimuth += stick_x * delta_time * CAMERA_AZIMUTH_SPEED;
-    camera_inclination += stick_y * delta_time * CAMERA_INCLINATION_SPEED;
-    camera_distance += cstick_y * delta_time * CAMERA_DISTANCE_SPEED;
+    camera_azimuth -= cstick_x * delta_time * CAMERA_AZIMUTH_SPEED;
+    camera_inclination -= cstick_y * delta_time * CAMERA_INCLINATION_SPEED;
 
     if (camera_azimuth > M_TWOPI) camera_azimuth -= M_TWOPI;
     if (camera_azimuth < 0.0f) camera_azimuth += M_TWOPI;
@@ -556,8 +557,25 @@ void update(float delta_time)
     if (camera_inclination > CAMERA_MAX_INCLINATION) camera_inclination = CAMERA_MAX_INCLINATION;
     if (camera_inclination < CAMERA_MIN_INCLINATION) camera_inclination = CAMERA_MIN_INCLINATION;
 
-    if (camera_distance > CAMERA_MAX_DISTANCE) camera_distance = CAMERA_MAX_DISTANCE;
-    if (camera_distance < CAMERA_MIN_DISTANCE) camera_distance = CAMERA_MIN_DISTANCE;
+    quat_from_euler_zyx(&camera_rotation, camera_inclination, camera_azimuth, 0.0f);
+
+    float distance_speed = delta_time * (inputs.btn.z ? CAMERA_DISTANCE_SPEED : CAMERA_DISTANCE_SPEED_FAST);
+
+    float sin_azimuth, cos_azimuth, sin_inclination, cos_inclination;
+    fm_sincosf(camera_azimuth, &sin_azimuth, &cos_azimuth);
+    fm_sincosf(camera_inclination, &sin_inclination, &cos_inclination);
+    float forward[3] = {
+        -cos_inclination * sin_azimuth,
+        sin_inclination,
+        -cos_inclination * cos_azimuth
+    };
+    float up[3] = {0, 1, 0};
+    float right[3];
+    vec3_cross(right, forward, up);
+
+    camera_position[0] += (forward[0] * stick_y + right[0] * stick_x) * distance_speed;
+    camera_position[1] += (forward[1] * stick_y + right[1] * stick_x) * distance_speed;
+    camera_position[2] += (forward[2] * stick_y + right[2] * stick_x) * distance_speed;
 
     // Increase/Decrease the number of drawn objects with the D-pad.
     if (btn.d_up && current_object_count < OBJECT_COUNT) {
@@ -580,7 +598,6 @@ void update(float delta_time)
         if (!request_display_metrics) display_metrics = false;
     }
 
-
     if (animation_enabled) {
         // Compute animation based on delta time. It's enough for this demo.
         for (size_t i = 0; i < current_object_count; i++)
@@ -594,21 +611,21 @@ void update(float delta_time)
 void update_camera()
 {
     // Update camera matrices.
-    const float up[3] = {0, 1, 0};
-    const float target[3] = {0, 0, 0};
+    quat_t inverse_camera_rotation;
+    quat_inverse(&inverse_camera_rotation, &camera_rotation);
 
-    // Calculate camera position from spherical coordinates
-    float sin_azimuth, cos_azimuth, sin_inclination, cos_inclination;
-    fm_sincosf(camera_azimuth, &sin_azimuth, &cos_azimuth);
-    fm_sincosf(camera_inclination, &sin_inclination, &cos_inclination);
+    mat4x4_t camera_rotation_matrix;
+    mat4x4_make_rotation(&camera_rotation_matrix, inverse_camera_rotation.v);
 
-    const float eye[3] = {
-        camera_distance * cos_inclination * sin_azimuth,
-        camera_distance * sin_inclination,
-        camera_distance * cos_inclination * cos_azimuth
+    float inverse_camera_position[3] = {
+        -camera_position[0],
+        -camera_position[1],
+        -camera_position[2]
     };
-
-    mat4x4_make_lookat(&view_matrix, eye, up, target);
+    mat4x4_t camera_translation_matrix;
+    mat4x4_make_translation(&camera_translation_matrix, inverse_camera_position);
+    
+    mat4x4_mult(&view_matrix, &camera_rotation_matrix, &camera_translation_matrix);
     mat4x4_mult(&vp_matrix, &projection_matrix, &view_matrix);
 }
 

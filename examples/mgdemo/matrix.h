@@ -124,6 +124,35 @@ inline void mat4x4_make_rotation_translation(mat4x4_t *d, const float position[3
     d->m[3][3] = 1.f;
 }
 
+inline void mat4x4_make_rotation(mat4x4_t *d, const float rotation[4])
+{
+    float position[3] = {0};
+    mat4x4_make_rotation_translation(d, position, rotation);
+}
+
+inline void mat4x4_make_translation(mat4x4_t *d, const float position[3])
+{
+    d->m[0][0] = 1;
+    d->m[0][1] = 0;
+    d->m[0][2] = 0;
+    d->m[0][3] = 0;
+
+    d->m[1][0] = 0;
+    d->m[1][1] = 1;
+    d->m[1][2] = 0;
+    d->m[1][3] = 0;
+
+    d->m[2][0] = 0;
+    d->m[2][1] = 0;
+    d->m[2][2] = 1;
+    d->m[2][3] = 0;
+
+    d->m[3][0] = position[0];
+    d->m[3][1] = position[1];
+    d->m[3][2] = position[2];
+    d->m[3][3] = 1;
+}
+
 inline void mat4x4_make_lookat(mat4x4_t *d, const float eye[3], const float up[3], const float target[3])
 {
     float f[3] = {target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]};

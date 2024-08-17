@@ -32,23 +32,16 @@ inline void quat_from_axis_angle(quat_t *d, const float axis[3], float angle)
 
 inline void quat_from_euler_zyx(quat_t *d, float x, float y, float z)
 {
-    float sx, cx, sy, cy, sz, cz;
+    float xs, xc, ys, yc, zs, zc;
 
-    fm_sincosf(x, &sx, &cx);
-    fm_sincosf(y, &sy, &cy);
-    fm_sincosf(z, &sz, &cz);
+    fm_sincosf(x * 0.5f, &xs, &xc);
+    fm_sincosf(y * 0.5f, &ys, &yc);
+    fm_sincosf(z * 0.5f, &zs, &zc);
 
-    sx *= 0.5f;
-    cx *= 0.5f;
-    sy *= 0.5f;
-    cy *= 0.5f;
-    sz *= 0.5f;
-    cz *= 0.5f;
-
-    d->v[0] = cx * sz * cy - sx * cz * sy;
-    d->v[1] = cx * cz * sy + sx * sz * cy;
-    d->v[2] = sx * cz * cy - cx * sz * sy;
-    d->v[3] = cx * cz * cy + sx * sz * sy;
+    d->v[0] =  xs * yc * zc - xc * ys * zs;
+    d->v[1] =  xc * ys * zc + xs * yc * zs;
+    d->v[2] = -xs * ys * zc + xc * yc * zs;
+    d->v[3] =  xc * yc * zc + xs * ys * zs;
 }
 
 inline void quat_inverse(quat_t *d, const quat_t *q)
@@ -58,7 +51,7 @@ inline void quat_inverse(quat_t *d, const quat_t *q)
     d->v[0] = -q->v[0] * inv_mag2;
     d->v[1] = -q->v[1] * inv_mag2;
     d->v[2] = -q->v[2] * inv_mag2;
-    d->v[3] = q->v[3] * inv_mag2;
+    d->v[3] =  q->v[3] * inv_mag2;
 }
 
 inline void quat_inverse_in_place(quat_t *d)
