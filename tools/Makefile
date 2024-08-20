@@ -48,7 +48,7 @@ $(DECOMP_STUBS):
 mkasset_OBJS = mkasset/mkasset.o common/assetcomp.a
 mksprite_OBJS = mksprite/mksprite.o common/assetcomp.a
 mkfont_OBJS = mkfont/mkfont.o mkfont/freetype/FreeTypeAmalgam.o common/assetcomp.a
-mkmodel_OBJS = mkmodel/mkmodel.o common/assetcomp.a
+mkmodel_OBJS = mkmodel/mkmodel.o common/assetcomp.a mkmodel/meshoptimizer/vcacheoptimizer.o
 n64dso_OBJS = n64dso/n64dso.o common/assetcomp.a
 n64dso-extern_OBJS = n64dso/n64dso-extern.o
 n64dso-msym_OBJS = n64dso/n64dso-msym.o

@@ -13,11 +13,13 @@
 
 #include "../../include/GL/gl_enums.h"
 #include "../../src/GL/gl_constants.h"
+#include "../../include/magma_constants.h"
 #include "../../include/mgfx.h"
 #include "../../include/model64.h"
 #include "../../src/model64_internal.h"
 #include "../../src/model64_catmull.h"
 
+#include "meshoptimizer/meshoptimizer.h"
 
 #define CGLTF_IMPLEMENTATION
 #include "cgltf.h"
@@ -833,6 +835,182 @@ uint32_t texture_table_find_or_add(const char* path)
     return idx;
 }
 
+uint32_t read_index(const void *indices, uint32_t type, uint32_t i)
+{
+    switch (type) {
+    case GL_UNSIGNED_BYTE:
+        return ((const uint8_t*)indices)[i];
+    case GL_UNSIGNED_SHORT:
+        return ((const uint16_t*)indices)[i];
+    case GL_UNSIGNED_INT:
+        return ((const uint32_t*)indices)[i];
+    default:
+        return -1;
+    }
+}
+
+void write_index(void *indices, uint32_t type, uint32_t i, uint32_t value)
+{
+    switch (type) {
+    case GL_UNSIGNED_BYTE:
+        ((uint8_t*)indices)[i] = value;
+        break;
+    case GL_UNSIGNED_SHORT:
+        ((uint16_t*)indices)[i] = value;
+        break;
+    case GL_UNSIGNED_INT:
+        ((uint32_t*)indices)[i] = value;
+        break;
+    default:
+        break;
+    }
+}
+
+size_t get_index_size(uint32_t type)
+{
+    switch (type) {
+    case GL_UNSIGNED_BYTE:
+        return sizeof(uint8_t);
+    case GL_UNSIGNED_SHORT:
+        return sizeof(uint16_t);
+    case GL_UNSIGNED_INT:
+        return sizeof(uint32_t);
+    default:
+        return 0;
+    }
+}
+
+int optimize_primitive_buffers(primitive_t *primitive)
+{
+    const uint32_t invalid_index = 0xFFFFFFFF;
+
+    if (primitive->mode != GL_TRIANGLES) {
+        // Other modes not supported for now
+        return 0;
+    }
+
+    // Create new buffers
+    attribute_t *attributes = &primitive->position;
+    uint8_t *attribute_buffers[ATTRIBUTE_COUNT];
+    for (size_t i = 0; i < ATTRIBUTE_COUNT; i++)
+    {
+        if (attributes[i].pointer == NULL) continue;
+        attribute_buffers[i] = calloc(primitive->num_vertices, attributes[i].stride);
+    }
+    void *index_buffer = calloc(primitive->num_indices, get_index_size(primitive->index_type));
+
+    // Optimize buffers
+    uint32_t triangle_count = primitive->num_indices / 3;
+
+    uint32_t emitted_triangle_count = 0;
+    uint32_t emitted_vtx_count = 0;
+    bool *triangle_is_emitted_table = calloc(triangle_count, sizeof(bool));
+    uint32_t *vtx_index_table = malloc(primitive->num_vertices * sizeof(uint32_t));
+    memset(vtx_index_table, invalid_index, primitive->num_vertices * sizeof(uint32_t));
+
+    uint32_t chunk_offset = 0;
+    uint32_t chunk_vtx_count = 0;
+
+    bool error = false;
+
+    while (emitted_triangle_count < triangle_count) {
+        // Find the first triangle with the most shared vertices
+        uint32_t next_triangle = invalid_index;
+        int max_found_shared = -1;
+
+        for (size_t i = 0; i < triangle_count; i++)
+        {
+            // Skip triangles that have already been emitted
+            if (triangle_is_emitted_table[i]) continue;
+            
+            // Count vertices that are shared with the current chunk
+            int shared = 0;
+            for (size_t j = 0; j < 3; j++) {
+                uint32_t old_index = read_index(primitive->indices, primitive->index_type, i*3+j);
+                uint32_t new_index = vtx_index_table[old_index];
+                if (new_index != invalid_index && new_index >= chunk_offset) ++shared;
+            }
+            
+            // find the first maximum
+            if (shared > max_found_shared) {
+                next_triangle = i;
+                max_found_shared = shared;
+            }
+
+            // We won't find a triangle with more than 3 shared vertices, so stop searching immediately
+            if (shared == 3) break;
+        }
+
+        if (next_triangle == invalid_index) {
+            // This error would only occur because this function is buggy
+            fprintf(stderr, "Error: ran out of triangles...?\n");
+            error = true;
+            break;
+        }
+
+        // Check if the new triangle fits the current chunk
+        int new_vtx_count = 3 - max_found_shared;
+        if ((chunk_vtx_count + new_vtx_count) > MG_VERTEX_CACHE_COUNT) {
+            // Reset chunk and try again
+            chunk_offset += chunk_vtx_count;
+            chunk_vtx_count = 0;
+            continue;
+        }
+
+        // Emit triangle
+        for (size_t i = 0; i < 3; i++)
+        {
+            uint32_t old_index = read_index(primitive->indices, primitive->index_type, next_triangle*3+i);
+            uint32_t new_index = vtx_index_table[old_index];
+            if (new_index == invalid_index) {
+                new_index = emitted_vtx_count++;
+                vtx_index_table[old_index] = new_index;
+                ++chunk_vtx_count;
+
+                // Emit vertex (copy to new buffer)
+                for (size_t j = 0; j < ATTRIBUTE_COUNT; j++)
+                {
+                    if (attributes[j].pointer == NULL) continue;
+                    size_t size = attribute_get_data_size(&attributes[j]);
+                    uint8_t *dst = attribute_buffers[j] + new_index*size;
+                    uint8_t *src = (uint8_t*)attributes[j].pointer + old_index*size;
+                    memcpy(dst, src, size);
+                }
+            }
+
+            uint32_t index_buffer_offset = emitted_triangle_count * 3;
+            write_index(index_buffer, primitive->index_type, index_buffer_offset + i, new_index);
+        }
+        triangle_is_emitted_table[next_triangle] = true;
+        ++emitted_triangle_count;
+    }
+    
+    free(triangle_is_emitted_table);
+    free(vtx_index_table);
+
+    if (error) {
+        for (size_t i = 0; i < ATTRIBUTE_COUNT; i++)
+        {
+            if (attributes[i].pointer == NULL) continue;
+            free(attribute_buffers[i]);
+        }
+        free(index_buffer);
+        return 1;
+    }
+
+    // Replace old buffers
+    for (size_t i = 0; i < ATTRIBUTE_COUNT; i++)
+    {
+        if (attributes[i].pointer == NULL) continue;
+        free(attributes[i].pointer);
+        attributes[i].pointer = attribute_buffers[i];
+    }
+    free(primitive->indices);
+    primitive->indices = index_buffer;
+    
+    return 0;
+}
+
 int convert_primitive(cgltf_primitive *in_primitive, primitive_t *out_primitive)
 {
     // Matches the values of GL_TRIANGLES, GL_TRIANGLE_STRIPS etc. exactly so just copy it over
@@ -1002,7 +1180,7 @@ int convert_primitive(cgltf_primitive *in_primitive, primitive_t *out_primitive)
         }
 
         // Allocate memory for index data
-        out_primitive->indices = calloc(index_size, out_primitive->num_indices);
+        out_primitive->indices = calloc(out_primitive->num_indices, index_size);
 
         // Read from cgltf
         // TODO: Directly copy them over instead? Maybe it's fine like this since it's lossless
@@ -1014,10 +1192,17 @@ int convert_primitive(cgltf_primitive *in_primitive, primitive_t *out_primitive)
             return 1;
         }
 
+        meshopt_optimizeVertexCache(temp_indices, temp_indices, in_indices->count, out_primitive->num_vertices);
+
         // Convert indices
         convert_func(out_primitive->indices, temp_indices, in_indices->count);
 
         free(temp_indices);
+
+        if (optimize_primitive_buffers(out_primitive) != 0) {
+            fprintf(stderr, "Error: failed optimizing vertex and index buffers\n");
+            return 1;
+        }
     }
 
     // Convert materials to textures
