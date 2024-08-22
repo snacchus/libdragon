@@ -203,6 +203,19 @@ typedef struct
      * @return 0 on success or a negative value on failure (errno must be set)
      */
     int (*mkdir)( char *path, mode_t mode );
+    /**
+     * @brief Perform IO Control Request
+     *
+     * @param[in] file
+     *            File handle
+     * @param[in] cmd
+     *            Request ioctl command code 
+     * @param[in] argp
+     *            Pointer to a request-specific data structure
+     *
+     * @return 0 on success or a negative value on failure (errno must be set)
+     */
+    int (*ioctl)(void *file, unsigned long cmd, void *argp);
 } filesystem_t;
 
 /**

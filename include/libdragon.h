@@ -77,6 +77,7 @@
 #include "skc.h"
 #include "nand.h"
 #include "bbfs.h"
+#include "ioctl.h"
 #include "magma.h"
 #include "mgfx.h"
 

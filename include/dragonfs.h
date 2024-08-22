@@ -45,6 +45,12 @@
  * @{
  */
 
+#ifdef N64
+
+#include "ioctl.h"
+
+#endif
+
 /**
  * @brief Default filesystem location 
  *
@@ -64,6 +70,12 @@
  * @brief Maximum depth of directories supported
  */
 #define MAX_DIRECTORY_DEPTH 100
+
+/**
+ * @brief Base ROM Address Request ioctl Command Code
+ */
+#define IODFS_GET_ROM_BASE _IO('D', 0)
+
 
 /**
  * @name DragonFS Return values
