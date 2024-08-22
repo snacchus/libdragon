@@ -895,7 +895,8 @@ int optimize_primitive_buffers(primitive_t *primitive)
     for (size_t i = 0; i < ATTRIBUTE_COUNT; i++)
     {
         if (attributes[i].pointer == NULL) continue;
-        attribute_buffers[i] = calloc(primitive->num_vertices, attributes[i].stride);
+        // Allocate for double the number of vertices because some of them might get duplicated
+        attribute_buffers[i] = calloc(primitive->num_vertices*2, attribute_get_data_size(&attributes[i]));
     }
     void *index_buffer = calloc(primitive->num_indices, get_index_size(primitive->index_type));
 
@@ -962,7 +963,7 @@ int optimize_primitive_buffers(primitive_t *primitive)
         {
             uint32_t old_index = read_index(primitive->indices, primitive->index_type, next_triangle*3+i);
             uint32_t new_index = vtx_index_table[old_index];
-            if (new_index == invalid_index) {
+            if (new_index == invalid_index || new_index < chunk_offset) {
                 new_index = emitted_vtx_count++;
                 vtx_index_table[old_index] = new_index;
                 ++chunk_vtx_count;
@@ -1007,6 +1008,11 @@ int optimize_primitive_buffers(primitive_t *primitive)
     }
     free(primitive->indices);
     primitive->indices = index_buffer;
+
+    if (primitive->num_vertices != emitted_vtx_count) {
+        fprintf(stderr, "Vertex count changed during optimization: %d -> %d\n", primitive->num_vertices, emitted_vtx_count);
+        primitive->num_vertices = emitted_vtx_count;
+    }
     
     return 0;
 }

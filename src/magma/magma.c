@@ -849,13 +849,13 @@ static uint32_t prepare_batch(const uint16_t *indices, int32_t vertex_offset, ui
 
         count += required;
         required = advance;
-
-        #ifdef MG_DEBUG_VERTEX_CACHE
-        vertex_cache_dump(cache);
-        #endif
     }
 
     assertf(cache->total_count + cache_offset <= MG_VERTEX_CACHE_COUNT, "Vertex batch is too big! This is a bug within magma.");
+
+    #ifdef MG_DEBUG_VERTEX_CACHE
+    vertex_cache_dump(cache);
+    #endif
 
     vertex_cache_load(cache, vertex_offset, cache_offset);
     return count;
