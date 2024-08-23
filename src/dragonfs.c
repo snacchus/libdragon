@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <malloc.h>
+#include <stdalign.h>
 #include "dragonfs.h"
 #include "n64sys.h"
 #include "dma.h"
