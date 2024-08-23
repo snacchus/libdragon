@@ -1010,7 +1010,9 @@ int optimize_primitive_buffers(primitive_t *primitive)
     primitive->indices = index_buffer;
 
     if (primitive->num_vertices != emitted_vtx_count) {
-        fprintf(stderr, "Vertex count changed during optimization: %d -> %d\n", primitive->num_vertices, emitted_vtx_count);
+        if (flag_verbose) {
+            printf("Vertex count changed during optimization: %d -> %d\n", primitive->num_vertices, emitted_vtx_count);
+        }
         primitive->num_vertices = emitted_vtx_count;
     }
     
