@@ -166,37 +166,50 @@ LOAD_POS_NORM1:
     #define vmmv3_i $v08
     #define vmmv3_f $v09
 
+    #define vinvd_i      $v17
+    #define vinvd_f      $v18
+
     li t0, %lo(MATRICES)
     ldv vmn0_f.e0, 0xA0,t0
     ldv vmn0_f.e4, 0xA0,t0
     ldv vmn0_i.e0, 0x80,t0
+    ldv vmn0_i.e4, 0x80,t0
+    ldv vmn1_f.e0, 0xA8,t0
+    ldv vmn1_f.e4, 0xA8,t0
+    ldv vmn1_i.e0, 0x88,t0
+    ldv vmn1_i.e4, 0x88,t0
+    ldv vmn2_f.e0, 0xB0,t0
+    ldv vmn2_f.e4, 0xB0,t0
+    ldv vmn2_i.e0, 0x90,t0
+    ldv vmn2_i.e4, 0x90,t0
+
+
+
+
+
 
     # Unpack normal
-    vand v___, vnormmask, vpos_in.h3;                   ldv vmn0_i.e4, 0x80,t0
-                                                        ldv vmn1_f.e0, 0xA8,t0
-                                                        ldv vmn1_f.e4, 0xA8,t0
-                                                        ldv vmn1_i.e0, 0x88,t0
-    vmudn vnorm, v___, vnormfactor;                     ldv vmn1_i.e4, 0x88,t0
-                                                        ldv vmn2_f.e0, 0xB0,t0
-                                                        ldv vmn2_f.e4, 0xB0,t0
-                                                        ldv vmn2_i.e0, 0x90,t0
-    vmudn v___,  vmn0_f, vnorm.h0;                      ldv vmn2_i.e4, 0x90,t0
-    vmadh v___,  vmn0_i, vnorm.h0;                      ldv vmmv0_f.e0, 0x60,t0
-    vmadn v___,  vmn1_f, vnorm.h1;                      ldv vmmv0_f.e4, 0x60,t0
-    vmadh v___,  vmn1_i, vnorm.h1;                      ldv vmmv0_i.e0, 0x40,t0
-    vmadn v___,  vmn2_f, vnorm.h2;                      ldv vmmv0_i.e4, 0x40,t0
-    vmadh vnorm, vmn2_i, vnorm.h2;                      ldv vmmv1_f.e0, 0x68,t0
-                                                        ldv vmmv1_f.e4, 0x68,t0
+                                                                        vand v___, vnormmask, vpos_in.h3
+                                                                        vmudn vnorm, v___, vnormfactor
 
+                                                                        # Load constant 1
+                                                                        vxor vinvd_f, vinvd_f
     li t1, %lo(MG_NORMAL_MASK)
+    lsv vinvd_i.e2, 0x8,t1;
+    lsv vinvd_i.e6, 0x8,t1
+                                            
+                                                        
+                                                                        vmudn v___,  vmn0_f, vnorm.h0
+                                                                        vmadh v___,  vmn0_i, vnorm.h0
+    ldv vmmv0_f.e0, 0x60,t0;                                            vmadn v___,  vmn1_f, vnorm.h1
+    ldv vmmv0_f.e4, 0x60,t0;                                            vmadh v___,  vmn1_i, vnorm.h1
+    ldv vmmv0_i.e0, 0x40,t0;                                            vmadn v___,  vmn2_f, vnorm.h2
+    ldv vmmv0_i.e4, 0x40,t0;                                            vmadh vnorm, vmn2_i, vnorm.h2
+    ldv vmmv1_f.e0, 0x68,t0;
+    ldv vmmv1_f.e4, 0x68,t0
+
     lsv vpos_in.e3, 0xA,t1
     lsv vpos_in.e7, 0xA,t1
-
-    #define vinvd_i      $v17
-    #define vinvd_f      $v18
-                                                         # Load constant 1
-    vxor vinvd_f, vinvd_f;                              lsv vinvd_i.e2, 0x8,t1
-                                                        lsv vinvd_i.e6, 0x8,t1
 
     #undef vmn0_i
     #undef vmn0_f
@@ -222,31 +235,34 @@ LOAD_POS_NORM1:
     #define fog_enabled  t7
 
     # re-normalize normal
-    vmudh v___, vnorm, vnorm;                           ldv vmmv1_i.e0, 0x48,t0
-    vsar  vsqdist_f, COP2_ACC_MD;                       ldv vmmv1_i.e4, 0x48,t0
-    vsar  vsqdist_i, COP2_ACC_HI;                       ldv vmmv2_f.e0, 0x70,t0
-    vmudn v___,     vmmv0_f, vpos_in.h0;                ldv vmmv2_f.e4, 0x70,t0
-    vmadh v___,     vmmv0_i, vpos_in.h0;                ldv vmmv2_i.e0, 0x50,t0
-    vmadn v___,     vmmv1_f, vpos_in.h1;                ldv vmmv2_i.e4, 0x50,t0
-    vmadh v___,     vmmv1_i, vpos_in.h1;                ldv vmmv3_f.e0, 0x78,t0
-    vmadn v___,     vmmv2_f, vpos_in.h2;                ldv vmmv3_f.e4, 0x78,t0
-    vmadh v___,     vmmv2_i, vpos_in.h2;                ldv vmmv3_i.e0, 0x58,t0
-    vmadn v___,     vmmv3_f, vpos_in.h3;                ldv vmmv3_i.e4, 0x58,t0
-    vmadh vpos_eye, vmmv3_i, vpos_in.h3;                ldv vmvp0_f.e0, 0x20,t0
-    vaddc vinvdist_f, vsqdist_f, vsqdist_f.h1;          ldv vmvp0_f.e4, 0x20,t0
-    vadd  vinvdist_i, vsqdist_i, vsqdist_i.h1;          ldv vmvp0_i.e0, 0x00,t0
-                                                        ldv vmvp0_i.e4, 0x00,t0
-                                                        ldv vmvp1_f.e0, 0x28,t0
-    vaddc vsqdist_f, vinvdist_f, vsqdist_f.h2;          ldv vmvp1_f.e4, 0x28,t0
-    vadd  vsqdist_i, vinvdist_i, vsqdist_i.h2;          ldv vmvp1_i.e0, 0x08,t0
-                                                        ldv vmvp1_i.e4, 0x08,t0
-                                                        ldv vmvp2_f.e0, 0x30,t0
-                                                        ldv vmvp2_f.e4, 0x30,t0
-    vrsqh v___.e0,       vsqdist_i.e0;                  ldv vmvp2_i.e0, 0x10,t0
-    vrsql vinvdist_f.e0, vsqdist_f.e0;                  ldv vmvp2_i.e4, 0x10,t0
-    vrsqh vinvdist_i.e0, vsqdist_i.e4;                  ldv vmvp3_f.e0, 0x38,t0
-    vrsql vinvdist_f.e4, vsqdist_f.e4;                  ldv vmvp3_f.e4, 0x38,t0
-    vrsqh vinvdist_i.e4, vzero.e0;                      ldv vmvp3_i.e0, 0x18,t0
+                                                                        vmudh v___, vnorm, vnorm
+    ldv vmmv1_i.e0, 0x48,t0;                                            vsar  vsqdist_f, COP2_ACC_MD
+    ldv vmmv1_i.e4, 0x48,t0;                                            vsar  vsqdist_i, COP2_ACC_HI
+    ldv vmmv2_f.e0, 0x70,t0;                                            vmudn v___,     vmmv0_f, vpos_in.h0
+    ldv vmmv2_f.e4, 0x70,t0;                                            vmadh v___,     vmmv0_i, vpos_in.h0
+    ldv vmmv2_i.e0, 0x50,t0;                                            vmadn v___,     vmmv1_f, vpos_in.h1
+    ldv vmmv2_i.e4, 0x50,t0;                                            vmadh v___,     vmmv1_i, vpos_in.h1
+    ldv vmmv3_f.e0, 0x78,t0;                                            vmadn v___,     vmmv2_f, vpos_in.h2
+    ldv vmmv3_f.e4, 0x78,t0;                                            vmadh v___,     vmmv2_i, vpos_in.h2
+    ldv vmmv3_i.e0, 0x58,t0;                                            vmadn v___,     vmmv3_f, vpos_in.h3
+    ldv vmmv3_i.e4, 0x58,t0;                                            vmadh vpos_eye, vmmv3_i, vpos_in.h3
+    ldv vmvp0_f.e0, 0x20,t0;                                            vaddc vinvdist_f, vsqdist_f, vsqdist_f.h1
+    ldv vmvp0_f.e4, 0x20,t0;                                            vadd  vinvdist_i, vsqdist_i, vsqdist_i.h1
+    ldv vmvp0_i.e0, 0x00,t0;
+    ldv vmvp0_i.e4, 0x00,t0
+    ldv vmvp1_f.e0, 0x28,t0
+                                                                        vaddc vsqdist_f, vinvdist_f, vsqdist_f.h2
+    ldv vmvp1_f.e4, 0x28,t0;                                            vadd  vsqdist_i, vinvdist_i, vsqdist_i.h2
+    ldv vmvp1_i.e0, 0x08,t0;
+    ldv vmvp1_i.e4, 0x08,t0
+    ldv vmvp2_f.e0, 0x30,t0
+    ldv vmvp2_f.e4, 0x30,t0
+                                                                        vrsqh v___.e0,       vsqdist_i.e0
+    ldv vmvp2_i.e0, 0x10,t0;                                            vrsql vinvdist_f.e0, vsqdist_f.e0
+    ldv vmvp2_i.e4, 0x10,t0;                                            vrsqh vinvdist_i.e0, vsqdist_i.e4
+    ldv vmvp3_f.e0, 0x38,t0;                                            vrsql vinvdist_f.e4, vsqdist_f.e4
+    ldv vmvp3_f.e4, 0x38,t0;                                            vrsqh vinvdist_i.e4, vzero.e0
+    ldv vmvp3_i.e0, 0x18,t0;
 
     #undef vsqdist_i
     #undef vsqdist_f
@@ -257,16 +273,17 @@ LOAD_POS_NORM1:
     #define vfog_f          $v03
     #define vviewscale      $v04
     #define vfogtmp         $v20
-    vmudn v___,        vmvp0_f, vpos_in.h0;             ldv vmvp3_i.e4, 0x18,t0
-    vmadh v___,        vmvp0_i, vpos_in.h0;             
-    vmadn v___,        vmvp1_f, vpos_in.h1;             
-    vmadh v___,        vmvp1_i, vpos_in.h1;             
-    vmadn v___,        vmvp2_f, vpos_in.h2;             li t1, %lo(FOG)
-    vmadh v___,        vmvp2_i, vpos_in.h2;             llv vfog_i.e0, 0,t1
-    vmadn vpos_clip_f, vmvp3_f, vpos_in.h3;             llv vfog_i.e4, 0,t1
-    vmadh vpos_clip_i, vmvp3_i, vpos_in.h3;             llv vfog_f.e0, 4,t1
-    vsubc vfogtmp, vzero, vpos_eye.h2;                  llv vfog_f.e4, 4,t1
-    vge vfogtmp, vpos_eye.h2;                           li t0, %lo(MG_STATE)
+                                                                        vmudn v___,        vmvp0_f, vpos_in.h0
+    ldv vmvp3_i.e4, 0x18,t0;                                            vmadh v___,        vmvp0_i, vpos_in.h0
+                                                                        vmadn v___,        vmvp1_f, vpos_in.h1
+                                                                        vmadh v___,        vmvp1_i, vpos_in.h1
+                                                                        vmadn v___,        vmvp2_f, vpos_in.h2
+    li t1, %lo(FOG);                                                    vmadh v___,        vmvp2_i, vpos_in.h2
+    llv vfog_i.e0, 0,t1;                                                vmadn vpos_clip_f, vmvp3_f, vpos_in.h3
+    llv vfog_i.e4, 0,t1;                                                vmadh vpos_clip_i, vmvp3_i, vpos_in.h3
+    llv vfog_f.e0, 4,t1;                                                vsubc vfogtmp, vzero, vpos_eye.h2
+    llv vfog_f.e4, 4,t1;                                                vge vfogtmp, vpos_eye.h2
+    li t0, %lo(MG_STATE);
 
     #undef vmmv0_i
     #undef vmmv0_f
@@ -286,8 +303,9 @@ LOAD_POS_NORM1:
     #undef vmvp3_f
     #undef vpos_in
 
-    vmudm v___,  vnorm, vinvdist_f.h0;                  ldv vviewscale.e0, 0x0,t0
-    vmadh vnorm, vnorm, vinvdist_i.h0;                  ldv vviewscale.e4, 0x0,t0
+                                                                        vmudm v___,  vnorm, vinvdist_f.h0
+    ldv vviewscale.e0, 0x0,t0;                                          vmadh vnorm, vnorm, vinvdist_i.h0
+    ldv vviewscale.e4, 0x0,t0;
 
     #undef vinvdist_i
     #undef vinvdist_f
@@ -311,50 +329,55 @@ LOAD_POS_NORM1:
     #define clip_codes      t8
     #define tr_codes        t9
 
-                                                        lw flags, %lo(MODES_FLAGS)
-    vsubc vfogtmp, vfog_i.h1;                           ldv vclip_factors.e0, 0x10,t0
-    vmudm vpos_clip_i, vpos_clip_i, vshift8.e4;         ldv vclip_factors.e4, 0x10,t0
-    vmadl vpos_clip_f, vpos_clip_f, vshift8.e4;         ldv vviewoff.e0,   0x8,t0
-    vmudm vviewscale_i, vviewscale, vviewscale.h3;      ldv vviewoff.e4,   0x8,t0
-    vmadn vviewscale_f, vzero, vzero;                   LOAD_COLOR0: llv vrgba_in.e0, 0, vtx_in0_ptr
-    vmudm v___, vfogtmp, vfog_f.h0;                     LOAD_COLOR1: llv vrgba_in.e2, 0, vtx_in1_ptr
-    vmadh vfogtmp, vfogtmp, vfog_i.h0;                  LOAD_TEXCOORD0: llv vtex.e0, 0,vtx_in0_ptr
+    lw flags, %lo(MODES_FLAGS)
+                                                                        vsubc vfogtmp, vfog_i.h1
+    ldv vclip_factors.e0, 0x10,t0;                                      vmudm vpos_clip_i, vpos_clip_i, vshift8.e4
+    ldv vclip_factors.e4, 0x10,t0;                                      vmadl vpos_clip_f, vpos_clip_f, vshift8.e4
+    ldv vviewoff.e0,   0x8,t0;                                          vmudm vviewscale_i, vviewscale, vviewscale.h3
+    ldv vviewoff.e4,   0x8,t0;                                          vmadn vviewscale_f, vzero, vzero
+    LOAD_COLOR0: llv vrgba_in.e0, 0, vtx_in0_ptr;                       vmudm v___, vfogtmp, vfog_f.h0
+    LOAD_COLOR1: llv vrgba_in.e2, 0, vtx_in1_ptr;                       vmadh vfogtmp, vfogtmp, vfog_i.h0
+    LOAD_TEXCOORD0: llv vtex.e0, 0,vtx_in0_ptr;
     #undef vfog_i
     #undef vfog_f
-    vmudl v___,     vpos_clip_f, vviewscale.h3;         LOAD_TEXCOORD1: llv vtex.e4, 0,vtx_in1_ptr
-    vmadm vnormw_i, vpos_clip_i, vviewscale.h3;         andi fog_enabled, flags, MGFX_FLAG_FOG
+                                                                        vmudl v___,     vpos_clip_f, vviewscale.h3
+    LOAD_TEXCOORD1: llv vtex.e4, 0,vtx_in1_ptr;                         vmadm vnormw_i, vpos_clip_i, vviewscale.h3
+    andi fog_enabled, flags, MGFX_FLAG_FOG;
     #undef vviewscale
-    vmadn vnormw_f, vzero, vzero;                       li s0, %lo(LIGHTING_LIGHTS)
-
-    vmudn vguard_f, vpos_clip_f, vclip_factors;         sdv vpos_clip_i.e0,  MG_VTX_CS_POSi + 0,          vtx_out_ptr
-    vmadh vguard_i, vpos_clip_i, vclip_factors;         sdv vpos_clip_f.e0,  MG_VTX_CS_POSf + 0,          vtx_out_ptr
+                                                                        vmadn vnormw_f, vzero, vzero
+    li s0, %lo(LIGHTING_LIGHTS);                                        vmudn vguard_f, vpos_clip_f, vclip_factors
+    sdv vpos_clip_i.e0,  MG_VTX_CS_POSi + 0,vtx_out_ptr;                vmadh vguard_i, vpos_clip_i, vclip_factors
+    sdv vpos_clip_f.e0,  MG_VTX_CS_POSf + 0,vtx_out_ptr;
     #undef vclip_factors
 
-    vrcph v___.e3,    vnormw_i.e3;                      sdv vpos_clip_i.e4,  MG_VTX_CS_POSi + MG_VTX_SIZE,vtx_out_ptr
-    vrcpl vinvw_f.e3, vnormw_f.e3;                      sdv vpos_clip_f.e4,  MG_VTX_CS_POSf + MG_VTX_SIZE,vtx_out_ptr
-    vrcph vinvw_i.e3, vnormw_i.e7;                      ldv vrgba.e0, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
-    vrcpl vinvw_f.e7, vnormw_f.e7;                      ldv vrgba.e4, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0 # ambient
-    vrcph vinvw_i.e7, vzero.e0;                         sltu fog_enabled, zero, fog_enabled
-    vch v___, vguard_i, vguard_i.h3;                    lw light_count, %lo(LIGHTING_COUNT)
-    vcl v___, vguard_f, vguard_f.h3;                    cfc2 clip_codes, COP2_CTRL_VCC
+    vrcph v___.e3,    vnormw_i.e3
+    sdv vpos_clip_i.e4,  MG_VTX_CS_POSi + MG_VTX_SIZE,vtx_out_ptr;      vrcpl vinvw_f.e3, vnormw_f.e3
+    sdv vpos_clip_f.e4,  MG_VTX_CS_POSf + MG_VTX_SIZE,vtx_out_ptr;      vrcph vinvw_i.e3, vnormw_i.e7
+    ldv vrgba.e0, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0;            vrcpl vinvw_f.e7, vnormw_f.e7
+    ldv vrgba.e4, MGFX_LIGHT_SIZE * MGFX_LIGHT_COUNT_MAX,s0;            vrcph vinvw_i.e7, vzero.e0
+    sltu fog_enabled, zero, fog_enabled;                                vch v___, vguard_i, vguard_i.h3
+    lw light_count, %lo(LIGHTING_COUNT);                                vcl v___, vguard_f, vguard_f.h3
+    cfc2 clip_codes, COP2_CTRL_VCC;
     #undef vguard_i
     #undef vguard_f
 
     #define vpos_scr_i      $v04
     #define vpos_scr_f      $v05
-    vmudl v___,       vpos_clip_f, vinvw_f.h3;          srl t2, clip_codes, 4
-    vmadm v___,       vpos_clip_i, vinvw_f.h3;          li v1, 0x7FFF
-    vmadn vpos_scr_f, vpos_clip_f, vinvw_i.h3;          ssv vnormw_i.e3, MG_VTX_Wi + 0,          vtx_out_ptr
-    vmadh vpos_scr_i, vpos_clip_i, vinvw_i.h3;          ssv vnormw_f.e3, MG_VTX_Wf + 0,          vtx_out_ptr
-    vge vfogtmp, vzero;                                 ssv vnormw_i.e7, MG_VTX_Wi + MG_VTX_SIZE,vtx_out_ptr
-    vmudh v___, vviewoff, K1;                           ssv vnormw_f.e7, MG_VTX_Wf + MG_VTX_SIZE,vtx_out_ptr
+                                                                        vmudl v___,       vpos_clip_f, vinvw_f.h3
+    srl t2, clip_codes, 4;                                              vmadm v___,       vpos_clip_i, vinvw_f.h3
+    li v1, 0x7FFF;                                                      vmadn vpos_scr_f, vpos_clip_f, vinvw_i.h3
+    ssv vnormw_i.e3, MG_VTX_Wi + 0,          vtx_out_ptr;               vmadh vpos_scr_i, vpos_clip_i, vinvw_i.h3
+    ssv vnormw_f.e3, MG_VTX_Wf + 0,          vtx_out_ptr;               vge vfogtmp, vzero
+    ssv vnormw_i.e7, MG_VTX_Wi + MG_VTX_SIZE,vtx_out_ptr;               vmudh v___, vviewoff, K1
+    ssv vnormw_f.e7, MG_VTX_Wf + MG_VTX_SIZE,vtx_out_ptr;
     #undef viewoff
     #undef vnormw_i
     #undef vnormw_f
-    vmadl v___,       vpos_scr_f, vviewscale_f;         ssv vinvw_i.e3, MG_VTX_INVWi + 0,          vtx_out_ptr
-    vmadm v___,       vpos_scr_i, vviewscale_f;         ssv vinvw_f.e3, MG_VTX_INVWf + 0,          vtx_out_ptr
-    vmadn vpos_scr_f, vpos_scr_f, vviewscale_i;         ssv vinvw_i.e7, MG_VTX_INVWi + MG_VTX_SIZE,vtx_out_ptr
-    vmadh vpos_scr_i, vpos_scr_i, vviewscale_i;         ssv vinvw_f.e7, MG_VTX_INVWf + MG_VTX_SIZE,vtx_out_ptr
+                                                                        vmadl v___,       vpos_scr_f, vviewscale_f
+    ssv vinvw_i.e3, MG_VTX_INVWi + 0,          vtx_out_ptr;             vmadm v___,       vpos_scr_i, vviewscale_f
+    ssv vinvw_f.e3, MG_VTX_INVWf + 0,          vtx_out_ptr;             vmadn vpos_scr_f, vpos_scr_f, vviewscale_i
+    ssv vinvw_i.e7, MG_VTX_INVWi + MG_VTX_SIZE,vtx_out_ptr;             vmadh vpos_scr_i, vpos_scr_i, vviewscale_i
+    ssv vinvw_f.e7, MG_VTX_INVWf + MG_VTX_SIZE,vtx_out_ptr;
     #undef vinvw_i
     #undef vinvw_f
     #undef vviewscale_i
@@ -362,9 +385,10 @@ LOAD_POS_NORM1:
 
     #define vlcol        $v06
                                     
-    vch v___, vpos_clip_i, vpos_clip_i.h3;              andi clip_codes, 0x707
-    vcl v___, vpos_clip_f, vpos_clip_f.h3;              andi t2, 0x707
-                                                        cfc2 tr_codes, COP2_CTRL_VCC
+                                                                        vch v___, vpos_clip_i, vpos_clip_i.h3
+    andi clip_codes, 0x707;                                             vcl v___, vpos_clip_f, vpos_clip_f.h3
+    andi t2, 0x707;
+    cfc2 tr_codes, COP2_CTRL_VCC
     
     #define vlpos        $v07
     # compute lighting
@@ -390,19 +414,21 @@ light_loop:
 
     # If light is positional, the light vector points from the vertex to the light position
     # This is shifted left by 5 because both values are in s10.5 format
-    vsubc vdiff, vlpos, vpos_eye;                       lh is_point, %lo(MGFX_LIGHT_POSITION) + 0x6(s0)
+                                                                        vsubc vdiff, vlpos, vpos_eye
+    lh is_point, %lo(MGFX_LIGHT_POSITION) + 0x6(s0);
     
     # Dot product of light vector with itself
     # Product is shifted left by 10 because two s10.5 values were multiplied,
     # and then shifted right by 16 because of vsar.
     # This means the result is shifted right by 6
-    vmudh v___, vdiff, vdiff;                           sdv vpos_scr_i.e0,  MG_VTX_XYZ + 0,          vtx_out_ptr
-    vsar  vsqdist_f, COP2_ACC_MD;                       sdv vpos_scr_i.e4,  MG_VTX_XYZ + MG_VTX_SIZE,vtx_out_ptr
-    vsar  vsqdist_i, COP2_ACC_HI;                       addi light_count, -1
-    vaddc vdist_f, vsqdist_f, vsqdist_f.h1;             slt t0, light_count, zero
-    vadd  vdist_i, vsqdist_i, vsqdist_i.h1;             sub t0, zero, t0
-    vaddc vsqdist_f, vdist_f, vsqdist_f.h2;             ctc2 t0, COP2_CTRL_VCC
-    vadd  vsqdist_i, vdist_i, vsqdist_i.h2;             ldv vlcol.e0, MGFX_LIGHT_COLOR,s0
+                                                                        vmudh v___, vdiff, vdiff
+    sdv vpos_scr_i.e0,  MG_VTX_XYZ + 0,          vtx_out_ptr;           vsar  vsqdist_f, COP2_ACC_MD
+    sdv vpos_scr_i.e4,  MG_VTX_XYZ + MG_VTX_SIZE,vtx_out_ptr;           vsar  vsqdist_i, COP2_ACC_HI
+    addi light_count, -1;                                               vaddc vdist_f, vsqdist_f, vsqdist_f.h1
+    slt t0, light_count, zero;                                          vadd  vdist_i, vsqdist_i, vsqdist_i.h1
+    sub t0, zero, t0;                                                   vaddc vsqdist_f, vdist_f, vsqdist_f.h2
+    ctc2 t0, COP2_CTRL_VCC;                                             vadd  vsqdist_i, vdist_i, vsqdist_i.h2
+    ldv vlcol.e0, MGFX_LIGHT_COLOR,s0;
 
     # Compute inverse distance (reciprocal square root)
     # Result is shifted left by 10:
@@ -410,22 +436,22 @@ light_loop:
     #     So the original (right) shift of -6 becomes -(-6/2) = 3
     #   - vrsq additionally shifts left by 7
     # vinvd: --  1/d0  1.0  --  --  1/d1  1.0  --
-    vrsqh v___.e0,    vsqdist_i.e0;                     ldv vlcol.e4, MGFX_LIGHT_COLOR,s0
-    vrsql vinvd_f.e1, vsqdist_f.e0;                     ldv vatt_i.e0, MGFX_LIGHT_ATT_INT,s0
-    vrsqh vinvd_i.e1, vsqdist_i.e4;                     ldv vatt_i.e4, MGFX_LIGHT_ATT_INT,s0
-    vrsql vinvd_f.e5, vsqdist_f.e4;                     ldv vatt_f.e0, MGFX_LIGHT_ATT_FRAC,s0
-    vrsqh vinvd_i.e5, vzero.e0;                         ldv vatt_f.e4, MGFX_LIGHT_ATT_FRAC,s0
-
-    vmrg vlcol, vzero, vlcol;
+    vrsqh v___.e0,    vsqdist_i.e0
+    ldv vlcol.e4, MGFX_LIGHT_COLOR,s0;                                  vrsql vinvd_f.e1, vsqdist_f.e0
+    ldv vatt_i.e0, MGFX_LIGHT_ATT_INT,s0;                               vrsqh vinvd_i.e1, vsqdist_i.e4
+    ldv vatt_i.e4, MGFX_LIGHT_ATT_INT,s0;                               vrsql vinvd_f.e5, vsqdist_f.e4
+    ldv vatt_f.e0, MGFX_LIGHT_ATT_FRAC,s0;                              vrsqh vinvd_i.e5, vzero.e0
+    ldv vatt_f.e4, MGFX_LIGHT_ATT_FRAC,s0;                              vmrg vlcol, vzero, vlcol
 
     # Get actual distance by multiplying the inverse with the squared distance: d^-1 * d^2 = d^(2-1) = d
     # Because vinvd.e2 is initialized to 1, the squared distance will be in vdist.e2
     # d is shifted left by 4, d^2 is still shifted right by 6
     # vdist: --  d0  d0^2  --  --  d1  d1^2  --
-    vmudl v___,    vinvd_f, vsqdist_f.h0;               srl t1, clip_codes, 5
-    vmadm v___,    vinvd_i, vsqdist_f.h0;               srl t3, t2, 5
-    vmadn vdist_f, vinvd_f, vsqdist_i.h0;               or t1, clip_codes
-    vmadh vdist_i, vinvd_i, vsqdist_i.h0;               or t3, t2
+                                                                        vmudl v___,    vinvd_f, vsqdist_f.h0
+    srl t1, clip_codes, 5;                                              vmadm v___,    vinvd_i, vsqdist_f.h0
+    srl t3, t2, 5;                                                      vmadn vdist_f, vinvd_f, vsqdist_i.h0
+    or t1, clip_codes;                                                  vmadh vdist_i, vinvd_i, vsqdist_i.h0
+    or t3, t2;
 
 
     # Multiply with attenuation coefficients
@@ -434,32 +460,35 @@ light_loop:
     # - d is shifted left by 4, so k1 is pre-shifted right by 4 on CPU
     # - d^2 is shifted right by 6, so k2 is pre-shifted left by 6 on CPU
     # vdist: --  k1*d0  k2*d0^2  --  --  k1*d1  k2*d1^2  --
-    vmudl v___,    vdist_f, vatt_f;                     sb t1, MG_VTX_CLIP_CODE +           0(vtx_out_ptr)
-    vmadm v___,    vdist_i, vatt_f;                     sb t3, MG_VTX_CLIP_CODE + MG_VTX_SIZE(vtx_out_ptr)
-    vmadn vdist_f, vdist_f, vatt_i;                     
-    vmadh vdist_i, vdist_i, vatt_i;                     
+                                                                        vmudl v___,    vdist_f, vatt_f
+    sb t1, MG_VTX_CLIP_CODE +           0(vtx_out_ptr);                 vmadm v___,    vdist_i, vatt_f
+    sb t3, MG_VTX_CLIP_CODE + MG_VTX_SIZE(vtx_out_ptr);                 vmadn vdist_f, vdist_f, vatt_i
+                                                                        vmadh vdist_i, vdist_i, vatt_i
+    
 
     # Normalize light vector by multiplying the reciprocal distance.
     # Light vector is shifted left by 5 and inverse distance is shifted left by 10.
     # This means the result is shifted left by 15, which makes the result in vlightdir a signed fraction.
     # This happens to match perfectly so we can continue the following calculations without any adjustment.
-    vmudm v___,   vdiff, vinvd_f.h1
-    vmadh vppoint, vdiff, vinvd_i.h1
+                                                                        vmudm v___,   vdiff, vinvd_f.h1
+                                                                        vmadh vppoint, vdiff, vinvd_i.h1
 
     # Compute final attenuation factor
     # Sum is shifted right by 1
     # k0 + k1*d + k2*d^2
-    vaddc vatt_f, vdist_f.h1;                           
-    vadd  vatt_i, vdist_i.h1;                           
-    vaddc vatt_f, vdist_f.h2;                           sltu is_point, zero, is_point
-    vadd  vatt_i, vdist_i.h2;                           sub is_point, zero, is_point
+                                                                        vaddc vatt_f, vdist_f.h1
+                                                                        vadd  vatt_i, vdist_i.h1
+                                                                        vaddc vatt_f, vdist_f.h2
+    sltu is_point, zero, is_point;                                      vadd  vatt_i, vdist_i.h2
+    sub is_point, zero, is_point;
     # Final factor is not shifted
     # 1 / (k0 + k1*d + k2*d^2)
-    vrcph v___.e0,   vatt_i.e0;                         ctc2 is_point, COP2_CTRL_VCC
-    vrcpl vatt_f.e0, vatt_f.e0;                         
-    vrcph vatt_i.e0, vatt_i.e4;                         
-    vrcpl vatt_f.e4, vatt_f.e4;                         
-    vrcph vatt_i.e4, vzero.e0;                          
+                                                                        vrcph v___.e0,   vatt_i.e0
+    ctc2 is_point, COP2_CTRL_VCC;                                       vrcpl vatt_f.e0, vatt_f.e0
+                                                                        vrcph vatt_i.e0, vatt_i.e4
+                                                                        vrcpl vatt_f.e4, vatt_f.e4
+                                                                        vrcph vatt_i.e4, vzero.e0
+
 
     #undef vdiff
     #undef vsqdist_i
@@ -467,15 +496,16 @@ light_loop:
     #undef vdist_i
     #undef vdist_f
 
-    vmrg vlpos, vppoint, vlpos;
+                                                                        vmrg vlpos, vppoint, vlpos
 
     #undef vppoint
     #define vcpoint     $v15
     
     # Multiply by attenuation (if the light is directional, it's just 1)
-    vmudm v___,  vlcol,   vatt_f.h0;
-    vmadh vcpoint, vlcol, vatt_i.h0;
-    vmrg vlcol, vcpoint, vlcol;
+                                                                        vmudm v___,  vlcol,   vatt_f.h0
+                                                                        vmadh vcpoint, vlcol, vatt_i.h0
+                                                                        vmrg vlcol, vcpoint, vlcol
+    
 
     #undef vcpoint
                                                         
@@ -484,13 +514,14 @@ light_loop:
     # Dot product of light vector with vertex normal
     # Both are a signed fraction, so we can just use vmulf
     # Diffuse light = light_color * dot(light_vec, normal)
-    vmulf vndl, vnorm, vlpos;                           
-    vadd  v___, vndl, vndl.h1;                          
-    vadd  vndl, v___, vndl.h2;                          
-    vge   vndl, vzero;                                  addi s0, MGFX_LIGHT_SIZE
-    vmulf vlcol, vndl.h0;                               ldv vlpos.e0, MGFX_LIGHT_POSITION,s0
-    vadd vrgba, vlcol;                                  bgtz light_count, light_loop
-                                                        ldv vlpos.e4, MGFX_LIGHT_POSITION,s0
+                                                                        vmulf vndl, vnorm, vlpos
+                                                                        vadd  v___, vndl, vndl.h1
+                                                                        vadd  vndl, v___, vndl.h2
+                                                                        vge   vndl, vzero
+    addi s0, MGFX_LIGHT_SIZE;                                           vmulf vlcol, vndl.h0
+    ldv vlpos.e0, MGFX_LIGHT_POSITION,s0;                               vadd vrgba, vlcol
+    bgtz light_count, light_loop;
+    ldv vlpos.e4, MGFX_LIGHT_POSITION,s0
     #undef vlpos
     #undef vlcol
     #undef vndl
