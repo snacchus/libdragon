@@ -1,7 +1,7 @@
 #include <rsp_magma.inc>
 #include <mgfx_constants.h>
 
-#define MGFX_TRACE_VTX_LOOP 0
+#define MGFX_TRACE_VTX_LOOP 1
 
 MgBeginShaderUniforms
     MgBeginUniform FOG, MGFX_BINDING_FOG
@@ -59,8 +59,6 @@ MgBeginShader
     #define vtx_in_end      s2
     #define vtx_out_ptr     s3
     #define v___            $v29
-    #define vnormmask       $v28
-    #define vnormfactor     $v27
 
     li t0, %lo(MG_VERTEX_SIZE)
     addi t1, rspq_dmem_buf_ptr, %lo(RSPQ_DMEM_BUFFER) - 6
@@ -81,6 +79,9 @@ MgBeginShader
     lhu vtx_size, %lo(MG_VERTEX_SIZE)
     lw s0, %lo(MG_VERTEX_BUFFER)
     li t5, %lo(MG_NORMAL_MASK)
+
+    #define vnormmask       $v28
+    #define vnormfactor     $v27
 
     # buffer_offset * vertex_size, cache_offset * MG_VTX_SIZE, vertex_count * -vertex_size, vertex_count * vertex_size
     ldv vnormmask.e0,   0x0,t5;              vmudh vproducts, vinputs, vvtx_size
@@ -241,6 +242,8 @@ vertex_loop:
     #undef vmmv3_f                 
     #undef vpos_in
     #undef vtmp
+    #undef vnormmask
+    #undef vnormfactor
 
     #define vrgba           $v01
     #define vlpos           $v02
@@ -275,7 +278,6 @@ vertex_loop:
 
 
     #define vfogtmp         $v17
-    #define venvtmp         $v18
 
     #define tr1             a0
     #define tr2             a1
@@ -284,7 +286,7 @@ vertex_loop:
     #define light_count     t9
 
     ldv vviewoff.e0,   0x8,t0;                                          vsubc vfogtmp, vzero, vpos_eye.h2
-    ldv vviewoff.e4,   0x8,t0;                                          vxor venvtmp, venvtmp, venvtmp
+    ldv vviewoff.e4,   0x8,t0;                                          # <stall>
     LOAD_COLOR0: llv vrgba_in.e0, 0, vtx_in0_ptr;                       vmudh v___, vnorm, vnorm
     LOAD_COLOR1: llv vrgba_in.e2, 0, vtx_in1_ptr;                       vsar  vsqdist_f, COP2_ACC_MD
     li t1, %lo(FOG);                                                    vsar  vsqdist_i, COP2_ACC_HI
@@ -433,6 +435,7 @@ light_loop:
 
     #define vtinvdist_i  $v09
     #define vtinvdist_f  $v13
+                                                                        # <stall>
     lsv vinvd_i.e6, 0x8,t0;                                             vrsqh v___.e0,        vtsqdist_i.e0
     andi fog_enabled, flags, MGFX_FLAG_FOG;                             vrsql vtinvdist_f.e0, vtsqdist_f.e0
     sltu fog_enabled, zero, fog_enabled;                                vrsqh vtinvdist_i.e0, vtsqdist_i.e4
@@ -451,7 +454,7 @@ light_loop:
     ldv vlcol.e0, MGFX_LIGHT_COLOR,s0;                                  vrsql vinvd_f.e1, vlsqdist_f.e0
     ldv vlcol.e4, MGFX_LIGHT_COLOR,s0;                                  vrsqh vinvd_i.e1, vlsqdist_i.e4
     #define vattcoeff_i  $v14
-    #define vattcoeff_f  $v15
+    #define vattcoeff_f  $v08
     ldv vattcoeff_i.e0, MGFX_LIGHT_ATT_INT,s0;                          vrsql vinvd_f.e5, vlsqdist_f.e4
     ldv vattcoeff_i.e4, MGFX_LIGHT_ATT_INT,s0;                          vrsqh vinvd_i.e5, vzero.e0
                              
@@ -531,7 +534,8 @@ light_loop:
 
     #define vatt_i      $v03
     #define vatt_f      $v07
-                                                                        # <stall>
+    #define venvtmp     $v18
+                                                                        vxor venvtmp, venvtmp, venvtmp
                                                                         # <stall>
                                                                         vrcph v___.e0,   vattcoeff_i.e0
                                                                         vrcpl vatt_f.e0, vattcoeff_f.e0
@@ -562,8 +566,10 @@ light_loop:
     li t3, %lo(MG_NORMAL_MASK);                                         vmadh v___, veposnorm, K1
     #undef veposnorm
     lsv vpos_in.e3, 0xA,t3;                                             vmadh v___, venvtmp, K1
+    #undef venvtmp
     #undef vdot
-    #define refl_i       $v03
+
+    #define refl_i       $v18
     #define refl_f       $v04
     #define vtexoffset      $v22
     lsv vpos_in.e7, 0xA,t3;                                             vsar refl_f, COP2_ACC_MD
@@ -581,113 +587,89 @@ light_loop:
     # Diffuse light = light_color * dot(light_vec, normal)
                                                                         vmulf vndl, vnorm, vlpos
 
-    #define vtsqdist_i   $v09
+    #define vtsqdist_i   $v27
     #define vtsqdist_f   $v10
     ldv vlpos.e0, MGFX_LIGHT_POSITION+MGFX_LIGHT_SIZE,s0;               vmudl v___,      refl_f, refl_f
     ldv vlpos.e4, MGFX_LIGHT_POSITION+MGFX_LIGHT_SIZE,s0;               vmadm v___,      refl_i, refl_f
-                                                                        vmadn vtsqdist_f, refl_f, refl_i
-                                                                        vmadh vtsqdist_i, refl_i, refl_i
+    li t0, %lo(MATRICES);                                               vmadn vtsqdist_f, refl_f, refl_i
+    #define vmvp2_f     $v08
+    ldv vmvp2_f.e0, 0x30,t0;                                            vmadh vtsqdist_i, refl_i, refl_i
 
     #define vltmp       $v11
-                                                                        vadd  vltmp, vndl, vndl.h1
+    ldv vmvp2_f.e4, 0x30,t0;                                            vadd  vltmp, vndl, vndl.h1
 
-    #define vtmp_i       $v12
-    #define vtmp_f       $v13
-                                                                        # <stall>
-                                                                        vaddc vtmp_f, vtsqdist_f, vtsqdist_f.h1
-                                                                        vadd  vtmp_i, vtsqdist_i, vtsqdist_i.h1
+    #define vtmp_i      $v12
+    #define vtmp_f      $v13
+    #define vmvp3_i     $v09
+    ldv vmvp3_i.e0, 0x18,t0;                                            # <stall>
+    ldv vmvp3_i.e4, 0x18,t0;                                            vaddc vtmp_f, vtsqdist_f, vtsqdist_f.h1
+        
+    #define vmmv1_f     $v14
+    ldv vmmv1_f.e0, 0x68,t0;                                            vadd  vtmp_i, vtsqdist_i, vtsqdist_i.h1
 
-                                                                        vadd  vndl, vltmp, vndl.h2
+    ldv vmmv1_f.e4, 0x68,t0;                                            vadd  vndl, vltmp, vndl.h2
     #undef vltmp
 
-                                                                        # <stall>
-                                                                        vaddc vtsqdist_f, vtmp_f, vtsqdist_f.h2
-                                                                        vadd  vtsqdist_i, vtmp_i, vtsqdist_i.h2
-    #undef vtmp_i
-    #undef vtmp_f
-
-                                                                        vge   vndl, vzero
-
-    #define vtinvdist_i  $v11
-    #define vtinvdist_f  $v12
-                                                                        # <stall>
-                                                                        # <stall>
-                                                                        vrsqh v___.e0,        vtsqdist_i.e0
-                                                                        vrsql vtinvdist_f.e0, vtsqdist_f.e0
-                                                                        vrsqh vtinvdist_i.e0, vtsqdist_i.e4
-                                                                        vrsql vtinvdist_f.e4, vtsqdist_f.e4
-                                                                        vrsqh vtinvdist_i.e4, vzero.e0
-    #undef vtsqdist_i
-    #undef vtsqdist_f
-
-                                                                        vmulf vlcol, vndl.h0
-    #undef vndl
-
-                                                                        vmudh v___,    v0p5_i, K1
-                                                                        vmadl v___,    refl_f, vtinvdist_f.h0
-                                                                        vmadm v___,    refl_i, vtinvdist_f.h0
-                                                                        vmadn v___,    refl_f, vtinvdist_i.h0
-
     #define vmvp0_i     $v03
-    #define vmvp0_f     $v04
+    ldv vmvp0_i.e0, 0x00,t0;                                            # <stall>
+    ldv vmvp0_i.e4, 0x00,t0;                                            vaddc vtsqdist_f, vtmp_f, vtsqdist_f.h2
+    #undef vtmp_f
     #define vmvp1_i     $v05
-    #define vmvp1_f     $v06
-    #define vmvp2_i     $v07
-    #define vmvp2_f     $v08
-    #define vmvp3_i     $v09
-    #define vmvp3_f     $v10
+    ldv vmvp1_i.e0, 0x08,t0;                                            vadd  vtsqdist_i, vtmp_i, vtsqdist_i.h2
+    #undef vtmp_i
+
+    ldv vmvp1_i.e4, 0x08,t0;                                            vge   vndl, vzero
 
     #define vmmv0_i     $v11
-    #define vmmv0_f     $v12
+    ldv vmmv0_i.e0, 0x40,t0;                                            # <stall>
+    ldv vmmv0_i.e4, 0x40,t0;                                            # <stall>
     #define vmmv1_i     $v13
-    #define vmmv1_f     $v14
+    ldv vmmv1_i.e0, 0x48,t0;                                            vrsqh v___.e0,        vtsqdist_i.e0
+    #define vtinvdist_f  $v15
+    ldv vmmv1_i.e4, 0x48,t0;                                            vrsql vtinvdist_f.e0, vtsqdist_f.e0
+    #define vtinvdist_i  $v27
+    #define vmmv0_f     $v12
+    ldv vmmv0_f.e0, 0x60,t0;                                            vrsqh vtinvdist_i.e0, vtsqdist_i.e4
+    #undef vtsqdist_i
+    ldv vmmv0_f.e4, 0x60,t0;                                            vrsql vtinvdist_f.e4, vtsqdist_f.e4
+    #undef vtsqdist_f
+    #define vmvp3_f     $v10
+    ldv vmvp3_f.e0, 0x38,t0;                                            vrsqh vtinvdist_i.e4, vzero.e0
 
-    #define vtexenv      $v15
-                                                                        vmadh vtexenv, refl_i, vtinvdist_i.h0
-    #undef vtinvdist_i
+    ldv vmvp3_f.e4, 0x38,t0;                                            vmulf vlcol, vndl.h0
+    #undef vndl
+    #define vmvp2_i     $v07
+
+    ldv vmvp2_i.e0, 0x10,t0;                                            vmudh v___,    v0p5_i, K1
+    #undef v0p5_i
+    #define vmvp1_f     $v06
+    ldv vmvp2_i.e4, 0x10,t0;                                            vmadl v___,    refl_f, vtinvdist_f.h0
+    ldv vmvp1_f.e0, 0x28,t0;                                            vmadm v___,    refl_i, vtinvdist_f.h0
     #undef vtinvdist_f
-    #undef refl_i
+    ldv vmvp1_f.e4, 0x28,t0;                                            vmadn v___,    refl_f, vtinvdist_i.h0
     #undef refl_f
 
-                                                                        vadd vrgba, vlcol
+    #define vtexenv     $v15
+    #define vmvp0_f     $v04
+    ldv vmvp0_f.e0, 0x20,t0;                                            vmadh vtexenv, refl_i, vtinvdist_i.h0
+    #undef vtinvdist_i
+    #undef refl_i
+
+    ldv vmvp0_f.e4, 0x20,t0;                                            vadd vrgba, vlcol
     bgtz light_count, light_loop;
     addi s0, MGFX_LIGHT_SIZE;
 
     #undef vlpos
     #undef vlcol
     #undef vinvd_f
-
-    li t0, %lo(MATRICES)
-    ldv vmvp0_f.e0, 0x20,t0;
-    ldv vmvp0_f.e4, 0x20,t0;
-    ldv vmvp0_i.e0, 0x00,t0;
-    ldv vmvp0_i.e4, 0x00,t0;
-    ldv vmvp1_f.e0, 0x28,t0;
-    ldv vmvp1_f.e4, 0x28,t0;
-    ldv vmvp1_i.e0, 0x08,t0;
-    ldv vmvp1_i.e4, 0x08,t0;
-    ldv vmvp2_f.e0, 0x30,t0;
-    ldv vmvp2_f.e4, 0x30,t0;
-    ldv vmvp2_i.e0, 0x10,t0;
-    ldv vmvp2_i.e4, 0x10,t0;
-    ldv vmvp3_f.e0, 0x38,t0;
-    ldv vmvp3_f.e4, 0x38,t0;
-    ldv vmvp3_i.e0, 0x18,t0;    
-    ldv vmvp3_i.e4, 0x18,t0;    
-    ldv vmmv0_f.e0, 0x60,t0;                                            
-    ldv vmmv0_f.e4, 0x60,t0;                                            
-    ldv vmmv0_i.e0, 0x40,t0;                                            
-    ldv vmmv0_i.e4, 0x40,t0;                                            
-    ldv vmmv1_f.e0, 0x68,t0;                                            
-    ldv vmmv1_f.e4, 0x68,t0;                                            
-    ldv vmmv1_i.e0, 0x48,t0;                                            
-    ldv vmmv1_i.e4, 0x48,t0;                                            
     
-                                                                        # <stall>
-                                                                        # <stall>
+    #define vnormfactor     $v27
+
+    li t3, %lo(MG_NORMAL_MASK);                                         # <stall>
+    ldv vnormfactor.e0, 0x8,t3;                                         # <stall>
     ctc2 env_enabled, COP2_CTRL_VCC;                                    PATCH_COLOR0: vmulf vrgba, vrgba_in
-                                                                        # <stall>
-    add vtx_in0_ptr, vtx_size2;                                         vmrg vtex, vtexenv, vtex
+    add vtx_in0_ptr, vtx_size2;                                         # <stall>
+    ldv vnormfactor.e4, 0x8,t3;                                         vmrg vtex, vtexenv, vtex
     ctc2 fog_enabled, COP2_CTRL_VCC;                                    
     add vtx_in1_ptr, vtx_in0_ptr, vtx_size;                             vmrg vrgba, vfogtmp, vrgba
     LOAD_POS_NORM6: ldv vnorm.e0, 0,vtx_in0_ptr;                        vmudh v___, vtexoffset, K1
