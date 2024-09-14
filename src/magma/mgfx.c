@@ -55,6 +55,9 @@ static void mgfx_get_light(mgfx_light_t *dst, const mgfx_light_parms_t *parms)
 {
     color_to_i16(dst->color, parms->color);
 
+    // The ucode requires alpha to be 0
+    dst->color[3] = 0;
+
     // The user should pre-transform positional lights into eye-space
 
     const float *p = parms->position;
@@ -100,6 +103,7 @@ void mgfx_get_lighting(mgfx_lighting_t *dst, const mgfx_lighting_parms_t *parms)
 
     dst->count = parms->light_count;
     color_to_i16(dst->ambient, parms->ambient_color);
+    dst->ambient[3] = 0;
     for (size_t i = 0; i < parms->light_count; i++)
     {
         mgfx_get_light(&dst->lights[i], &parms->lights[i]);
