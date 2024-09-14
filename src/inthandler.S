@@ -84,23 +84,24 @@ inthandler:
 	sd $25,(STACK_GPR+25*8)(sp) # T9
 	sd $31,(STACK_GPR+31*8)(sp) # RA
 
-	mflo k0
-	mfhi k1
-	sd k0,STACK_LO(sp)
-	sd k1,STACK_HI(sp)
+	mflo t0
+	mfhi t1
+	sd t0,STACK_LO(sp)
+	sd t1,STACK_HI(sp)
 
-	mfc0 k0, C0_EPC
-	mfc0 k1, C0_SR
-	sw k0, STACK_EPC(sp)
-	sw k1, STACK_SR(sp)
+	mfc0 t0, C0_EPC
+	mfc0 t1, C0_SR
+	sw t0, STACK_EPC(sp)
+	sw t1, STACK_SR(sp)
 
 	# Since all critical information about current exception has been saved,
 	# we can now turn off EXL. This allows a reentrant exception to save its
 	# own full context for operating. At the same time, it is better to keep
 	# interrupts disabled so that we don't risk triggering recursive interrupts,
-	# so disable IE as well.
-	and k1, ~(SR_IE | SR_EXL)
-	mtc0 k1, C0_SR
+	# so disable IE as well. If the triggering code was running in a non-kernel
+	# mode, we also need to re-enter kernel mode.
+	and t1, ~(SR_IE | SR_EXL | SR_KSU)
+	mtc0 t1, C0_SR
 
 	# WARNING: after clearing the EXL bit, it is now possible to trigger
 	# reentrant exceptions (and not only crashing ones).
@@ -152,13 +153,17 @@ exception_critical:
 	nop
 
 exception_syscall:
-	# Syscall exception
+	# Run the syscall exception handler. This one can optionally
+	# switch to a different thread: the return value is the new
+	# stack pointer to use.
 	jal __onSyscallException
 	addiu a0, sp, 32
 
-	j end_interrupt
-	nop
-
+	# Exit the exception and restore *all* registers including caller-saved
+	# ones, because if the syscall handler switched to a different thread,
+	# the new thread might have different values in those registers.
+	j end_exception_restore_all
+	addiu sp, v0, -32
 
 exception_coprocessor:
 	# Extract CE bits (28..29) from CR
@@ -282,9 +287,60 @@ notcart:
 	jal __MI_handler
 	addiu a0, sp, 32
 
-	# No more interrupts to process, we can exit
-	# (fallthrough)
+	# No more interrupts to process
 	sw zero, interrupt_exception_frame
+
+	# Check if some interrupt handler requested
+	# a reschedule to happen
+	la t0, __isr_force_schedule
+	lbu t1, (t0)
+	beqz t1, end_interrupt
+	sb zero, (t0)
+
+thread_schedule_from_interrupt:
+	# Save full exception context in preparation for stack switching
+	mfc0 t0, C0_SR
+	or t0, SR_CU1
+	mtc0 t0, C0_SR
+	jal save_fpu_regs
+	move a0, sp
+	jal finalize_exception_frame
+	nop
+
+	# Call the scheduler
+	jal __kthread_syscall_schedule
+	addiu a0, sp, 32
+	addiu sp, v0, -32
+	# fallthrough to end_exception_restore_all
+
+end_exception_restore_all:
+	# Restore also caller-saved registers. These are only saved during an exception
+	# (by finalize_exception_frame), and we need to restore them only in case of
+	# kernel stack switch (because otherwise, the C handler for an exception will
+	# never modify them without restoring them too, so it would be useless to
+	# restore them here).
+	ld $16,(STACK_GPR+16*8)(sp)   # S0
+	ld $17,(STACK_GPR+17*8)(sp)   # S1
+	ld $18,(STACK_GPR+18*8)(sp)   # S2
+	ld $19,(STACK_GPR+19*8)(sp)   # S3
+	ld $20,(STACK_GPR+20*8)(sp)   # S4
+	ld $21,(STACK_GPR+21*8)(sp)   # S5
+	ld $22,(STACK_GPR+22*8)(sp)   # S6
+	ld $23,(STACK_GPR+23*8)(sp)   # S7
+	ld $28,(STACK_GPR+28*8)(sp)   # GP
+	ld $30,(STACK_GPR+30*8)(sp)   # FP
+	ldc1 $f20,(STACK_FPR+20*8)(sp)
+	ldc1 $f21,(STACK_FPR+21*8)(sp)
+	ldc1 $f22,(STACK_FPR+22*8)(sp)
+	ldc1 $f23,(STACK_FPR+23*8)(sp)
+	ldc1 $f24,(STACK_FPR+24*8)(sp)
+	ldc1 $f25,(STACK_FPR+25*8)(sp)
+	ldc1 $f26,(STACK_FPR+26*8)(sp)
+	ldc1 $f27,(STACK_FPR+27*8)(sp)
+	ldc1 $f28,(STACK_FPR+28*8)(sp)
+	ldc1 $f29,(STACK_FPR+29*8)(sp)
+	ldc1 $f30,(STACK_FPR+30*8)(sp)
+	ldc1 $f31,(STACK_FPR+31*8)(sp)
 
 end_interrupt:
 	mfc0 t0, C0_SR
@@ -414,7 +470,6 @@ save_fpu_regs:
 inthandler_end:
 	.endfunc
 
-	.section .bss
-	.p2align 2
-	.lcomm interrupt_exception_frame, 4
-
+    .section .bss
+    .p2align 2
+    .lcomm interrupt_exception_frame, 4

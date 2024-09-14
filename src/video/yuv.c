@@ -91,7 +91,6 @@ void yuv_init(void)
     rspq_init();
     ovl_yuv = rspq_overlay_register(&rsp_yuv);
     yuv_initialized = true;
-    debugf("YUV initialized %x\n", ovl_yuv);
 }
 
 void yuv_close(void)
@@ -229,8 +228,6 @@ color_t yuv_to_rgb(uint8_t y, uint8_t u, uint8_t v, const yuv_colorspace_t *cs)
     float g = yp + cs->c2 * (u-128) + cs->c3 * (v-128) + .5f;
     float b = yp + cs->c4 * (u-128) + .5f;
 
-    debugf("%d,%d,%d => %f,%f,%f\n", y, u, v, r, g, b);
-
     return (color_t){
         .r = r > 255 ? 255.f : r < 0 ? 0 : r,
         .g = g > 255 ? 255.f : g < 0 ? 0 : g,
@@ -355,16 +352,18 @@ static void yuv_tex_blit_run(int width, int height, float x0, float y0,
     __rdpq_tex_blit(&dummy, x0, y0, parms, ltd_yuv2);
 }
 
-void yuv_tex_blit(surface_t *yp, surface_t *up, surface_t *vp,
-    float x0, float y0, const rdpq_blitparms_t *parms, const yuv_colorspace_t *cs) 
+void yuv_tex_blit(yuv_frame_t *frame, float x0, float y0,
+    const rdpq_blitparms_t *parms, const yuv_colorspace_t *cs) 
 {
-    yuv_tex_blit_setup(yp, up, vp);
-    yuv_tex_blit_run(yp->width, yp->height, x0, y0, parms, cs);
+    assertf(yuv_initialized, "yuv not initialized, call yuv_init() first");
+    yuv_tex_blit_setup(&frame->y, &frame->u, &frame->v);
+    yuv_tex_blit_run(frame->y.width, frame->y.height, x0, y0, parms, cs);
 }
 
 yuv_blitter_t yuv_blitter_new(int video_width, int video_height, float x0, float y0, const rdpq_blitparms_t *parms,
     const yuv_colorspace_t *cs)
 {
+    assertf(yuv_initialized, "yuv not initialized, call yuv_init() first");
     // Compile the yuv_tex_blit_run into a block with the given parameters.
     rspq_block_begin();
         yuv_tex_blit_run(video_width, video_height, x0, y0, parms, cs);
@@ -377,6 +376,7 @@ yuv_blitter_t yuv_blitter_new(int video_width, int video_height, float x0, float
 yuv_blitter_t yuv_blitter_new_fmv(int video_width, int video_height,
     int screen_width, int screen_height, const yuv_fmv_parms_t *parms)
 {
+    assertf(yuv_initialized, "yuv not initialized, call yuv_init() first");
     static const yuv_fmv_parms_t default_parms = {0};
     if (!parms) parms = &default_parms;
 
@@ -436,9 +436,9 @@ yuv_blitter_t yuv_blitter_new_fmv(int video_width, int video_height,
     };
 }
 
-void yuv_blitter_run(yuv_blitter_t *blitter, surface_t *yp, surface_t *up, surface_t *vp)
+void yuv_blitter_run(yuv_blitter_t *blitter, yuv_frame_t *frame)
 {
-    yuv_tex_blit_setup(yp, up, vp);
+    yuv_tex_blit_setup(&frame->y, &frame->u, &frame->v);
     rspq_block_run(blitter->block);
 }
 

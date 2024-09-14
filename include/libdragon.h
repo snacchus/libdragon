@@ -37,11 +37,16 @@
 #include "dma.h"
 #include "dragonfs.h"
 #include "asset.h"
+#include "pifile.h"
 #include "eeprom.h"
 #include "eepromfs.h"
 #include "graphics.h"
 #include "mi.h"
 #include "interrupt.h"
+#include "kernel.h"
+#include "kirq.h"
+#include "kqueue.h"
+#include "ksemaphore.h"
 #include "n64sys.h"
 #include "backtrace.h"
 #include "rdp.h"
@@ -49,6 +54,7 @@
 #include "timer.h"
 #include "exception.h"
 #include "dir.h"
+#include "yuv.h"
 #include "mpeg2.h"
 #include "throttle.h"
 #include "mixer.h"
@@ -80,5 +86,9 @@
 #include "ioctl.h"
 #include "magma.h"
 #include "mgfx.h"
+
+#ifndef __cplusplus
+#include "cthreads.h"
+#endif
 
 #endif

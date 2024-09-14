@@ -193,6 +193,7 @@ int assert_equal_mem(TestContext *ctx, const char *file, int line, const uint8_t
  * TEST FILES
  **********************************************************************/
 
+#include "test_kernel.c"
 #include "test_dfs.c"
 #include "test_eepromfs.c"
 #include "test_cache.c"
@@ -249,6 +250,13 @@ static const struct Testsuite
 	TEST_FUNC(test_timer_disabled_start,              733, TEST_FLAGS_RESET_COUNT),
 	TEST_FUNC(test_timer_disabled_restart,            733, TEST_FLAGS_RESET_COUNT),
 	TEST_FUNC(test_irq_reentrancy,                    230, TEST_FLAGS_RESET_COUNT),
+	TEST_FUNC(test_kernel_basic,               			5, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_kernel_mutex_1,             			5, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_kernel_priority,            			5, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_kernel_sleep,               			5, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_kernel_libc1,               			5, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_kernel_libc2,               			5, TEST_FLAGS_NO_BENCHMARK),
+	TEST_FUNC(test_kernel_thread_local,        			5, TEST_FLAGS_NO_BENCHMARK),
 	TEST_FUNC(test_dfs_read,                          948, TEST_FLAGS_IO),
 	TEST_FUNC(test_dfs_rom_addr,                       25, TEST_FLAGS_IO),
 	TEST_FUNC(test_dfs_ioctl,                           0, TEST_FLAGS_NO_BENCHMARK),
