@@ -131,7 +131,7 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
 inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data);
 
 /** @brief Bind a vertex buffer to be used by subsequent drawing commands */
-void mg_bind_vertex_buffer(const void *buffer, uint32_t offset);
+inline void mg_bind_vertex_buffer(const void *buffer, uint32_t offset);
 
 /** @brief Begin a batch of drawing primitives */
 void mg_draw_begin(void);
@@ -278,6 +278,11 @@ inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data)
 inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data)
 {
     mg_inline_uniform_raw(uniform->offset, uniform->size, data);
+}
+
+inline void mg_bind_vertex_buffer(const void *buffer, uint32_t offset)
+{
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer) + offset);
 }
 /// @endcond
 

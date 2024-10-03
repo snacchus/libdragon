@@ -410,11 +410,6 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
     rspq_write_end(&w);
 }
 
-void mg_bind_vertex_buffer(const void *buffer, uint32_t offset)
-{
-    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer) + offset);
-}
-
 #define TRI_LIST_ADVANCE_COUNT ROUND_DOWN(MG_VERTEX_CACHE_COUNT, 3)
 
 void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex)
