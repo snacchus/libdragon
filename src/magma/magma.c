@@ -54,6 +54,8 @@ typedef struct
 DEFINE_RSP_UCODE(rsp_magma);
 DEFINE_RSP_UCODE(rsp_magma_clipping);
 
+static bool is_initialized = false;
+
 uint32_t mg_overlay_id;
 
 void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data)
@@ -104,6 +106,8 @@ static void get_overlay_span(rsp_ucode_t *ucode, void **code, uint32_t *code_siz
 
 void mg_init(void)
 {
+    if (is_initialized) return;
+
     mg_overlay_id = rspq_overlay_register(&rsp_magma);
 
     // Pass the location and size of the clipping code overlay to the RSP state
@@ -112,11 +116,16 @@ void mg_init(void)
     get_overlay_span(&rsp_magma_clipping, &clipping_code, &clipping_code_size);
     mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code), PhysicalAddr(clipping_code));
     mg_cmd_set_word(offsetof(mg_rsp_state_t, clipping_code_size), clipping_code_size);
+
+    is_initialized = true;
 }
 
 void mg_close(void)
 {
+    if (!is_initialized) return;
+
     rspq_overlay_unregister(mg_overlay_id);
+    is_initialized = false;
 }
 
 static void check_shader_binary_compatibility(rsp_ucode_t *shader_ucode)
