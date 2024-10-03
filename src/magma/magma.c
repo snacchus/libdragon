@@ -19,14 +19,6 @@ typedef struct mg_pipeline_s
     mg_uniform_t *uniforms;
 } mg_pipeline_t;
 
-typedef struct mg_buffer_s 
-{
-    mg_buffer_flags_t flags;
-    void *memory;
-    uint32_t size;
-    bool is_mapped;
-} mg_buffer_t;
-
 typedef struct
 {
     uint32_t binding;
@@ -313,53 +305,6 @@ const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t bi
     assertf(0, "Uniform with binding number %ld was not found", binding);
 }
 
-mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms)
-{
-    mg_buffer_t *buffer = malloc(sizeof(mg_buffer_t));
-    buffer->flags = parms->flags;
-    buffer->size = parms->size;
-
-    if (parms->backing_memory) {
-        buffer->memory = parms->backing_memory;
-    } else {
-        buffer->memory = malloc_uncached(parms->size);
-    }
-
-    return buffer;
-}
-
-void mg_buffer_free(mg_buffer_t *buffer)
-{
-    free_uncached(buffer->memory);
-    free(buffer);
-}
-
-void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags)
-{
-    assertf((flags & (MG_BUFFER_MAP_FLAGS_READ|MG_BUFFER_MAP_FLAGS_WRITE)) != 0, "Buffer must be mapped with at least read or write access!");
-    assertf(!buffer->is_mapped, "Buffer is already mapped");
-    assertf(offset + size < buffer->size, "Map is out of range");
-
-    // TODO: Optimize for different types of access depending on flags. Define how?
-
-    buffer->is_mapped = true;
-    return (uint8_t*)buffer->memory + offset;
-}
-
-void mg_buffer_unmap(mg_buffer_t *buffer)
-{
-    assertf(buffer->is_mapped, "Buffer is not mapped");
-    buffer->is_mapped = false;
-}
-
-void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const void *data)
-{
-    assertf(!buffer->is_mapped, "Buffer is mapped");
-    assertf(offset + size <= buffer->size, "Out of range");
-    
-    memcpy((uint8_t*)buffer->memory + offset, data, size);
-}
-
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
     uint32_t code = PhysicalAddr(pipeline->shader_code);
@@ -465,9 +410,9 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
     rspq_write_end(&w);
 }
 
-void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset)
+void mg_bind_vertex_buffer(const void *buffer, uint32_t offset)
 {
-    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer->memory) + offset);
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer) + offset);
 }
 
 #define TRI_LIST_ADVANCE_COUNT ROUND_DOWN(MG_VERTEX_CACHE_COUNT, 3)

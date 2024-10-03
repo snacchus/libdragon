@@ -62,7 +62,7 @@ typedef struct
 
 typedef struct
 {
-    mg_buffer_t *vertex_buffer;
+    const void *vertex_buffer;
     const uint16_t *indices;
     uint32_t index_count;
     uint32_t pipeline_id;
@@ -454,13 +454,9 @@ void mesh_create(mesh_data *mesh, const char *model_file, vertex_layout *vertex_
         model64_get_primitive_vertex_layout(primitive, &primitive_layout);
         submesh->pipeline_id = get_or_create_pipeline_from_primitive_layout(&primitive_layout, vertex_layout_cache);
 
-        // Preparing mesh data is relatively straightforward. Simply load vertex and index data into buffers.
-        // By setting "backing_memory", the buffer will actually use that pointer instead of allocating new memory.
+        // Preparing mesh data is straightforward. Just get pointers to the vertex and index buffers.
 
-        submesh->vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-            .size = primitive_layout.stride * model64_get_primitive_vertex_count(primitive),
-            .backing_memory = model64_get_primitive_vertices(primitive),
-        });
+        submesh->vertex_buffer = model64_get_primitive_vertices(primitive);
 
         submesh->indices = model64_get_primitive_indices(primitive);
         submesh->index_count = model64_get_primitive_index_count(primitive);

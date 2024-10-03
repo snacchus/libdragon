@@ -11,9 +11,6 @@
 /** @brief An instance of the magma pipeline, with an attached vertex shader */
 typedef struct mg_pipeline_s            mg_pipeline_t;
 
-/** @brief A linear array of data, which can be bound to a pipeline for various purposes */
-typedef struct mg_buffer_s              mg_buffer_t;
-
 typedef enum
 {
     MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST     = 0,
@@ -40,18 +37,6 @@ typedef enum
     MG_FRONT_FACE_COUNTER_CLOCKWISE         = 0,
     MG_FRONT_FACE_CLOCKWISE                 = 1,
 } mg_front_face_t;
-
-typedef enum
-{
-    // Nothing here yet
-    MG_BUFFER_FLAGS_NONE
-} mg_buffer_flags_t;
-
-typedef enum
-{
-    MG_BUFFER_MAP_FLAGS_READ                = 1<<0,
-    MG_BUFFER_MAP_FLAGS_WRITE               = 1<<1,
-} mg_buffer_map_flags_t;
 
 typedef struct
 {
@@ -103,13 +88,6 @@ typedef struct
     bool primitive_restart_enabled;
 } mg_input_assembly_parms_t;
 
-typedef struct
-{
-    mg_buffer_flags_t flags;
-    uint32_t size;
-    void *backing_memory;
-} mg_buffer_parms_t;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -124,16 +102,6 @@ void mg_close(void);
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms);
 void mg_pipeline_free(mg_pipeline_t *pipeline);
 const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding);
-
-/* Buffers */
-
-// TODO: Rethink if buffers are necessary to operate magma. Should they be ingrained in the internal workings, or just a layer on top?
-//       Could the former offer some potential for optimization that wouldn't be possible otherwise?
-mg_buffer_t *mg_buffer_create(const mg_buffer_parms_t *parms);
-void mg_buffer_free(mg_buffer_t *buffer);
-void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buffer_map_flags_t flags);
-void mg_buffer_unmap(mg_buffer_t *buffer);
-void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const void *data);
 
 /* Commands (these will generate rspq commands) */
 
@@ -163,7 +131,7 @@ void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
 inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data);
 
 /** @brief Bind a vertex buffer to be used by subsequent drawing commands */
-void mg_bind_vertex_buffer(mg_buffer_t *buffer, uint32_t offset);
+void mg_bind_vertex_buffer(const void *buffer, uint32_t offset);
 
 /** @brief Begin a batch of drawing primitives */
 void mg_draw_begin(void);

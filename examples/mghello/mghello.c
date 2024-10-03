@@ -68,15 +68,10 @@ int main()
     const mg_uniform_t *matrices_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_MATRICES);
 
     // Create and fill a vertex buffer.
-    vertex vertices[] = {
-        { .pos = MGFX_POS(0, -0.5f, 0) },
-        { .pos = MGFX_POS(-0.5f, 0.5f, 0) },
-        { .pos = MGFX_POS(0.5f, 0.5f, 0) }
-    };
-    mg_buffer_t *vertex_buffer = mg_buffer_create(&(mg_buffer_parms_t) {
-        .size = sizeof(vertices),
-    });
-    mg_buffer_write(vertex_buffer, 0, sizeof(vertices), vertices);
+    vertex *vertices = malloc_uncached(sizeof(vertex) * 3);
+    vertices[0] = (vertex){ .pos = MGFX_POS(0, -0.5f, 0) };
+    vertices[1] = (vertex){ .pos = MGFX_POS(-0.5f, 0.5f, 0) };
+    vertices[2] = (vertex){ .pos = MGFX_POS(0.5f, 0.5f, 0) };
 
     // Everything we need is initialised. Start the main rendering loop!
     while (true)
@@ -126,7 +121,7 @@ int main()
 
         // Bind the vertex buffer that was created above. All subsequent drawing
         // commands will now read from this buffer.
-        mg_bind_vertex_buffer(vertex_buffer, 0);
+        mg_bind_vertex_buffer(vertices, 0);
 
         // All drawing commands (including mg_draw and mg_draw_indexed) must be put 
         // between mg_draw_begin and mg_draw_end, which delimit a drawing "batch". 
