@@ -4,6 +4,14 @@ typedef struct {
     int16_t pos[3];
 } vertex;
 
+typedef struct {
+    mgfx_fog_t fog;
+    mgfx_lighting_t lighting;
+    mgfx_texturing_t texturing;
+    mgfx_modes_t modes;
+    mgfx_matrices_t matrices;
+} uniforms;
+
 int main()
 {
     const resolution_t resolution = RESOLUTION_320x240;
@@ -29,16 +37,13 @@ int main()
     });
 
     // Shader uniforms are not initialized to 0's automatically, so we need to create
-    // a resource set that sets everything to sane values.
-    mgfx_fog_t fog = {0};
-    mgfx_lighting_t lighting = {0};
-    mgfx_texturing_t texturing = {0};
-    mgfx_modes_t modes = {0};
-    mgfx_matrices_t matrices = {0};
+    // a uniform buffer that sets everything to sane values. 
+    uniforms *uniform_data = malloc_uncached(sizeof(uniforms));
+    memset(uniform_data, 0, sizeof(uniforms));
 
     // Lighting is never explicitly turned off, but it can be set to "pass through"
     // by configuring 0 lights and fully white ambient light.
-    mgfx_get_lighting(&lighting, &(mgfx_lighting_parms_t) {
+    mgfx_get_lighting(&uniform_data->lighting, &(mgfx_lighting_parms_t) {
         .light_count = 0,
         .ambient_color = color_from_packed32(0xFFFFFFFF)
     });
@@ -50,49 +55,17 @@ int main()
         0, 0, 1, 0,
         0, 0, 0, 1
     };
-    mgfx_get_matrices(&matrices, &(mgfx_matrices_parms_t) {
+    mgfx_get_matrices(&uniform_data->matrices, &(mgfx_matrices_parms_t) {
         .model_view_projection = identity,
         .model_view = identity,
         .normal = identity,
     });
 
-    // Create the resource set. Since we're never changing any of the uniforms,
-    // just embed everything into the resource set itself by using the binding type
-    // "MG_RESOURCE_TYPE_EMBEDDED_UNIFORM". This will internally allocate some memory,
-    // and copy the data from "embedded_data" when mg_resource_set_create is called. 
-    // We can safely throw away the input afterwards.
-    mg_resource_binding_t resource_bindings[] = {
-        {
-            .binding = MGFX_BINDING_FOG,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &fog
-        },
-        {
-            .binding = MGFX_BINDING_LIGHTING,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &lighting
-        },
-        {
-            .binding = MGFX_BINDING_TEXTURING,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &texturing,
-        },
-        {
-            .binding = MGFX_BINDING_MODES,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &modes,
-        },
-        {
-            .binding = MGFX_BINDING_MATRICES,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &matrices,
-        }
-    };
-    mg_resource_set_t *resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
-        .pipeline = pipeline,
-        .binding_count = sizeof(resource_bindings)/sizeof(resource_bindings[0]),
-        .bindings = resource_bindings
-    });
+    const mg_uniform_t *fog_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_FOG);
+    const mg_uniform_t *lighting_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_LIGHTING);
+    const mg_uniform_t *texturing_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_TEXTURING);
+    const mg_uniform_t *modes_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_MODES);
+    const mg_uniform_t *matrices_uniform = mg_pipeline_get_uniform(pipeline, MGFX_BINDING_MATRICES);
 
     // Create and fill a vertex buffer.
     vertex vertices[] = {
@@ -144,9 +117,12 @@ int main()
         // We just want vertex colors, so use SHADE.
         mg_set_geometry_flags(0);
 
-        // Apply the resource set that was created above. This must be done
-        // every frame to guarantee that the uniforms have the desired values.
-        mg_bind_resource_set(resource_set);
+        // Load uniforms. This must be done every frame to guarantee that the uniforms have the desired values.
+        mg_load_uniform(fog_uniform, &uniform_data->fog);
+        mg_load_uniform(lighting_uniform, &uniform_data->lighting);
+        mg_load_uniform(texturing_uniform, &uniform_data->texturing);
+        mg_load_uniform(modes_uniform, &uniform_data->modes);
+        mg_load_uniform(matrices_uniform, &uniform_data->matrices);
 
         // Bind the vertex buffer that was created above. All subsequent drawing
         // commands will now read from this buffer.

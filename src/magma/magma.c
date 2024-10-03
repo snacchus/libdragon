@@ -27,12 +27,6 @@ typedef struct mg_buffer_s
     bool is_mapped;
 } mg_buffer_t;
 
-typedef struct mg_resource_set_s 
-{
-    rspq_block_t *block;
-    void *embedded_data;
-} mg_resource_set_t;
-
 typedef struct
 {
     uint32_t binding;
@@ -366,82 +360,6 @@ void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const 
     memcpy((uint8_t*)buffer->memory + offset, data, size);
 }
 
-mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms)
-{
-    mg_resource_set_t *resource_set = malloc(sizeof(mg_resource_set_t));
-
-    // Preprocessing
-
-    uint32_t embedded_data_size = 0;
-
-    for (uint32_t i = 0; i < parms->binding_count; i++)
-    {
-        const mg_resource_binding_t *binding = &parms->bindings[i];
-        switch (binding->type) {
-        case MG_RESOURCE_TYPE_EMBEDDED_UNIFORM:
-            const mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
-            embedded_data_size += uniform->size;
-            break;
-
-        case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
-        case MG_RESOURCE_TYPE_STORAGE_BUFFER:
-            break;
-        }
-    }
-
-    if (embedded_data_size > 0) {
-        resource_set->embedded_data = malloc_uncached(embedded_data_size);
-    }
-
-    // Record block
-    // TODO: Optimize by coalescing adjacent uniforms into a single DMA transfer.
-
-    embedded_data_size = 0;
-
-    // TODO: Should this really be using blocks? Do some profiling to test whether small blocks
-    //       are actually more harmful for performance (because they induce more DMA transfers).
-    rspq_block_begin();
-    for (uint32_t i = 0; i < parms->binding_count; i++)
-    {
-        const mg_resource_binding_t *binding = &parms->bindings[i];
-        const mg_uniform_t *uniform = mg_pipeline_get_uniform(parms->pipeline, binding->binding);
-
-        switch (binding->type) {
-        case MG_RESOURCE_TYPE_UNIFORM_BUFFER:
-            uint8_t *uniform_data = (uint8_t*)binding->buffer->memory + binding->offset;
-            mg_load_uniform(uniform, uniform_data);
-            break;
-
-        case MG_RESOURCE_TYPE_STORAGE_BUFFER:
-            assertf(uniform->size == 8, "Uniform at binding %ld can't be used as a storage buffer", uniform->binding);
-            uint32_t storage_data[2] = { PhysicalAddr(binding->buffer->memory), 0 };
-            mg_inline_uniform_raw(uniform->offset, 8, storage_data);
-            break;
-
-        case MG_RESOURCE_TYPE_EMBEDDED_UNIFORM:
-            uint8_t *embedded_data = (uint8_t*)resource_set->embedded_data + embedded_data_size;
-            assertf(((uint32_t)embedded_data&0x7) == 0, "Uniform pointer not aligned to 8 bytes");
-            memcpy(embedded_data, binding->embedded_data, uniform->size);
-            embedded_data_size += uniform->size;
-            mg_load_uniform(uniform, embedded_data);
-            break;
-        }
-    }
-
-    resource_set->block = rspq_block_end();
-
-    return resource_set;
-}
-
-void mg_resource_set_free(mg_resource_set_t *resource_set)
-{
-    rspq_block_free(resource_set->block);
-    if (resource_set->embedded_data) {
-        free_uncached(resource_set->embedded_data);
-    }
-    free(resource_set);
-}
-
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
 {
     uint32_t code = PhysicalAddr(pipeline->shader_code);
@@ -489,11 +407,6 @@ void mg_set_viewport(const mg_viewport_t *viewport)
     uint32_t value2 = (rsp_viewport.offset[0] << 16) | rsp_viewport.offset[1];
     uint32_t value3 = (rsp_viewport.offset[2] << 16) | rsp_viewport.offset[3];
     mg_cmd_set_quad(offsetof(mg_rsp_state_t, viewport), value0, value1, value2, value3);
-}
-
-void mg_bind_resource_set(mg_resource_set_t *resource_set)
-{
-    rspq_block_run(resource_set->block);
 }
 
 void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)

@@ -40,13 +40,19 @@ typedef struct
 
 typedef struct
 {
+    mgfx_texturing_t texturing;
+    mgfx_modes_t modes;
+} material_raw_data;
+
+typedef struct
+{
     mg_vertex_attribute_t attributes[MAX_VERTEX_ATTRIBUTE_COUNT];
     mg_vertex_input_parms_t vertex_input_parms;
 } vertex_layout;
 
 typedef struct
 {
-    mg_resource_set_t *resource_set;
+    material_raw_data *buffer;
     sprite_t *texture;
     rdpq_texparms_t rdpq_tex_parms;
     mgfx_modes_t modes;
@@ -95,7 +101,6 @@ typedef struct
 void init();
 void update(float delta_time);
 void render();
-void create_scene_resources();
 void material_create(material_data *mat, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color);
 void mesh_create(mesh_data *mesh, const char *model_file, vertex_layout *vertex_layout_cache);
 void update_object_transform(object_data *object);
@@ -104,8 +109,11 @@ static surface_t zbuffer;
 
 static mg_viewport_t viewport;
 static mg_culling_parms_t culling;
-static mg_buffer_t *scene_resource_buffer[FB_COUNT];
-static mg_resource_set_t *scene_resource_set[FB_COUNT];
+static scene_raw_data *scene_uniform_buffer[FB_COUNT];
+static const mg_uniform_t *fog_uniform;
+static const mg_uniform_t *lighting_uniform;
+static const mg_uniform_t *texturing_uniform;
+static const mg_uniform_t *modes_uniform;
 static const mg_uniform_t *matrices_uniform;
 
 static uint32_t pipelines_count = 0;
@@ -212,6 +220,12 @@ void init()
 
     assertf(pipelines_count > 0, "No pipelines were created during scene initialization!");
 
+    fog_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_FOG);
+    lighting_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_LIGHTING);
+    texturing_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_TEXTURING);
+    modes_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_MODES);
+    matrices_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_MATRICES);
+
     // Load textures
     for (size_t i = 0; i < TEXTURE_COUNT; i++)
     {
@@ -231,7 +245,23 @@ void init()
             color_from_packed32(material_diffuse_colors[i]));
     }
 
-    create_scene_resources();
+    // These are uniforms that are expected to stay constant during the entire scene.
+    // They will be provided to the shader by writing the data to a uniform buffer.
+
+    // Because this data changes each frame we need to create one buffer for each frame that can be in flight simultaneosly,
+    // which is normally the number of framebuffers the display was initialized with.
+    // This is necessary so when frame N is being prepared on the CPU we won't overwrite the data for frame N-1, which might still be
+    // in the process of being rendered by RSP/RDP.
+
+    for (size_t i = 0; i < FB_COUNT; i++)
+    {
+        // Create the uniform buffer. It's important that the buffer contents need to be in a format that is optimized for
+        // access by the RSP. This is what the scene_raw_data struct is, which itself contains the predefined structs
+        // provided by the fixed function pipeline.
+        scene_uniform_buffer[i] = malloc_uncached(sizeof(scene_raw_data));
+    }
+
+    // Note that the contents of the scene uniform buffers are not initialized yet. This will happen later on.
 
     // Initialize objects
     for (size_t i = 0; i < OBJECT_COUNT; i++)
@@ -263,110 +293,26 @@ void init()
     memcpy(camera_position, camera_start_position, sizeof(camera_position));
 }
 
-void create_scene_resources()
-{
-    // These are resources that are expected to stay constant during the entire scene.
-    // These will be provided to the shader by writing the data to a uniform buffer, and attaching that buffer
-    // to a resource set. By using a resource set, uploading the data to DMEM during rendering will be 
-    // automatically optimized for us. Using uniform buffers also allows us to modify the buffer contents dynamically,
-    // for example to update lighting.
-
-    // Because this data changes each frame we need to create one buffer/resource set for each frame that can be in flight simultaneosly,
-    // which is normally the number of framebuffers the display was initialized with.
-    // This is necessary so when frame N is being prepared on the CPU we won't overwrite the data for frame N-1, which might still be
-    // in the process of being rendered by RSP/RDP.
-
-    matrices_uniform = mg_pipeline_get_uniform(pipelines[0], MGFX_BINDING_MATRICES);
-
-    for (size_t i = 0; i < FB_COUNT; i++)
-    {
-        // Create the uniform buffer. It's important that the buffer contents need to be in a format that is optimized for
-        // access by the RSP. This is what the scene_raw_data struct is, which itself contains the predefined structs
-        // provided by the fixed function pipeline.
-        scene_resource_buffer[i] = mg_buffer_create(&(mg_buffer_parms_t) {
-            .size = sizeof(scene_raw_data),
-        });
-
-        // Create the resource set. A resource set contains a number of resource bindings.
-        // Each resource binding describes the type of resource, where to copy it from, and which binding location to copy it to.
-        // Binding locations are defined by the vertex shader. Therefore we use predefined binding locations that are provided by
-        // the fixed function pipeline.
-        mg_resource_binding_t scene_bindings[] = {
-            {
-                .binding = MGFX_BINDING_FOG,
-                .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
-                .buffer = scene_resource_buffer[i],
-                .offset = offsetof(scene_raw_data, fog)
-            },
-            {
-                .binding = MGFX_BINDING_LIGHTING,
-                .type = MG_RESOURCE_TYPE_UNIFORM_BUFFER,
-                .buffer = scene_resource_buffer[i],
-                .offset = offsetof(scene_raw_data, lighting)
-            },
-        };
-
-        // By bundling multiple resource bindings in a resource set, magma can automatically optimize the operation
-        // (for example by detecting that some bindings can be coalesced into a contiguous DMA). During rendering, 
-        // the set can be "bound" with a single function call, which will load all attached resources into DMEM at once.
-        scene_resource_set[i] = mg_resource_set_create(&(mg_resource_set_parms_t) {
-            .pipeline = pipelines[0],
-            .binding_count = ARRAY_COUNT(scene_bindings),
-            .bindings = scene_bindings
-        });
-
-        // Note that even though we've created the resource set above by pointing it towards a buffer, we haven't actually initialised
-        // any of the contents yet. This will be done at beginning of each frame.
-    }
-}
-
 void material_create(material_data *material, sprite_t *texture, mgfx_modes_parms_t *mode_parms, mg_geometry_flags_t geometry_flags, color_t color)
 {
-    // Similarly to the scene resources, we will provide materials to the shader via resource sets.
-    // We separate the material from scene resources, because they are expected to change during the scene.
-    // Not all objects will have the same material after all. To show off all features of magma in this demo,
-    // we will make the assumption that the materials themselves will stay constant. Therefore we won't store
-    // this data inside buffers, but attach it to the resource set directly via so called "embedded uniforms".
+    // Similarly to the scene uniforms, we will provide materials to the shader via uniform buffers.
+    // We separate the material from scene uniforms, because they are expected to change during the scene.
+    // Not all objects will have the same material after all. We will make the assumption that the materials 
+    // themselves will stay constant. Therefore we only create a single buffer per material, as opposed to 
+    // additional buffers for simultaneous frames.
 
-    // 1. Initialize the raw material data by using the functions provided by the fixed function pipeline.
-    //    Just as with uniform buffers, the shader expects the data in a format that is optimized for the RSP.
+    // Initialize the raw material data by using the functions provided by the fixed function pipeline.
 
     // Flip the texture upside down if environment mapping is enabled, because it will appear upside down otherwise.
     int tex_y_scale = (mode_parms->flags & MGFX_MODES_FLAGS_ENV_MAP_ENABLED) ? -1 : 1;
-    mgfx_texturing_t tex;
-    mgfx_modes_t modes;
-    mgfx_get_texturing(&tex, &(mgfx_texturing_parms_t) {
+    material->buffer = malloc_uncached(sizeof(material_raw_data));
+    mgfx_get_texturing(&material->buffer->texturing, &(mgfx_texturing_parms_t) {
         .scale[0] = texture->width  >> TEX_SIZE_SHIFT,
         .scale[1] = (texture->height * tex_y_scale) >> TEX_SIZE_SHIFT,
         .offset[0] = -RDP_HALF_TEXEL,
         .offset[1] = -RDP_HALF_TEXEL
     });
-    mgfx_get_modes(&modes, mode_parms);
-
-    // 2. Create the resource set. This time, we use the resource type "embedded uniform" and set
-    //    the "embedded_data" pointer to pass in the data we initialized above.
-    mg_resource_binding_t bindings[] = {
-        {
-            .binding = MGFX_BINDING_TEXTURING,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &tex
-        },
-        {
-            .binding = MGFX_BINDING_MODES,
-            .type = MG_RESOURCE_TYPE_EMBEDDED_UNIFORM,
-            .embedded_data = &modes
-        },
-    };
-
-    // When this call returns, the "embedded_data" has been consumed and a copy embedded inside the resource set itself.
-    // This effectively does the same as a uniform buffer, but there is one less object to manage. The drawback is that 
-    // once the resource set has been created, there is no way to modify the embedded data. But due to the assumption we made,
-    // that won't be required anyway.
-    material->resource_set = mg_resource_set_create(&(mg_resource_set_parms_t) {
-        .pipeline = pipelines[0],
-        .binding_count = ARRAY_COUNT(bindings),
-        .bindings = bindings,
-    });
+    mgfx_get_modes(&material->buffer->modes, mode_parms);
 
     // Additionally prepare texture data for rdpq, but this is completely unrelated to magma.
     material->texture = texture;
@@ -631,7 +577,7 @@ void update_camera()
 
 void update_lights()
 {
-    // Here we are updating the contents of the scene resources that we created during initialisation above.
+    // Here we are updating the contents of the scene uniforms that we created during initialisation above.
 
     // Because lighting is computed in eye space and we specify light positions/directions in world space,
     // we need to manually transform the lights into eye space each frame and update the corresponding uniform.
@@ -641,19 +587,16 @@ void update_lights()
         mat4x4_mult_vec(lights[i].position, &view_matrix, light_positions[i]);
     }
 
-    // Map the current frame's buffer for writing access and write the uniform data into it. It's important to always unmap the buffer once done.
-    scene_raw_data *raw_data = mg_buffer_map(scene_resource_buffer[fb_index], 0, sizeof(raw_data), MG_BUFFER_MAP_FLAGS_WRITE);
-        // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
-        mgfx_get_fog(&raw_data->fog, &(mgfx_fog_parms_t) {
-            .start = fog_start,
-            .end = fog_end
-        });
-        mgfx_get_lighting(&raw_data->lighting, &(mgfx_lighting_parms_t) {
-            .ambient_color = color_from_packed32(ambient_light_color),
-            .light_count = ARRAY_COUNT(lights),
-            .lights = lights
-        });
-    mg_buffer_unmap(scene_resource_buffer[fb_index]);
+    // These mgfx_get_* functions will take the parameters in a convenient format and convert them into the RSP-optimized format that the buffer is supposed to contain.
+    mgfx_get_fog(&scene_uniform_buffer[fb_index]->fog, &(mgfx_fog_parms_t) {
+        .start = fog_start,
+        .end = fog_end
+    });
+    mgfx_get_lighting(&scene_uniform_buffer[fb_index]->lighting, &(mgfx_lighting_parms_t) {
+        .ambient_color = color_from_packed32(ambient_light_color),
+        .light_count = ARRAY_COUNT(lights),
+        .lights = lights
+    });
 }
 
 void update_objects()
@@ -745,9 +688,10 @@ void render()
     mg_set_culling(&culling);
 
     // In this demo, all our materials use variations of the same pipeline which are compatible with respect to their uniforms.
-    // When binding a pipeline, uniforms are not automatically invalidated, which means we can bind resources that stay constant 
+    // When binding a pipeline, uniforms are not automatically invalidated, which means we can load uniforms that stay constant 
     // for the entire scene here (for example lighting).
-    mg_bind_resource_set(scene_resource_set[fb_index]);
+    mg_load_uniform(fog_uniform, &scene_uniform_buffer[fb_index]->fog);
+    mg_load_uniform(lighting_uniform, &scene_uniform_buffer[fb_index]->lighting);
 
     uint32_t current_pipeline_id = -1;
     uint32_t current_material_id = -1;
@@ -771,14 +715,15 @@ void render()
             mg_bind_pipeline(pipelines[current_pipeline_id]);
         }
 
-        // Swap out the current material resources. This will automatically upload all uniform data to DMEM that is bound to the set.
+        // Set the current material uniforms.
         // To avoid redundant uploads, we keep track of the current material and only make this call when it actually changes.
         // This will be most optimal if the list of objects has been sorted by material.
         if (draw_call->material_id != current_material_id) {
             rdpq_debug_log_msg("-------> Material");
             current_material_id = draw_call->material_id;
             current_material = &materials[current_material_id];
-            mg_bind_resource_set(current_material->resource_set);
+            mg_load_uniform(texturing_uniform, &current_material->buffer->texturing);
+            mg_load_uniform(modes_uniform, &current_material->buffer->modes);
 
             // Also set the geometry flags, which determine the type of triangle to be drawn.
             mg_set_geometry_flags(current_material->geometry_flags);
@@ -808,7 +753,7 @@ void render()
 
             // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
             // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
-            // If we were to use resource sets for matrices as well, we would have to manually synchronize updating them on the CPU.
+            // If we were to use uniform buffers for matrices as well, we would have to manually synchronize updating them on the CPU.
             // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
             mgfx_set_matrices_inline(matrices_uniform, &(mgfx_matrices_parms_t) {
                 .model_view_projection = current_object->mvp_matrix.m[0],
@@ -820,7 +765,7 @@ void render()
         assert(current_submesh != NULL);
 
         // Perform the draw call. This will assemble the triangles from the currently bound vertex/index buffers, process them with the
-        // currently bound pipeline (using the attached vertex shader), applying all currently bound resources such as matrices, lighting and material parameters etc.
+        // currently bound pipeline (using the attached vertex shader), using all currently loaded uniforms such as matrices, lighting and material parameters etc.
         rdpq_debug_log_msg("-------> Draw");
 
         // Even when drawing commands are recorded into a block, we need to put them into a drawing batch to ensure proper synchronisation with rdpq.
@@ -858,6 +803,6 @@ void render()
 
     frames++;
 
-    // Cycle the index used for accessing buffers and resource sets that change per frame.
+    // Cycle the index used for accessing buffers that change per frame.
     fb_index = (fb_index + 1) % FB_COUNT;
 }

@@ -14,9 +14,6 @@ typedef struct mg_pipeline_s            mg_pipeline_t;
 /** @brief A linear array of data, which can be bound to a pipeline for various purposes */
 typedef struct mg_buffer_s              mg_buffer_t;
 
-/** @brief A set of resources, that can be bound for use by a shader */
-typedef struct mg_resource_set_s        mg_resource_set_t;
-
 typedef enum
 {
     MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST     = 0,
@@ -55,13 +52,6 @@ typedef enum
     MG_BUFFER_MAP_FLAGS_READ                = 1<<0,
     MG_BUFFER_MAP_FLAGS_WRITE               = 1<<1,
 } mg_buffer_map_flags_t;
-
-typedef enum
-{
-    MG_RESOURCE_TYPE_UNIFORM_BUFFER         = 0,
-    MG_RESOURCE_TYPE_STORAGE_BUFFER         = 1,
-    MG_RESOURCE_TYPE_EMBEDDED_UNIFORM       = 2,
-} mg_resource_type_t;
 
 typedef struct
 {
@@ -120,22 +110,6 @@ typedef struct
     void *backing_memory;
 } mg_buffer_parms_t;
 
-typedef struct
-{
-    uint32_t binding;
-    mg_resource_type_t type;
-    mg_buffer_t *buffer;
-    const void *embedded_data;
-    uint32_t offset;
-} mg_resource_binding_t;
-
-typedef struct
-{
-    mg_pipeline_t *pipeline;
-    uint32_t binding_count;
-    const mg_resource_binding_t *bindings;
-} mg_resource_set_parms_t;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -161,12 +135,6 @@ void *mg_buffer_map(mg_buffer_t *buffer, uint32_t offset, uint32_t size, mg_buff
 void mg_buffer_unmap(mg_buffer_t *buffer);
 void mg_buffer_write(mg_buffer_t *buffer, uint32_t offset, uint32_t size, const void *data);
 
-/* Resources */
-
-mg_resource_set_t *mg_resource_set_create(const mg_resource_set_parms_t *parms);
-void mg_resource_set_free(mg_resource_set_t *resource_set);
-
-
 /* Commands (these will generate rspq commands) */
 
 /** @brief Bind the pipeline for subsequent use, uploading the attached shader to IMEM */
@@ -188,9 +156,6 @@ void mg_set_viewport(const mg_viewport_t *viewport);
 
 /** @brief Set the clipping guard factor */
 inline void mg_set_clip_factor(uint32_t factor);
-
-/** @brief Bind a resource set, uploading the bound resources to shader uniforms */
-void mg_bind_resource_set(mg_resource_set_t *resource_set);
 
 /** @brief Push a block of data directly to DMEM, embedding the data in the command */
 void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
