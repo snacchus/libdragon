@@ -14,7 +14,7 @@
 #include "../../include/GL/gl_enums.h"
 #include "../../src/GL/gl_constants.h"
 #include "../../include/magma_constants.h"
-#include "../../include/mgfx.h"
+#include "../../include/mgfx_macros.h"
 #include "../../include/model64.h"
 #include "../../src/model64_internal.h"
 #include "../../src/model64_catmull.h"
