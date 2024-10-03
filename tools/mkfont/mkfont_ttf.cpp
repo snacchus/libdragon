@@ -31,6 +31,14 @@ static bool is_monochrome(FT_Face face)
     return true;
 }
 
+static bool is_combined_glyph(uint32_t cp)
+{
+    // Check if the codepoint is a combined glyph
+    // (e.g. a diacritic that should be combined with the previous character)
+    return (cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x1DC0 && cp <= 0x1DFF) ||
+           (cp >= 0x20D0 && cp <= 0x20FF) || (cp >= 0xFE20 && cp <= 0xFE2F);
+}
+
 static int font_set_default_size(FT_Face face)
 {
     FT_Size_RequestRec req;
@@ -141,23 +149,28 @@ int convert_ttf(const char *infn, const char *outfn, std::vector<int>& ranges)
 
     // If ranges is emtpy, it means we need to extract all the glyphs from the font
     if (ranges.empty()) {
+        std::vector<uint32_t> unicode_ranges;
+        for (auto &b : unicode_blocks)
+            unicode_ranges.push_back(b.first);
+
         unsigned idx;
         std::map<int, std::pair<int, int>> range_map;
         // Go through all the glyphs in the font
         uint32_t cp = FT_Get_First_Char(face, &idx);
         while (idx) {
-            // Search which unicode range this glyph belongs to
-            int range = *(std::upper_bound(unicode_ranges.begin(), unicode_ranges.end(), cp)-1);
+            if (!is_combined_glyph(cp)) {
+                // Search which unicode range this glyph belongs to
+                int range = *(std::upper_bound(unicode_ranges.begin(), unicode_ranges.end(), cp)-1);
 
-            // Update the min/max codepoint for this range
-            auto r = range_map.find(range);
-            if (r != range_map.end()) {
-                r->second.first = MIN(r->second.first, cp);
-                r->second.second = MAX(r->second.second, cp);
-            } else {
-                range_map.insert({range, {cp, cp}});
+                // Update the min/max codepoint for this range
+                auto r = range_map.find(range);
+                if (r != range_map.end()) {
+                    r->second.first = MIN(r->second.first, cp);
+                    r->second.second = MAX(r->second.second, cp);
+                } else {
+                    range_map.insert({range, {cp, cp}});
+                }
             }
-
             cp = FT_Get_Next_Char(face, cp, &idx);
         }
         // Convert the map back to a the ranges vector
@@ -166,6 +179,8 @@ int convert_ttf(const char *infn, const char *outfn, std::vector<int>& ranges)
             ranges.push_back(r.second.second);
         }
     }
+    
+    bool warned_combined = false;
 
     // Go through all the ranges
     for (int r=0; r<ranges.size(); r+=2) {
@@ -175,6 +190,16 @@ int convert_ttf(const char *infn, const char *outfn, std::vector<int>& ranges)
 
         // Extract the glyphs for these ranges
         for (int g=ranges[r]; g<=ranges[r+1]; g++) {
+            if (!flag_charset.empty() && flag_charset.find(g) == flag_charset.end())
+                continue;
+            if (is_combined_glyph(g)) {
+                if (!flag_charset.empty() && !warned_combined) {
+                    fprintf(stderr, "WARNING: charset file contains combined diacritical marks, which are not supported\n");
+                    warned_combined = true;
+                }
+                continue;
+            }
+
             int ttf_idx = FT_Get_Char_Index(face, g);
             if (ttf_idx == 0) {
                 if (flag_verbose >= 2)
@@ -192,6 +217,7 @@ int convert_ttf(const char *infn, const char *outfn, std::vector<int>& ranges)
                 FT_GlyphSlot slot = face->glyph;
                 FT_Bitmap bmp = slot->bitmap;
 
+                assert(bmp.width >= 0 && bmp.rows >= 0);
                 Image img = Image(FMT_I8, bmp.width, bmp.rows);
 
                 switch (bmp.pixel_mode) {
@@ -287,6 +313,9 @@ int convert_ttf(const char *infn, const char *outfn, std::vector<int>& ranges)
         // Create atlases for glyphs in this range
         font.make_atlases();
     }
+
+    // Create the sparse range table
+    font.make_sparse_ranges();
 
     // Add kerning information, if enabled on command line and available in the font
     if (flag_kerning && FT_HAS_KERNING(face)) {

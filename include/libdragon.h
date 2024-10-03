@@ -87,8 +87,5 @@
 #include "magma.h"
 #include "mgfx.h"
 
-#ifndef __cplusplus
-#include "cthreads.h"
-#endif
 
 #endif

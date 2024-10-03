@@ -125,7 +125,7 @@ void rdpq_paragraph_builder_style(uint8_t style_id)
 
 static void paragraph_extend(void)
 {
-    assertf(builder.layout->flags & RDPQ_PARAGRAPH_FLAG_MALLOC, "paragraph of text is too long and cannot be dynamically extnded");
+    assertf(builder.layout->flags & RDPQ_PARAGRAPH_FLAG_MALLOC, "paragraph of text is too long and cannot be dynamically extended");
     int new_cap = builder.layout->capacity * 2;
     builder.layout = realloc(builder.layout, sizeof(rdpq_paragraph_t) + sizeof(rdpq_paragraph_char_t) * new_cap);
     builder.layout->capacity = new_cap;
@@ -233,6 +233,8 @@ void rdpq_paragraph_builder_span(const char *utf8_text, int nbytes)
 
         // Add character to the layout
         if (UNLIKELY(builder.layout->nchars >= builder.layout->capacity)) paragraph_extend();
+        assertf(xcur < 2048, "Paragraph width %d exceeds maximum width", (int)xcur);
+        assertf(ycur < 2048, "Paragraph height %d exceeds maximum height", (int)ycur);
         builder.layout->chars[builder.layout->nchars++] = (rdpq_paragraph_char_t) {
             .font_id = builder.font_id,
             .atlas_id = atlas_id,

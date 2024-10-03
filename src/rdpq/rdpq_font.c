@@ -141,8 +141,13 @@ rdpq_font_t* rdpq_font_load_buf(void *buf, int sz)
     assertf(sz >= sizeof(rdpq_font_t), "Font buffer too small (sz=%d)", sz);
     assertf(memcmp(fnt->magic, FONT_MAGIC_LOADED, 3), "Trying to load already loaded font data (buf=%p, sz=%08x)", buf, sz);
     assertf(!memcmp(fnt->magic, FONT_MAGIC, 3), "invalid font data (magic: %c%c%c)", fnt->magic[0], fnt->magic[1], fnt->magic[2]);
-    assertf(fnt->version == 9, "unsupported font version: %d\nPlease regenerate fonts with an updated mkfont tool", fnt->version);
+    assertf(fnt->version == 10, "unsupported font version: %d\nPlease regenerate fonts with an updated mkfont tool", fnt->version);
     fnt->ranges = PTR_DECODE(fnt, fnt->ranges);
+    if (fnt->sparse_range) {
+        fnt->sparse_range = PTR_DECODE(fnt, fnt->sparse_range);
+        fnt->sparse_range->g = PTR_DECODE(fnt, fnt->sparse_range->g);
+        fnt->sparse_range->values = PTR_DECODE(fnt, fnt->sparse_range->values);
+    }
     fnt->glyphs = PTR_DECODE(fnt, fnt->glyphs);
     if (fnt->glyphs_kranges) fnt->glyphs_kranges = PTR_DECODE(fnt, fnt->glyphs_kranges);
     fnt->atlases = PTR_DECODE(fnt, fnt->atlases);
@@ -152,40 +157,75 @@ rdpq_font_t* rdpq_font_load_buf(void *buf, int sz)
     for (int i = 0; i < fnt->num_atlases; i++) {
         void *buf = PTR_DECODE(fnt, fnt->atlases[i].sprite);
         fnt->atlases[i].sprite = sprite_load_buf(buf, fnt->atlases[i].size);
+        sprite_t *spr = fnt->atlases[i].sprite;
         rspq_block_begin();
+            // Setup the render mode for this font type
             int font_type = fnt->flags & FONT_FLAG_TYPE_MASK;
-            setup_render_mode(font_type, sprite_get_format(fnt->atlases[i].sprite));
+            setup_render_mode(font_type, sprite_get_format(spr));
+
+            // Get the atlas surface and check if it fits into TMEM or not,
+            // as we will need different rendering strategies.
+            surface_t surf = sprite_get_pixels(spr);
+            bool fits_tmem = sprite_fits_tmem(spr);
+            spr->hslices = fits_tmem ? 1 : 0; // Store it in an unused filed of the header
+
             switch (font_type) {
             case FONT_TYPE_MONO: {
-                surface_t surf = sprite_get_pixels(fnt->atlases[i].sprite);
-                rdpq_tex_multi_begin();
-                rdpq_tex_upload(TILE0, &surf, NULL);
-                rdpq_tex_reuse(TILE1, &(rdpq_texparms_t){ .palette = 1 });
-                rdpq_tex_reuse(TILE2, &(rdpq_texparms_t){ .palette = 2 });
-                rdpq_tex_reuse(TILE3, &(rdpq_texparms_t){ .palette = 3 });
-                rdpq_tex_multi_end();
-                rdpq_tex_upload_tlut(sprite_get_palette(fnt->atlases[i].sprite), 0, font_type == FONT_TYPE_MONO ? 64 : 32);
+                rdpq_tex_upload_tlut(sprite_get_palette(spr), 0, font_type == FONT_TYPE_MONO ? 64 : 32);
+                if (fits_tmem) {
+                    rdpq_tex_multi_begin();
+                    rdpq_tex_upload(TILE0, &surf, NULL);
+                    rdpq_tex_reuse(TILE1, &(rdpq_texparms_t){ .palette = 1 });
+                    rdpq_tex_reuse(TILE2, &(rdpq_texparms_t){ .palette = 2 });
+                    rdpq_tex_reuse(TILE3, &(rdpq_texparms_t){ .palette = 3 });
+                    rdpq_tex_multi_end();
+                } else {
+                    rdpq_set_texture_image_raw(0, PhysicalAddr(surf.buffer), FMT_CI8, surf.width/2, surf.height);
+                    rdpq_set_tile(TILE0, sprite_get_format(spr), 0    , 48, &(rdpq_tileparms_t){ .palette = 0 });
+                    rdpq_set_tile(TILE1, sprite_get_format(spr), 0    , 48, &(rdpq_tileparms_t){ .palette = 1 });
+                    rdpq_set_tile(TILE2, sprite_get_format(spr), 0    , 48, &(rdpq_tileparms_t){ .palette = 2 });
+                    rdpq_set_tile(TILE3, sprite_get_format(spr), 0    , 48, &(rdpq_tileparms_t){ .palette = 3 });
+                    rdpq_set_tile(TILE4, FMT_CI8, 0    , 48, NULL);
+                }
                 rdpq_sync_load(); // FIXME: revisit once we have the new auto-sync engine
                 break;
             }
             case FONT_TYPE_MONO_OUTLINE: {
-                surface_t surf = sprite_get_pixels(fnt->atlases[i].sprite);
-                rdpq_tex_multi_begin();
-                // Outline font uses only TILE1 and TILE2 because the combiner only uses
-                // TEX1 and never TEX0 (see recalc_style).
-                rdpq_tex_upload(TILE1, &surf, NULL);
-                rdpq_tex_reuse(TILE2, &(rdpq_texparms_t){ .palette = 1 });
-                rdpq_tex_multi_end();
-                rdpq_tex_upload_tlut(sprite_get_palette(fnt->atlases[i].sprite), 0, font_type == FONT_TYPE_MONO ? 64 : 32);
+                rdpq_tex_upload_tlut(sprite_get_palette(spr), 0, font_type == FONT_TYPE_MONO ? 64 : 32);
+                if (fits_tmem) {
+                    rdpq_tex_multi_begin();
+                    // Outline font uses only TILE1 and TILE2 because the combiner only uses
+                    // TEX1 and never TEX0 (see recalc_style).
+                    rdpq_tex_upload(TILE1, &surf, NULL);
+                    rdpq_tex_reuse(TILE2, &(rdpq_texparms_t){ .palette = 1 });
+                    rdpq_tex_multi_end();
+                } else {
+                    rdpq_set_texture_image_raw(0, PhysicalAddr(surf.buffer), FMT_CI8, surf.width/2, surf.height);
+                    rdpq_set_tile(TILE1, sprite_get_format(spr), 0    , 48, &(rdpq_tileparms_t){ .palette = 0 });
+                    rdpq_set_tile(TILE2, sprite_get_format(spr), 0    , 48, &(rdpq_tileparms_t){ .palette = 1 });
+                    rdpq_set_tile(TILE4, FMT_CI8, 0    , 48, NULL);
+                }
                 rdpq_sync_load(); // FIXME: revisit once we have the new auto-sync engine
                 break;
             }
             case FONT_TYPE_ALIASED_OUTLINE:
-                rdpq_sprite_upload(TILE1, fnt->atlases[i].sprite, NULL);
+                if (fits_tmem) {
+                    rdpq_sprite_upload(TILE1, spr, NULL);
+                } else {
+                    rdpq_set_texture_image(&surf);
+                    rdpq_set_tile(TILE1, sprite_get_format(spr), 0, 48, NULL);
+                    rdpq_set_tile(TILE5, sprite_get_format(spr), 0, 48, NULL);
+                }
                 break;
             case FONT_TYPE_ALIASED:
             default:
-                rdpq_sprite_upload(TILE0, fnt->atlases[i].sprite, NULL);
+                if (fits_tmem) {
+                    rdpq_sprite_upload(TILE0, spr, NULL);
+                } else {
+                    rdpq_set_texture_image(&surf);
+                    rdpq_set_tile(TILE0, sprite_get_format(spr), 0, 48, NULL);
+                    rdpq_set_tile(TILE4, sprite_get_format(spr), 0, 48, NULL);
+                }
                 break;
             }
 
@@ -219,6 +259,11 @@ static void font_unload(rdpq_font_t *fnt)
         fnt->num_styles = 1;
     }
     fnt->ranges = PTR_ENCODE(fnt, fnt->ranges);
+    if (fnt->sparse_range) {
+        fnt->sparse_range->g = PTR_ENCODE(fnt, fnt->sparse_range->g);
+        fnt->sparse_range->values = PTR_ENCODE(fnt, fnt->sparse_range->values);
+        fnt->sparse_range = PTR_ENCODE(fnt, fnt->sparse_range);
+    }
     fnt->glyphs = PTR_ENCODE(fnt, fnt->glyphs);
     if (fnt->glyphs_kranges) fnt->glyphs_kranges = PTR_ENCODE(fnt, fnt->glyphs_kranges);
     fnt->atlases = PTR_ENCODE(fnt, fnt->atlases);
@@ -241,12 +286,55 @@ void rdpq_font_free(rdpq_font_t *fnt)
     }
 }
 
+static uint32_t rotl(uint32_t x, int k)
+{
+    return (x << k) | (x >> (-k & 31));
+}
+
+__attribute__((noinline))
+static uint32_t phf_round32(uint32_t k1, uint32_t h1) {
+	k1 *= 0xcc9e2d51;
+	k1 = rotl(k1, 15);
+	k1 *= 0x1b873593;
+	h1 ^= k1;
+	h1 = rotl(h1, 13);
+	h1 = h1 * 5 + 0xe6546b64;
+	return h1;
+}
+__attribute__((noinline))
+static uint32_t phf_mix32(uint32_t h1) {
+	h1 ^= h1 >> 16;
+	h1 *= 0x85ebca6b;
+	h1 ^= h1 >> 13;
+	h1 *= 0xc2b2ae35;
+	h1 ^= h1 >> 16;
+	return h1;
+}
+
+__attribute__((noinline))
+static int16_t __rdpq_font_glyph_sparse(const rdpq_font_t *fnt, uint32_t codepoint)
+{
+    uint32_t seed = fnt->sparse_range->seed;
+    uint32_t g = phf_mix32(phf_round32(codepoint, seed));
+    uint32_t gidx = ((uint64_t)g * fnt->sparse_range->r) >> 32;
+    uint32_t d = fnt->sparse_range->g[gidx];
+    uint32_t f = phf_mix32(phf_round32(codepoint, phf_round32(d, seed)));
+    uint32_t idx = ((uint64_t)f * fnt->sparse_range->m) >> 32;
+    int16_t glyph = fnt->sparse_range->values[idx];
+    assertf(glyph >= 0, "internal error: perfect hash table lookup failed for codepoint %ld", codepoint);
+    return glyph;
+}
+
 int16_t __rdpq_font_glyph(const rdpq_font_t *fnt, uint32_t codepoint)
 {
     // Search for the range that contains this codepoint (if any)
     for (int i = 0; i < fnt->num_ranges; i++) {
         range_t *r = &fnt->ranges[i];
         if (codepoint >= r->first_codepoint && codepoint < r->first_codepoint + r->num_codepoints) {
+            if (UNLIKELY(r->first_glyph < 0)) {
+                assert(fnt->sparse_range);
+                return __rdpq_font_glyph_sparse(fnt, codepoint);
+            }
             return r->first_glyph + codepoint - r->first_codepoint;
         }
     }
@@ -302,6 +390,8 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
     uint8_t font_id = chars[0].font_id;
     int cur_atlas = -1;
     int cur_style = -1;
+    int rdram_loading = 0;
+    int tile_offset = 0;
 
     const rdpq_paragraph_char_t *ch = chars;
     while (ch->font_id == font_id) {
@@ -313,7 +403,23 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
             cur_style = ch->style_id;
         }
         if (UNLIKELY(g->natlas != cur_atlas)) {
-            rspq_block_run(fnt->atlases[g->natlas].up);
+            atlas_t *a = &fnt->atlases[g->natlas];
+            rspq_block_run(a->up);
+            if (a->sprite->hslices == 0) { // check if the atlas is in RDRAM instead of TMEM
+                switch (fnt->flags & FONT_FLAG_TYPE_MASK) {
+                case FONT_TYPE_MONO:            rdram_loading = 1; tile_offset = 0; break;
+                case FONT_TYPE_MONO_OUTLINE:    rdram_loading = 1; tile_offset = 1; break;
+                case FONT_TYPE_ALIASED:         rdram_loading = 2; tile_offset = 0; break;
+                case FONT_TYPE_ALIASED_OUTLINE: rdram_loading = 2; tile_offset = 1; break;
+                case FONT_TYPE_BITMAP: switch (TEX_FORMAT_BITDEPTH(sprite_get_format(a->sprite))) {
+                    case 4:     rdram_loading = 1; tile_offset = 0; break;
+                    default:    rdram_loading = 2; tile_offset = 0; break;
+                    } break;
+                default: assert(0);
+                }
+            } else {
+                rdram_loading = 0;
+            }
             cur_atlas = g->natlas;
         }
 
@@ -322,8 +428,30 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
         float y = y0 + (ch->y + g->yoff);
         int width = g->xoff2 - g->xoff;
         int height = g->yoff2 - g->yoff;
+        int ntile = g->ntile;
 
-        rdpq_texture_rectangle(g->ntile,
+        // Check if the atlas is in RDRAM (rather than TMEM). If so, we need
+        // to load each glyph into TMEM before drawing.
+        if (UNLIKELY(rdram_loading)) {
+            switch (rdram_loading) {
+            case 1:
+                // If the atlas is 4bpp, we need to load the glyph as CI8 (usual trick)
+                // TILE4 is the CI8 tile configured for loading
+                rdpq_load_tile(TILE4, g->s/2, g->t, (g->s+width+1)/2, g->t+height);
+                rdpq_set_tile_size(ntile+tile_offset, g->s & ~1, g->t, (g->s+width+1) & ~1, g->t+height);
+                break;
+            case 2:
+                ntile += tile_offset;
+                tile_offset ^= 4;
+                rdpq_load_tile(ntile, g->s, g->t, g->s+width, g->t+height);
+                ntile ^= (ntile & 1);
+                break;
+            default:
+                assertf(0, "invalid rdram_loading value %d", rdram_loading);
+            }
+        }
+
+        rdpq_texture_rectangle(ntile,
             x, y, x+width, y+height,
             g->s, g->t);
 
@@ -333,16 +461,22 @@ int rdpq_font_render_paragraph(const rdpq_font_t *fnt, const rdpq_paragraph_char
     return ch - chars;
 }
 
-bool rdpq_font_get_glyph_ranges(const rdpq_font_t *fnt, int idx, uint32_t *start, uint32_t *end)
+bool rdpq_font_get_glyph_ranges(const rdpq_font_t *fnt, int idx, uint32_t *start, uint32_t *end, bool *sparse)
 {
     if (idx < 0 || idx >= fnt->num_ranges)
         return false;
     *start = fnt->ranges[idx].first_codepoint;
     *end = fnt->ranges[idx].first_codepoint + fnt->ranges[idx].num_codepoints - 1;
+    if (sparse) *sparse = fnt->ranges[idx].first_glyph < 0;
     return true;
 }
 
-bool rdpq_font_get_glyph_metrics(const rdpq_font_t *fnt,  uint32_t codepoint, rdpq_font_gmetrics_t *metrics)
+int rdpq_font_get_glyph_index(const rdpq_font_t *fnt, uint32_t codepoint)
+{
+    return __rdpq_font_glyph(fnt, codepoint);
+}
+
+bool rdpq_font_get_glyph_metrics(const rdpq_font_t *fnt, uint32_t codepoint, rdpq_font_gmetrics_t *metrics)
 {
     int16_t glyph = __rdpq_font_glyph(fnt, codepoint);
     if (glyph < 0)

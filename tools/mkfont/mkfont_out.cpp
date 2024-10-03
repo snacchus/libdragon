@@ -2,6 +2,11 @@
 // Bring in tex_format_t definition
 #include "surface.h"
 #include "sprite.h"
+#include <map>
+#include <mutex>
+#include "phf.h"
+#include "phf.cpp"
+#include "../common/thread_utils.h"
 
 static std::string codepoint_to_utf8(uint32_t codepoint) {
     std::string utf8;
@@ -23,6 +28,36 @@ static std::string codepoint_to_utf8(uint32_t codepoint) {
     return utf8;
 }
 
+static uint32_t utf8_to_codepoint(const char *utf8, const char **endptr) {
+    const uint8_t *s = (const uint8_t*)utf8;
+    uint32_t c = *s++;
+    if (c < 0x80) {
+        *endptr = (const char*)s;
+        return c;
+    }
+    if (c < 0xC0) {
+        *endptr = (const char*)s;
+        return 0xFFFD;
+    }
+    if (c < 0xE0) {
+        c = ((c & 0x1F) << 6) | (*s++ & 0x3F);
+        *endptr = (const char*)s;
+        return c;
+    }
+    if (c < 0xF0) {
+        c = ((c & 0x0F) << 12); c |= ((*s++ & 0x3F) << 6); c |= (*s++ & 0x3F);
+        *endptr = (const char*)s;
+        return c;
+    }
+    if (c < 0xF8) {
+        c = ((c & 0x07) << 18); c |= ((*s++ & 0x3F) << 12); c |= ((*s++ & 0x3F) << 6); c |= (*s++ & 0x3F);
+        *endptr = (const char*)s;
+        return c;
+    }
+    *endptr = (const char*)s;
+    return 0xFFFD;
+}
+
 // An owned image bitmap, supporting multiple texture formats for dynamic conversions
 struct Image {
     tex_format_t fmt;
@@ -38,6 +73,7 @@ struct Image {
     Image(tex_format_t fmt, int w, int h, uint8_t *px = NULL)
         : fmt(fmt), w(w), h(h)
     {
+        assert(w >= 0 && h >= 0);
         pixels.resize(w * h * TEX_FORMAT_BITDEPTH(fmt)/8);
         if (px)
             memcpy(pixels.data(), px, pixels.size());
@@ -229,6 +265,9 @@ struct Image {
     }
 
     Image crop(int x0, int y0, int w, int h) {
+        assert(w >= 0 && h >= 0);
+        if (w == 0 && h == 0)
+            return Image(fmt, 0, 0);
         Image img(fmt, w, h);
         for (int y = 0; y < h; y++) {
             Line src = (*this)[y0 + y];
@@ -245,6 +284,7 @@ struct Image {
             return *this;
         }
 
+        bool solid = false;
         int x0 = w, y0 = h, x1 = 0, y1 = 0;
         for (int y = 0; y < h; y++) {
             Line line = (*this)[y];
@@ -254,11 +294,17 @@ struct Image {
                     y0 = std::min(y0, y);
                     x1 = std::max(x1, x);
                     y1 = std::max(y1, y);
+                    solid = true;
                 }
             }
         }
+        if (!solid) {
+            *ox0 = *oy0 = 0;
+            return Image(fmt, 0, 0);
+        }
         *ox0 = x0;
         *oy0 = y0;
+        
         return crop(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
     }
 
@@ -299,6 +345,8 @@ struct Font {
     std::string outfn;
     fonttype_t fonttype;
     tex_format_t bmp_outfmt = FMT_RGBA16;  // output format in case fonttype is FONT_TYPE_BITMAP
+    phf phash;  // perfect hash table for sparse ranges
+    std::vector<int16_t> phash_values;
 
     Font(std::string fn, fonttype_t ftype, int point_size, int ascent, int descent, int line_gap, int space_width)
     {
@@ -306,13 +354,14 @@ struct Font {
         fonttype = ftype;
         fnt = (rdpq_font_t*)calloc(1, sizeof(rdpq_font_t));
         memcpy(fnt->magic, FONT_MAGIC, 3);
-        fnt->version = 9;
+        fnt->version = 10;
         fnt->flags = fonttype;
         fnt->point_size = point_size;
         fnt->ascent = ascent;
         fnt->descent = descent;
         fnt->line_gap = line_gap;
         fnt->space_width = space_width;
+        memset(&phash, 0, sizeof(phf));
     }
 
     ~Font()
@@ -347,8 +396,13 @@ struct Font {
 
     void make_atlases(void);
     void make_kernings(void);
+    void make_sparse_ranges(void);
 
     void write(void);
+
+private:
+    std::vector<rect_pack::Sheet> pack_atlases(std::vector<Glyph>& glyphs, int merge_layers);
+    void build_perfect_hash(std::vector<uint32_t>& keys, std::vector<int16_t>& values);
 };
 
 
@@ -392,6 +446,7 @@ void Font::write()
     w32(out, (uint32_t)0); // placeholder
     w32(out, (uint32_t)0); // placeholder
     w32(out, (uint32_t)0); // placeholder
+    w32(out, (uint32_t)0); // placeholder
 
     // Write ranges
     uint32_t offset_ranges = ftell(out);
@@ -400,6 +455,28 @@ void Font::write()
         w32(out, fnt->ranges[i].first_codepoint);
         w32(out, fnt->ranges[i].num_codepoints);
         w32(out, fnt->ranges[i].first_glyph);
+    }
+
+    // Write sparse table
+    uint32_t offset_sparse = 0;
+    if (!phash_values.empty()) {
+        walign(out, 4);
+
+        int offset_disp = ftell(out);
+        for (int i=0; i<phash.r; i++)
+            w16(out, phash.g[i]); // already verified it fits 16 bits in build_perfect_hash
+
+        int offset_T = ftell(out);
+        for (int i=0; i<phash_values.size(); i++)
+            w16(out, phash_values[i]);
+
+        walign(out, 4);
+        offset_sparse = ftell(out);
+        w32(out, phash.seed);
+        w32(out, phash.r);
+        w32(out, phash.m);
+        w32(out, offset_disp);
+        w32(out, offset_T);
     }
 
     // Write glyphs, aligned to 16 bytes. This makes sure
@@ -464,6 +541,7 @@ void Font::write()
     // Write offsets
     fseek(out, off_placeholders, SEEK_SET);
     w32(out, offset_ranges);
+    w32(out, offset_sparse);
     w32(out, offset_glypes);
     w32(out, offset_glyphs_kranges);
     w32(out, offset_atlases);
@@ -565,6 +643,212 @@ int Font::add_glyph(uint32_t cp, Image&& img, int xoff, int yoff, int xadv)
     return gidx;
 }
 
+// Pack the specified glyphs into optimized texture atlases
+std::vector<rect_pack::Sheet> Font::pack_atlases(std::vector<Glyph>& glyphs, int merge_layers)
+{
+    // Pack the glyphs into a texture
+    rect_pack::Settings settings;
+    memset(&settings, 0, sizeof(settings));
+    settings.method = rect_pack::Method::Best;
+    settings.method = rect_pack::Method::Best;
+    settings.max_width = 128;
+    settings.max_height = 64;
+    settings.border_padding = 0;
+    settings.allow_rotate = false;
+    
+    int total_glyph_area = 0;
+    std::vector<rect_pack::Size> sizes;
+    std::vector<rect_pack::Sheet> sheets;
+    for (int i=0; i<glyphs.size(); i++) {
+        if (glyphs[i].img.w == 0 || glyphs[i].img.h == 0) continue;
+        rect_pack::Size size;
+        size.id = i;
+        size.width = glyphs[i].img.w + settings.border_padding;
+        size.height = glyphs[i].img.h + settings.border_padding;
+        total_glyph_area += size.width * size.height;
+        sizes.push_back(size);
+    }
+
+    tex_format_t cfmt; 
+    switch (fonttype) {
+    case FONT_TYPE_BITMAP:
+        cfmt = bmp_outfmt;
+        switch (bmp_outfmt) {
+        case FMT_RGBA16:
+            settings.max_width = 64;
+            settings.max_height = 32;
+            settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
+            break;
+        case FMT_RGBA32:
+            settings.max_width = 32;
+            settings.max_height = 32;
+            // RGBA32 is 4bpp but it's split into two 16-bit planes in TMEM.
+            // So the width alignment applies for each 16-bit plane.
+            settings.align_width = TEX_FORMAT_BYTES2PIX(FMT_RGBA16, 8);
+            break;
+        case FMT_CI4:
+            settings.max_width = 64;
+            settings.max_height = 64;
+            settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
+            break;
+        case FMT_CI8:
+            settings.max_width = 64;
+            settings.max_height = 32;
+            settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
+            break;
+        default:
+            assert(!"unsupported bitmap format");
+        }
+        break;
+    case FONT_TYPE_ALIASED:
+        // Aliased font: pack into I4 (max 128x64).
+        settings.max_width = 128;
+        settings.max_height = 64;
+        cfmt = FMT_I4;
+        settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
+        break;
+    case FONT_TYPE_ALIASED_OUTLINE:
+        // Aliased+outlined font: pack into IA8 (max 64x64).
+        settings.max_width = 64;
+        settings.max_height = 64;
+        cfmt = FMT_IA8;
+        settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
+        break;
+    case FONT_TYPE_MONO:
+    case FONT_TYPE_MONO_OUTLINE:
+        settings.max_width = 64;
+        settings.max_height = 64;
+        cfmt = FMT_CI4;
+        settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
+        break;
+    default:
+        assert(!"unsupported font type");
+    }
+
+    enum { MAX_TMEM_ATLASES = 8 };
+    bool fit_tmem = false;
+
+    // Try packing for TMEM sizes. We first do a quick check whether the glyphs
+    // do fit in the maximum number of atlases for TMEM (with zero waste), just to avoid
+    // doing a huge computation in case there are many glyph, just to discard it.
+    if (total_glyph_area <= merge_layers * MAX_TMEM_ATLASES * settings.max_width * settings.max_height) {
+
+        // Do the packing with TMEM limits
+        sheets = rect_pack::pack(settings, sizes);
+        
+        // Check whether the number of atlases is below the threshold to keep them in TMEM
+        fit_tmem = sheets.size() <= MAX_TMEM_ATLASES * merge_layers;
+    }
+
+    if (!fit_tmem) {    
+        // If we end up with too many atlases for a single range, it means that
+        // loading atlases into TMEM isn't going to be efficient: we would statistically
+        // need to switch between atlases too often. In this case, change strategy
+        // and build huge atlases that will be kept in RDRAM and loaded one glyph
+        // at a time instead
+        // 8 is an arbitrary threshold for the heuristics of "too many atlases".
+        if (flag_verbose) fprintf(stderr, "too many atlases for a single range, switching to RDRAM atlases\n");
+        // We are limited to 256x256 because we keep s/t coordinates in 8-bit values
+        settings.max_width = 256;
+        settings.max_height = 256;
+        // RDRAM atlases are not limited in width, they could have any size. We still
+        // put 4 here to avoid a too slow optimization process for a modest saving.
+        settings.align_width = 4;
+        sheets = rect_pack::pack(settings, sizes);
+    }
+
+    if (flag_verbose) fprintf(stderr, "packed %zu glyphs into %zu sheets\n", sizes.size(), sheets.size());
+
+    // We can save bytes on the last group of sheets by checking for many different
+    // sizes. This is not something at which rect_pack excels at, so a bruteforce
+    // approach is used here.
+    int num_sheets = sheets.size();
+    int last_group = (num_sheets-1) / merge_layers * merge_layers;
+
+    // Move the last group of sheets to a temporary array. Calculate also the
+    // current area for the last group (which is the area of the biggest
+    // sheet in the group).
+    int group_width = 0, group_height = 0;
+    std::vector<rect_pack::Sheet> group_sheets;
+    for (int i=last_group; i<num_sheets; i++) {
+        auto& s = sheets.back();
+        int area = s.width * s.height;
+        if (area > group_width*group_height) {
+            group_width = s.width;
+            group_height = s.height;
+        }
+        group_sheets.push_back(s);
+        sheets.pop_back();
+    }
+
+    // Try to optimize the last group (up to four sheets). Create an array
+    // of input sizes for all the glyphs in the last group
+    int min_area = 0;
+    std::vector<rect_pack::Size> sizes2;
+    for (auto& sheet : group_sheets) {
+        for (auto &r : sheet.rects) {
+            auto &g = glyphs[r.id];
+            rect_pack::Size size;
+            size.id = r.id;
+            size.width = g.img.w + settings.border_padding;
+            size.height = g.img.h + settings.border_padding;
+            sizes2.push_back(size);
+            min_area += size.width * size.height;
+        }
+    }
+    min_area /= merge_layers;
+
+    if (flag_verbose >= 1)
+        fprintf(stderr, "repacking last %zu sheets: %d x %d (%d bytes)\n", group_sheets.size(), group_width, group_height, TEX_FORMAT_PIX2BYTES(cfmt, group_width * group_height));
+
+    // Try to find a better packing for this sheet group. Set the maximum number
+    // of sheets to the expected one so that we can early abort.
+    std::atomic_int best_area = group_width * group_height;
+    int best_h = 1024;
+    settings.max_sheets = merge_layers;
+    std::mutex best_lock;
+
+    thParaLoop(256, [&](int h){
+        if (++h < MAX(min_area/256, 8)) return;
+        int w = MAX(ROUND_UP(min_area / h, settings.align_width), settings.align_width);
+        for (; w <= 256; w += settings.align_width) {
+            // Early exit if w is too big to win against best_area.
+            // If h*w matches, to guarantee consistency of output, we want to keep the result
+            // with the smallest h.
+            if (h * w > best_area) break;
+
+            // printf("    trying %dx%d\n", w, h);
+            rect_pack::Settings s = settings;
+            s.min_width = w;
+            s.min_height = h;
+            s.max_width = w;
+            s.max_height = h;
+            std::vector<rect_pack::Sheet> new_sheets = rect_pack::pack(s, sizes2);
+
+            // Check if all glyphs fit this size, by counting how many of them were packed
+            int packed_glyphs = 0;
+            for (auto &sheet : new_sheets) packed_glyphs += sheet.rects.size();
+            if (packed_glyphs == sizes2.size()) {
+                std::lock_guard<std::mutex> g(best_lock);
+                if (h * w < best_area || (h * w == best_area && h < best_h)) {
+                    group_sheets = new_sheets;
+                    best_h = h;
+                    best_area = w*h;
+                    if (flag_verbose >= 1)
+                        printf("    found better packing: %d x %d (%d bytes)\n", w, h, TEX_FORMAT_PIX2BYTES(cfmt, w*h));
+                }
+                break;
+            }
+        }
+    });
+
+    // Append the best sheets to the calculated sheets
+    sheets.insert(sheets.end(), group_sheets.begin(), group_sheets.end());
+
+    return sheets;
+}
+
+
 void Font::make_atlases(void)
 {
     if (glyphs.empty()) {
@@ -618,202 +902,8 @@ void Font::make_atlases(void)
     //  Mono, outline: we can use 2bpp, so we can merge 2 layers
     int merge_layers = !is_monochrome() ? 1 : (has_outline() ? 2 : 4);
 
-    // Pack the glyphs into a texture
-    rect_pack::Settings settings;
-    memset(&settings, 0, sizeof(settings));
-    settings.method = rect_pack::Method::Best;
-    settings.method = rect_pack::Method::Best;
-    settings.max_width = 128;
-    settings.max_height = 64;
-    settings.border_padding = 0;
-    settings.allow_rotate = false;
-    
-    std::vector<rect_pack::Size> sizes;
-    std::vector<rect_pack::Sheet> sheets;
-    for (int i=0; i<glyphs.size(); i++) {
-        if (glyphs[i].img.w == 0 || glyphs[i].img.h == 0) continue;
-        rect_pack::Size size;
-        size.id = i;
-        size.width = glyphs[i].img.w + settings.border_padding;
-        size.height = glyphs[i].img.h + settings.border_padding;
-        sizes.push_back(size);
-    }
-
-    if (!is_monochrome()) {
-        tex_format_t cfmt; 
-        switch (fonttype) {
-        case FONT_TYPE_BITMAP:
-            cfmt = bmp_outfmt;
-            switch (bmp_outfmt) {
-            case FMT_RGBA16:
-                settings.max_width = 64;
-                settings.max_height = 32;
-                settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
-                break;
-            case FMT_RGBA32:
-                settings.max_width = 32;
-                settings.max_height = 32;
-                // RGBA32 is 4bpp but it's split into two 16-bit planes in TMEM.
-                // So the width alignment applies for each 16-bit plane.
-                settings.align_width = TEX_FORMAT_BYTES2PIX(FMT_RGBA16, 8);
-                break;
-            case FMT_CI4:
-                settings.max_width = 64;
-                settings.max_height = 64;
-                settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
-                break;
-            case FMT_CI8:
-                settings.max_width = 64;
-                settings.max_height = 32;
-                settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
-                break;
-            default:
-                assert(!"unsupported bitmap format");
-            }
-            break;
-        case FONT_TYPE_ALIASED:
-            // Aliased font: pack into I4 (max 128x64).
-            settings.max_width = 128;
-            settings.max_height = 64;
-            cfmt = FMT_I4;
-            settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
-            break;
-        case FONT_TYPE_ALIASED_OUTLINE:
-            // Aliased+outlined font: pack into IA8 (max 64x64).
-            settings.max_width = 64;
-            settings.max_height = 64;
-            cfmt = FMT_IA8;
-            settings.align_width = TEX_FORMAT_BYTES2PIX(cfmt, 8);
-            break;
-        default:
-            assert(!"unsupported font type");
-        }
-
-        // Texture width must always be 8-bytes aligned (RDP constraint)
-        sheets = rect_pack::pack(settings, sizes);
-
-        // We can save byte son the last sheet by checking for many different
-        // sizes. This is not something at which rect_pack excels at, so a bruteforce
-        // approach is used here.
-        int i = sheets.size()-1;
-        int best_area = sheets[i].width * sheets[i].height;
-
-        if (flag_verbose >= 2)
-            printf("repacking last sheet %d x %d (%d bytes)\n", sheets[i].width, sheets[i].height, TEX_FORMAT_PIX2BYTES(cfmt, best_area));
-
-        // Create a new array of sizes for the glyphs in this sheet
-        std::vector<rect_pack::Size> sizes2;
-        rect_pack::Sheet& sheet = sheets[i];
-        for (auto &r : sheet.rects) {
-            auto &g = glyphs[r.id];
-            rect_pack::Size size;
-            size.id = r.id;
-            size.width = g.img.w + settings.border_padding;
-            size.height = g.img.h + settings.border_padding;
-            sizes2.push_back(size);
-        }
-
-        // Try to find a better packing for this sheet
-        while (1) {
-            bool changed = false;
-            for (int h=16; h<=256; h++) {
-                int w = (best_area-1) / h / settings.align_width * settings.align_width;
-                if (w > 256) w = 256;
-                if (!w) break;
-
-                settings.min_width = 0;
-                settings.max_width = w;
-                settings.max_height = h;
-                std::vector<rect_pack::Sheet> new_sheets = rect_pack::pack(settings, sizes2);
-                if (new_sheets.size() == 1 && new_sheets[0].rects.size() == sizes2.size()) {
-                    auto &new_sheet = new_sheets[0];
-                    int new_area = new_sheet.width * new_sheet.height;
-                    if (new_area < best_area) {
-                        if (flag_verbose >= 2)
-                            printf("    found better packing: %d x %d (%d bytes)\n", new_sheet.width, new_sheet.height, TEX_FORMAT_PIX2BYTES(cfmt, new_area));
-                        sheets[i] = new_sheet;
-                        best_area = new_area;
-                        changed = true;
-                        break;
-                    }
-                }
-            }
-            if (!changed) break;
-        }
-    } else {
-        // Start by computing a pack with the CI4 maximum size (64x64)
-        settings.min_width = 64;
-        settings.max_width = 64;
-        settings.max_height = 64;
-        settings.align_width = 16;
-        sheets = rect_pack::pack(settings, sizes);
-        int num_sheets = sheets.size();
-        int last_group = (num_sheets-1) / merge_layers * merge_layers;
-
-        // Try to optimize the last group (up to four sheets). Create an array
-        // of input sizes for all the glyphs in the last group
-        std::vector<rect_pack::Size> sizes2;
-        for (int j=last_group; j<num_sheets; j++) {
-            rect_pack::Sheet& sheet = sheets[j];
-            for (auto &r : sheet.rects) {
-                auto &g = glyphs[r.id];
-                rect_pack::Size size;
-                size.id = r.id;
-                size.width = g.img.w + settings.border_padding;
-                size.height = g.img.h + settings.border_padding;
-                sizes2.push_back(size);
-            }
-        }
-
-        // Move the last group of sheets to a temporary array
-        int best_area = 64*64;
-        std::vector<rect_pack::Sheet> best_sheets;
-        for (int i=last_group; i<num_sheets; i++) {
-            best_sheets.push_back(sheets.back());
-            sheets.pop_back();
-        }
-
-        if (flag_verbose >= 2)
-            fprintf(stderr, "packing last group of %zu sheets\n", best_sheets.size());
-
-        // Try to find a better packing for the last group
-        while (1) {
-            bool changed = false;
-            for (int h=16; h<=256; h++) {
-                // Find texture sizes where the value is a multiple of 16. Since
-                // They are going to be packed as CI4, this allows the stride to be
-                // multiple of 8, which allows LOAD_BLOCK to be used at runtime.
-                int w = (best_area-1) / h / settings.align_width * settings.align_width;
-                if (w > 256) w = 256;
-                if (!w) break;
-
-                settings.min_width = 0;
-                settings.max_width = w;
-                settings.max_height = h;
-                std::vector<rect_pack::Sheet> new_sheets = rect_pack::pack(settings, sizes2);
-                if (new_sheets.size() <= merge_layers) {
-                    // Check that all the glyphs were packed.
-                    // FIXME: this seems like a bug in rect_pack... I can't see
-                    // why it shouldn't simply create more sheets if it can't fit
-                    int packed_glyphs = 0;
-                    for (auto &sheet : new_sheets)
-                        packed_glyphs += sheet.rects.size();
-                    if (packed_glyphs == sizes2.size()) {
-                        if (flag_verbose >= 2)
-                            printf("    found better packing: %d x %d (%d)\n", w, h, w*h);
-                        best_sheets = new_sheets;
-                        best_area = w * h;
-                        changed = true;
-                        break;
-                    }
-                }
-            }
-            if (!changed) break;
-        }
-
-        // Append the best sheets to the calculated sheets
-        sheets.insert(sheets.end(), best_sheets.begin(), best_sheets.end());
-    }
+    // Pack the atlases
+    auto sheets = pack_atlases(glyphs, merge_layers);
 
     // Create the actual textures
     std::vector<Image> atlases;
@@ -1143,6 +1233,113 @@ void Font::make_kernings()
         fprintf(stderr, "added %zu kernings\n", kernings.size());
 
     kernings.clear();
+}
+
+// Calculate the smallest prime number bigger than x
+static int calc_smallest_prime(int x) 
+{
+    for (int i=x; ; i++) {
+        bool prime = true;
+        for (int j=2; j*j<=i; j++) {
+            if (i % j == 0) {
+                prime = false;
+                break;
+            }
+        }
+        if (prime) return i;
+    }
+    return 0;
+}
+
+void Font::build_perfect_hash(std::vector<uint32_t>& keys, std::vector<int16_t>& values)
+{
+    assert(phash.r == 0); // only one perfect hash
+
+    const int lambda = 4;
+    const int alpha = 100; // load factor (100%)
+    const uint32_t seed = 0x12345678;
+
+    PHF::init<uint32_t, false>(&phash, &keys[0], keys.size(), lambda, alpha, seed);
+
+    phash_values.resize(phash.m, -1);
+    for (int i=0; i<keys.size(); i++) {
+        uint32_t h = PHF::hash(&phash, keys[i]);
+        assert(h < phash_values.size());
+        assert(phash_values[h] == -1);      // check if it's a real perfect hash
+        phash_values[h] = values[i];
+    }
+
+    // In font64 we will store the displacement table using 16 bit indices.
+    // This seems to be more than enough even for huge fonts. In case this is
+    // hit, probably the best solution is to decrease the load factor a bit,
+    // which reduces d_max (eg: in a loop until d_max fits 16 bits again).
+    assert(phash.d_max < 65536);
+
+    if (flag_verbose) fprintf(stderr, "    perfect hash table: %zu glyphs, %u bytes (d_max:%zu)\n",
+        keys.size(), (int)(phash.m * sizeof(int16_t) + phash.r * sizeof(uint16_t)), phash.d_max);
+}
+
+void Font::make_sparse_ranges(void)
+{
+    // By default, all ranges are dense. Check if we find ranges that waste more
+    // than WASTED_MEMORY_THRESHOLD by being dense, and convert them to sparse.
+    enum { WASTED_MEMORY_THRESHOLD = 1*1024 };
+
+    std::vector<uint32_t> sparse_codepoints;
+    std::vector<int16_t> sparse_indices;
+    
+    int widx = 0;
+    for (int i=0; i<fnt->num_ranges; i++)
+    {
+        // Small ranges are never worth converting to sparse
+        bool sparse = false;
+        int num_codepoints = fnt->ranges[i].num_codepoints;
+        if (num_codepoints * sizeof(glyph_t) >= WASTED_MEMORY_THRESHOLD) {
+            // Check how many empty glyph slots are in this range
+            int num_glyphs = 0;
+            for (int j=0; j<num_codepoints; j++)
+            {
+                int gidx = fnt->ranges[i].first_glyph + j;
+                if (fnt->glyphs[gidx].xadvance > 0)
+                    num_glyphs++;
+            }
+            if ((num_codepoints - num_glyphs) * sizeof(glyph_t) >= WASTED_MEMORY_THRESHOLD) {
+                sparse = true;
+                if (flag_verbose) fprintf(stderr, "range %x-%x is sparse (%d glyphs out of %d)\n", 
+                    fnt->ranges[i].first_codepoint, fnt->ranges[i].first_codepoint + num_codepoints - 1, 
+                    num_glyphs, num_codepoints);
+            }
+        }
+
+        int first_glyph = fnt->ranges[i].first_glyph;
+        fnt->ranges[i].first_glyph = sparse ? -1 : widx;
+
+        // Compact the range, removing all empty glyphs if sparse
+        for (int j=0; j<num_codepoints; j++)
+        {
+            int ridx = first_glyph + j;
+            if (fnt->glyphs[ridx].xadvance != 0 || !sparse) {
+                if (sparse) {
+                    sparse_codepoints.push_back(fnt->ranges[i].first_codepoint + j);
+                    sparse_indices.push_back(widx);
+                }
+                fnt->glyphs[widx++] = fnt->glyphs[ridx];
+            }
+        }
+
+    }
+
+    if (sparse_codepoints.empty()) {
+        assert(widx == fnt->num_glyphs);
+        return;
+    }
+
+    // Some glyphs have been compacted. Update the number of glyphs in the font
+    fnt->num_glyphs = widx;
+
+    build_perfect_hash(sparse_codepoints, sparse_indices);
+    
+    if (flag_verbose) fprintf(stderr, "total glyphs: %d\n", fnt->num_glyphs);
 }
 
 void Font::add_ellipsis(int ellipsis_cp, int ellipsis_repeats)
