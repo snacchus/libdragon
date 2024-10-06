@@ -10,45 +10,50 @@
 
 // TODO: Documentation on how magma works internally
 
+/** @brief A pipeline instance */
 typedef struct mg_pipeline_s 
 {
-    void *shader_code;
-    uint32_t shader_code_size;
-    uint32_t vertex_stride;
-    uint32_t uniform_count;
-    mg_uniform_t *uniforms;
+    void *shader_code;          ///< Pointer to the duplicated and patched shader ucode text.
+    uint32_t shader_code_size;  ///< Size of the duplicated and patched shader ucode text.
+    uint32_t vertex_stride;     ///< Stride of the vertex layout.
+    uint32_t uniform_count;     ///< Number of uniforms.
+    mg_uniform_t *uniforms;     ///< List of uniforms.
 } mg_pipeline_t;
 
+/** @brief Metadata about a uniform defined by a shader. */
 typedef struct
 {
-    uint32_t binding;
-    uint32_t start;
-    uint32_t end;
+    uint32_t binding;   ///< Binding number of the uniform.
+    uint32_t start;     ///< Start address of the uniform in DMEM, relative to the start of uniform memory.
+    uint32_t end;       ///< End address of the uniform in DMEM, relative to the start of uniform memory.
 } mg_meta_uniform_t;
 
+/** @brief Metadata about a patch of a vertex attribute defined by a shader. */
 typedef struct
 {
-    uint32_t address;
-    uint32_t replacement;
+    uint32_t address;       ///< Address in IMEM of the instruction to be patched, relative to the overlay address.
+    uint32_t replacement;   ///< New instruction to be substituted, in case this patch is invoked.
 } mg_meta_attribute_patch_t;
 
+/** @brief Metadata about a vertex attribute defined by a shader. */
 typedef struct
 {
-    uint32_t input;
-    uint32_t is_optional;
-    uint32_t loaders_offset;
-    uint32_t patches_offset;
-    uint32_t loader_count;
-    uint32_t patches_count;
+    uint32_t input;             ///< Input number of this attribute.
+    uint32_t is_optional;       ///< Non-zero if this attribute is optional.
+    uint32_t loaders_offset;    ///< Offset of the array of loaders, relative to the list of attributes.
+    uint32_t patches_offset;    ///< Offset of the array of patches, relative to the list of attributes.
+    uint32_t loader_count;      ///< Number of loaders.
+    uint32_t patches_count;     ///< Number of patches.
 } mg_meta_attribute_t;
 
 
+/** @brief Metadata header defined by a shader. */
 typedef struct
 {
-    uint32_t uniform_count;
-    uint32_t uniforms_offset;
-    uint32_t attribute_count;
-    uint32_t attributes_offset;
+    uint32_t uniform_count;         ///< Number of uniforms.
+    uint32_t uniforms_offset;       ///< Offset of the list of uniforms, relative to the metadata header.
+    uint32_t attribute_count;       ///< Number of attributes.
+    uint32_t attributes_offset;     ///< Offset of the list of attributes, relative ot the metadata header.
 } mg_meta_header_t;
 
 DEFINE_RSP_UCODE(rsp_magma);
@@ -74,15 +79,15 @@ void mg_draw_end(void)
     mg_cmd_write(MG_CMD_DRAW_END);
 }
 
-void mg_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count)
+void mg_load_vertices(uint32_t buffer_index, uint8_t cache_index, uint32_t count)
 {
     assertf(count > 0, "count must be greater than 0");
     assertf(count <= MG_VERTEX_CACHE_COUNT, "too many vertices");
-    assertf(cache_offset + count <= MG_VERTEX_CACHE_COUNT, "offset out of range");
-    mg_cmd_write(MG_CMD_LOAD_VERTICES, buffer_offset, (cache_offset<<16) | count);
+    assertf(cache_index + count <= MG_VERTEX_CACHE_COUNT, "offset out of range");
+    mg_cmd_write(MG_CMD_LOAD_VERTICES, buffer_index, (cache_index<<16) | count);
 }
 
-void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2)
+void mg_draw_triangle(uint8_t index0, uint8_t index1, uint8_t index2)
 {
     assertf(index0 <= MG_VERTEX_CACHE_COUNT, "index0 is out of range");
     assertf(index1 <= MG_VERTEX_CACHE_COUNT, "index1 is out of range");
@@ -151,7 +156,7 @@ static const mg_meta_attribute_t *find_meta_attribute_by_input(const mg_meta_att
     return NULL;
 }
 
-static const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_input_parms_t *input_parms, uint32_t input)
+static const mg_vertex_attribute_t *find_vertex_attribute_by_input(const mg_vertex_layout_t *input_parms, uint32_t input)
 {
     for (size_t i = 0; i < input_parms->attribute_count; i++)
     {
@@ -215,7 +220,7 @@ static void patch_vertex_attribute_loader(void *shader_code, uint32_t loader_off
     }
 }
 
-static void patch_shader_with_vertex_layout(void *shader_code, const mg_meta_header_t *meta_header, const mg_vertex_input_parms_t *parms)
+static void patch_shader_with_vertex_layout(void *shader_code, const mg_meta_header_t *meta_header, const mg_vertex_layout_t *parms)
 {
     // Check that all attributes in the configuration are valid
     const mg_meta_attribute_t *attributes = (const mg_meta_attribute_t*)((uint8_t*)meta_header + meta_header->attributes_offset);
@@ -271,7 +276,7 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
 
     mg_pipeline_t *pipeline = malloc(sizeof(mg_pipeline_t));
 
-    pipeline->vertex_stride = parms->vertex_input.stride;
+    pipeline->vertex_stride = parms->vertex_layout.stride;
     
     get_overlay_span(parms->vertex_shader_ucode, &pipeline->shader_code, &pipeline->shader_code_size);
 
@@ -283,7 +288,7 @@ mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms)
     mg_meta_header_t *meta_header = (mg_meta_header_t*)parms->vertex_shader_ucode->meta;
 
     // Patch shader ucode according to configured vertex layout
-    patch_shader_with_vertex_layout(code_copy, meta_header, &parms->vertex_input);
+    patch_shader_with_vertex_layout(code_copy, meta_header, &parms->vertex_layout);
     data_cache_hit_writeback(code_copy, pipeline->shader_code_size);
     pipeline->shader_code = code_copy;
 
@@ -302,7 +307,7 @@ void mg_pipeline_free(mg_pipeline_t *pipeline)
     free(pipeline);
 }
 
-const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
+const mg_uniform_t *mg_pipeline_try_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
 {
     for (uint32_t i = 0; i < pipeline->uniform_count; i++)
     {
@@ -311,7 +316,20 @@ const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t bi
         }
     }
     
-    assertf(0, "Uniform with binding number %ld was not found", binding);
+    return NULL;
+}
+
+const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding)
+{
+    const mg_uniform_t *uniform = mg_pipeline_try_get_uniform(pipeline, binding);
+    assertf(uniform != NULL, "Uniform with binding number %ld was not found", binding);
+    return uniform;
+}
+
+bool mg_pipeline_is_uniform_compatible(mg_pipeline_t *pipeline, const mg_uniform_t *uniform)
+{
+    const mg_uniform_t *matching_uniform = mg_pipeline_try_get_uniform(pipeline, uniform->binding);
+    return matching_uniform != NULL && matching_uniform->offset == uniform->offset && matching_uniform->size == uniform->size;
 }
 
 void mg_bind_pipeline(mg_pipeline_t *pipeline)
@@ -452,19 +470,19 @@ void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t ver
             case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
             {
                 size_t prim_count = load_count / 3;
-                for (size_t i = 0; i < prim_count; i++) mg_draw_indices(3*i, 3*i+1, 3*i+2);
+                for (size_t i = 0; i < prim_count; i++) mg_draw_triangle(3*i, 3*i+1, 3*i+2);
                 break;
             }
             case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
             {
                 size_t prim_count = MAX(0, load_count - 2);
-                for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i, i + 1 + i%2, i + 2 - i%2);
+                for (size_t i = 0; i < prim_count; i++) mg_draw_triangle(i, i + 1 + i%2, i + 2 - i%2);
                 break;
             }
             case MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
             {
                 size_t prim_count = MAX(0, load_count - 2 + cache_offset);
-                for (size_t i = 0; i < prim_count; i++) mg_draw_indices(i+1, i+2, 0);
+                for (size_t i = 0; i < prim_count; i++) mg_draw_triangle(i+1, i+2, 0);
                 next_cache_offset = 1;
                 break;
             }
@@ -476,19 +494,21 @@ void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t ver
 
 typedef struct vertex_cache_block_s vertex_cache_block;
 
+/** @brief Represents a block of consecutive vertices loaded into the vertex cache at some offset. */
 typedef struct vertex_cache_block_s
 {
-    uint16_t start;
-    uint16_t count;
-    vertex_cache_block *next;
+    uint16_t start;             ///< The index (in the vertex buffer) of the first vertex in this block.
+    uint16_t count;             ///< The number of vertices in this block.
+    vertex_cache_block *next;   ///< Pointer to the next block to form a linked list that is sorted by "start".
 } vertex_cache_block;
 
+/** @brief Represents a simulated state of the vertex cache. */
 typedef struct 
 {
-    vertex_cache_block blocks[MG_VERTEX_CACHE_COUNT];
-    vertex_cache_block *head;
-    vertex_cache_block *unused;
-    uint32_t total_count;
+    vertex_cache_block blocks[MG_VERTEX_CACHE_COUNT];   ///< Array of blocks.
+    vertex_cache_block *head;                           ///< Linked list of currently loaded blocks.
+    vertex_cache_block *unused;                         ///< Linked list of unused blocks.
+    uint32_t total_count;                               ///< Total count of vertices in the cache.
 
 } vertex_cache;
 
@@ -732,7 +752,7 @@ static void draw_triangle_list_batch(const uint16_t *indices, uint32_t current_i
 
         prim_indices[i%3] = cache_index;
         if (i%3 == 2) {
-            mg_draw_indices(prim_indices[0], prim_indices[1], prim_indices[2]);
+            mg_draw_triangle(prim_indices[0], prim_indices[1], prim_indices[2]);
         }
     }
 }
@@ -758,7 +778,7 @@ static void draw_triangle_strip_batch(const uint16_t *indices, uint32_t current_
             int p0 = p;
             int p1 = p+(1+p%2);
             int p2 = p+(2-p%2);
-            mg_draw_indices(prim_indices[p0%3], prim_indices[p1%3], prim_indices[p2%3]);
+            mg_draw_triangle(prim_indices[p0%3], prim_indices[p1%3], prim_indices[p2%3]);
         }
 
         prim_counter++;
@@ -790,7 +810,7 @@ static void draw_triangle_fan_batch(const uint16_t *indices, uint32_t current_in
             int p = prim_counter-2;
             int p0 = p+1;
             int p1 = p+2;
-            mg_draw_indices(prim_indices[p0%2], prim_indices[p1%2], prim_indices[2]);
+            mg_draw_triangle(prim_indices[p0%2], prim_indices[p1%2], prim_indices[2]);
         }
 
         prim_counter++;

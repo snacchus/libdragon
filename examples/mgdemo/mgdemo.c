@@ -47,7 +47,7 @@ typedef struct
 typedef struct
 {
     mg_vertex_attribute_t attributes[MAX_VERTEX_ATTRIBUTE_COUNT];
-    mg_vertex_input_parms_t vertex_input_parms;
+    mg_vertex_layout_t vertex_layout;
 } vertex_layout;
 
 typedef struct
@@ -375,14 +375,14 @@ void get_vertex_layout_from_primitive_layout(const model64_vertex_layout_t *prim
         }
     }
 
-    vertex_layout->vertex_input_parms = (mg_vertex_input_parms_t) {
+    vertex_layout->vertex_layout = (mg_vertex_layout_t) {
         .attribute_count = attribute_count,
         .attributes = vertex_layout->attributes,
         .stride = primitive_layout->stride
     };
 }
 
-bool are_input_parms_equal(const mg_vertex_input_parms_t *p0, const mg_vertex_input_parms_t *p1)
+bool are_vertex_layouts_equal(const mg_vertex_layout_t *p0, const mg_vertex_layout_t *p1)
 {
     if (p0->stride != p1->stride) return false;
     if (p0->attribute_count != p1->attribute_count) return false;
@@ -409,7 +409,7 @@ uint32_t get_or_create_pipeline_from_primitive_layout(const model64_vertex_layou
     // Try to find a pipeline with the same vertex layout
     for (uint32_t i = 0; i < pipelines_count; i++)
     {
-        if (are_input_parms_equal(&tmp_vertex_layout.vertex_input_parms, &vertex_layout_cache[i].vertex_input_parms)) {
+        if (are_vertex_layouts_equal(&tmp_vertex_layout.vertex_layout, &vertex_layout_cache[i].vertex_layout)) {
             return i;
         }
     }
@@ -419,7 +419,7 @@ uint32_t get_or_create_pipeline_from_primitive_layout(const model64_vertex_layou
     // which is why a separate pipeline needs to be created for each layout.
     pipelines[pipelines_count] = mg_pipeline_create(&(mg_pipeline_parms_t) {
         .vertex_shader_ucode = mgfx_get_shader_ucode(),
-        .vertex_input = tmp_vertex_layout.vertex_input_parms
+        .vertex_layout = tmp_vertex_layout.vertex_layout
     });
 
     // Store the vertex layout in the cache
@@ -740,7 +740,7 @@ void render()
             uint16_t mesh_id = current_mesh_id >> 16;
             uint16_t submesh_id = current_mesh_id & 0xFFFF;
             current_submesh = &meshes[mesh_id].submeshes[submesh_id];
-            mg_bind_vertex_buffer(current_submesh->vertex_buffer, 0);
+            mg_bind_vertex_buffer(current_submesh->vertex_buffer);
         }
 
         if (draw_call->object_id != current_object_id) {

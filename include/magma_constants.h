@@ -1,12 +1,30 @@
+/**
+ * @file magma_constants.h
+ * @brief Constant definitions for magma
+ * @ingroup magma
+ */
+
 #ifndef __MAGMA_CONSTANTS
 #define __MAGMA_CONSTANTS
 
-#define MG_INLINE_UNIFORM_HEADER        12
-#define MG_MAX_UNIFORM_PAYLOAD_SIZE     (RSPQ_MAX_COMMAND_SIZE*4 - MG_INLINE_UNIFORM_HEADER)
-
+/** 
+ * @brief The maximum number of vertices that the vertex cache can hold.
+ * 
+ * @see #mg_load_vertices
+ * @see #mg_draw_triangle
+ */
 #define MG_VERTEX_CACHE_COUNT           32
 
+/** @brief Default value of the clipping guard factor. 
+ * 
+ * @see #mg_set_clip_factor
+ */
 #define MG_DEFAULT_GUARD_BAND           2
+
+/// @cond
+
+#define MG_INLINE_UNIFORM_HEADER        12
+#define MG_MAX_UNIFORM_PAYLOAD_SIZE     (RSPQ_MAX_COMMAND_SIZE*4 - MG_INLINE_UNIFORM_HEADER)
 
 #define MG_CLIP_PLANE_COUNT             6
 #define MG_CLIP_PLANE_SIZE              8
@@ -24,5 +42,7 @@
 #define MG_VTX_CS_POSi                  24
 #define MG_VTX_CS_POSf                  32
 #define MG_VTX_SIZE                     40
+
+/// @endcond
 
 #endif

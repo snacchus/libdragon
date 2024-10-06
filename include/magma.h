@@ -1,3 +1,17 @@
+/**
+ * @file magma.h
+ * @brief Magma core API
+ * @ingroup magma
+ */
+
+/**
+ * @defgroup magma Magma: High performance 3D graphics API
+ * @brief Interface for transforming and drawing 3D geometry with a focus on performance and customizability.
+ * @ingroup display
+ * 
+ * TODO
+ */
+
 #ifndef __LIBDRAGON_MAGMA_H
 #define __LIBDRAGON_MAGMA_H
 
@@ -8,147 +22,662 @@
 #include <rspq.h>
 #include <debug.h>
 
-/** @brief An instance of the magma pipeline, with an attached vertex shader */
-typedef struct mg_pipeline_s            mg_pipeline_t;
+/** 
+ * @brief An instance of the magma pipeline, with an attached vertex shader and vertex layout.
+ * 
+ * @see #mg_pipeline_create
+ */
+typedef struct mg_pipeline_s    mg_pipeline_t;
 
+/**
+ * @brief Vertex attribute descriptor.
+ * 
+ * @see #mg_vertex_layout_t
+ */
+typedef struct
+{
+    uint32_t input;     ///< The input number of this attribute.
+    uint32_t offset;    ///< The offset in bytes of this attribute relative to the start of a vertex.
+} mg_vertex_attribute_t;
+
+/**
+ * @brief Configuration of a pipeline's vertex layout.
+ * 
+ * This configuration specifies how the data from a vertex buffer should be fed into the vertex shader.
+ * 
+ * A shader ucode defines the set of vertex inputs it supports. A vertex input is defined by:
+ *  * Its "input number", which is a unique identifier
+ *  * An alignment requirement
+ *  * Whether it is optional or not
+ * 
+ * The vertex layout of a pipeline is defined by its overall stride (the distance between consecutive vertices in the buffer),
+ * and a collection of vertex attributes. Each attribute is defined by:
+ *  * Its offset relative from the start of a vertex
+ *  * An input number, which creates a mapping to some vertex input
+ * 
+ * To create a valid pipeline, its vertex layout must be compatible with the vertex inputs defined by the shader.
+ * A vertex layout is compatible with a shader if, and only if, all of the following requirements are met:
+ *  * All of its vertex attributes have an input number that is present in the shader
+ *  * There are no duplicate input numbers among the vertex attributes
+ *  * For each non-optional vertex input in the shader, there is a vertex attribute with the respective input number.
+ *  * All vertex attributes satisfy the alignment requirements of their respective vertex inputs. This is the case
+ *    if, and only if, the vertex attribute's offset is a multiple of the required alignment.
+ * 
+ * The above implies that optional vertex inputs may be omitted from the vertex layout.
+ * However, there is no further guarantee about the behavior of the shader in case of omitted inputs.
+ * 
+ * Also note that, besides alignment, there are no further requirements on the offsets of each vertex attribute.
+ * This means they don't need to be packed tightly and may even overlap.
+ * How many bytes are actually read per vertex input is defined by the shader.
+ * 
+ * @see #mg_pipeline_parms_t
+ * @see #mg_pipeline_create
+ */
+typedef struct
+{
+    uint32_t stride;                            ///< The distance in bytes between two consecutive vertices.
+    uint32_t attribute_count;                   ///< The number of vertex attribute descriptors.
+    const mg_vertex_attribute_t *attributes;    ///< Pointer to the array of vertex attribute descriptors.
+} mg_vertex_layout_t;
+
+/**
+ * @brief Parameters for #mg_pipeline_create.
+ */
+typedef struct
+{
+    rsp_ucode_t *vertex_shader_ucode;           ///< The ucode from which to create the pipeline.
+    mg_vertex_layout_t vertex_layout;           ///< Vertex layout configuration.
+} mg_pipeline_parms_t;
+
+/**
+ * @brief Uniform descriptor.
+ * 
+ * A uniform is a piece of memory that can contain some input for a vertex shader which does not change per vertex.
+ * More specifically, a uniform defines some region of memory that is reserved by a pipeline, which the pipeline's
+ * shader can access during its runtime. The combined reserved memory for all uniforms in a pipeline is known as 
+ * the pipeline's "uniform memory". The uniform memory can be thought of as some virtual address space which starts 
+ * at 0 and goes up to however many bytes a pipeline's uniforms take up in total.
+ * 
+ * A uniform is defined by:
+ *  * Its starting offset in uniform memory
+ *  * Its size
+ *  * An identifier which is called the binding number.
+ * 
+ * The binding number must only be unique for each uniform within a pipeline. Otherwise, binding numbers can take on arbitrary
+ * values and must not even be consecutive or otherwise correlated with a uniform's location in uniform memory.
+ * 
+ * Uniforms are defined by the shader ucode that is referenced by a pipeline. All pipelines that reference the same
+ * shader ucode will contain equivalent sets of uniforms. Uniforms can be queried from a pipeline using #mg_pipeline_get_uniform.
+ * 
+ * To provide inputs to a vertex shader via uniforms, they must be loaded first using one of the uniform loading functions,
+ * for example #mg_load_uniform or #mg_inline_uniform. Those functions will load the entirety of a uniform's memory at once.
+ * It is also possible to load values in a more advanced manner using #mg_load_uniform_raw and #mg_inline_uniform_raw.
+ * 
+ * @see #mg_pipeline_get_uniform
+ * @see #mg_load_uniform
+ * @see #mg_inline_uniform
+ * @see #mg_load_uniform_raw
+ * @see #mg_inline_uniform_raw
+ */
+typedef struct
+{
+    uint32_t binding;   ///< The uniform's binding number.
+    uint32_t offset;    ///< The offset in bytes where this uniform is located, from the start of the pipeline's uniform memory.
+    uint32_t size;      ///< The uniform's size in bytes.
+} mg_uniform_t;
+
+/**
+ * @brief The set of bit flags that can be passed to #mg_set_geometry_flags.
+ * 
+ * These flags configure which geometry attributes will be passed to the hardware rasterizer
+ * when drawing triangles. This is relevant in combination with #rdpq_mode_combiner and/or #rdpq_mode_zbuf.
+ * 
+ * @see #mg_set_geometry_flags
+ */
 typedef enum
 {
-    MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST     = 0,
-    MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP    = 1,
-    MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN      = 2,
-} mg_primitive_topology_t;
-
-typedef enum
-{
+    /**
+     * @brief If set, Z values will be transmitted to the rasterizer.
+     * 
+     * Should be set if depth comparison or Z update were enabled in #rdpq_mode_zbuf.
+     */
     MG_GEOMETRY_FLAGS_Z_ENABLED             = 1<<0,
+
+    /**
+     * @brief If set, texture coordinates will be transmitted to the rasterizer.
+     * 
+     * Should be set if #rdpq_mode_combiner was configured with any texture input.
+     */
     MG_GEOMETRY_FLAGS_TEX_ENABLED           = 1<<1,
+
+    /**
+     * @brief If set, shade values will be transmitted to the rasterizer.
+     * 
+     * Should be set if #rdpq_mode_combiner was configured with any shade input.
+     */
     MG_GEOMETRY_FLAGS_SHADE_ENABLED         = 1<<2,
 } mg_geometry_flags_t;
 
+/**
+ * @brief Enumeration of possible face culling modes.
+ * 
+ * @see #mg_culling_parms_t
+ * @see #mg_set_culling
+ */
 typedef enum
 {
-    MG_CULL_MODE_NONE                       = 0,
-    MG_CULL_MODE_BACK                       = 1,
-    MG_CULL_MODE_FRONT                      = 2,
+    MG_CULL_MODE_NONE                       = 0,    ///< No faces will be culled.
+    MG_CULL_MODE_BACK                       = 1,    ///< Back faces will be culled.
+    MG_CULL_MODE_FRONT                      = 2,    ///< Front faces will be culled.
 } mg_cull_mode_t;
 
+/**
+ * @brief Enumeration of possible values for front face configuration.
+ * 
+ * @see #mg_culling_parms_t
+ * @see #mg_set_culling
+ */
 typedef enum
 {
-    MG_FRONT_FACE_COUNTER_CLOCKWISE         = 0,
-    MG_FRONT_FACE_CLOCKWISE                 = 1,
+    MG_FRONT_FACE_COUNTER_CLOCKWISE         = 0,    ///< Faces with counter clockwise winding direction are defined as front faces.
+    MG_FRONT_FACE_CLOCKWISE                 = 1,    ///< Faces with clockwise winding direction are defined as front faces.
 } mg_front_face_t;
 
+/**
+ * @brief Parameters for #mg_set_culling.
+ * 
+ * @see #mg_set_culling
+ */
 typedef struct
 {
-    mg_cull_mode_t cull_mode;
-    mg_front_face_t front_face;
+    mg_cull_mode_t cull_mode;       ///< Specifies which faces should be culled.
+    mg_front_face_t front_face;     ///< Defines the winding direction of front faces.
 } mg_culling_parms_t;
 
+/**
+ * @brief Description of the target area in the framebuffer that will be drawn to.
+ * 
+ * @see #mg_set_viewport
+ */
 typedef struct
 {
-    float x;
-    float y;
-    float width;
-    float height;
-    float minDepth;
-    float maxDepth;
-    float z_near;
-    float z_far;
+    float x;            ///< X-coordinate of the viewport's upper left corner in pixels.
+    float y;            ///< Y-coordinate of the viewport's upper left corner in pixels.
+    float width;        ///< Width of the viewport in pixels.
+    float height;       ///< Height of the viewport in pixels.
+    float minDepth;     ///< Lower end of the viewport's depth range.
+    float maxDepth;     ///< Higher end of the viewport's depth range.
+    float z_near;       ///< Distance of the near clipping plane from the camera. Used for perspective normalization.
+    float z_far;        ///< Distance of the far clipping plane from the camera. Used for perspective normalization.
 } mg_viewport_t;
 
-typedef struct
+/**
+ * @brief Enumeration of possible primitive construction modes.
+ * 
+ * @see #mg_input_assembly_parms_t
+ * @see #mg_draw
+ * @see #mg_draw_indexed
+ */
+typedef enum
 {
-    uint32_t binding;
-    uint32_t offset;
-    uint32_t size;
-} mg_uniform_t;
+    /**
+     * @brief Separate triangles are constructed for every 3 indices in the list.
+     * 
+     * Triangles are defined the following equation, where `t{n}` is the nth triangle, and `v{n}` is the nth vertex:
+     * @code
+     *      t{i} = (v{3i}, v{3i+1}, v{3i+2})
+     * @endcode
+     * 
+     * For a list of `n` indices, `floor(n/3)` triangles will be constructed.
+     */
+    MG_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST     = 0,
 
-typedef struct
-{
-    uint32_t input;
-    uint32_t offset;
-} mg_vertex_attribute_t;
+    /**
+     * @brief Connected triangles are constructed with consecutive triangles sharing an edge.
+     * 
+     * Triangles are defined the following equation, where `t{n}` is the nth triangle, and `v{n}` is the nth vertex:
+     * @code
+     *      t{i} = (v{i}, v{i+(1+i%2)}, v{i+(2-i%2)})
+     * @endcode
+     * 
+     * For a list of `n` indices, `max(0,n-2)` triangles will be constructed.
+     */
+    MG_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP    = 1,
 
-typedef struct
-{
-    uint32_t stride;
-    uint32_t attribute_count;
-    const mg_vertex_attribute_t *attributes;
-} mg_vertex_input_parms_t;
+    /**
+     * @brief Connected triangles are constructed with all triangles sharing a common vertex.
+     * 
+     * Triangles are defined the following equation, where `t{n}` is the nth triangle, and `v{n}` is the nth vertex:
+     * @code
+     *      t{i} = (v{i+1}, v{i+2}, v{0})
+     * @endcode
+     * 
+     * For a list of `n` indices, `max(0,n-2)` triangles will be constructed.
+     */
+    MG_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN      = 2,
+} mg_primitive_topology_t;
 
+/**
+ * @brief Describes how primitives are assembled from a list of indices.
+ * 
+ * @see #mg_draw
+ * @see #mg_draw_indexed
+ */
 typedef struct
 {
-    rsp_ucode_t *vertex_shader_ucode;
-    mg_vertex_input_parms_t vertex_input;
-} mg_pipeline_parms_t;
-
-typedef struct
-{
-    mg_primitive_topology_t primitive_topology;
-    bool primitive_restart_enabled;
+    mg_primitive_topology_t primitive_topology;     ///< The topology mode of the constructed primitives.
+    bool primitive_restart_enabled;                 ///< If true, construction of primitives will restart whenever a special index value (-1) is encountered in the list.
 } mg_input_assembly_parms_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/**
+ * @brief Initialize the magma library.
+ * 
+ * This function must be called before any other functions of this library are used.
+ * It is safe to call this function multiple times. If the library is already
+ * initialized, this function has no effect.
+ */
 void mg_init(void);
+
+/**
+ * @brief Shut down the magma library.
+ * 
+ * It is safe to call this function multiple times. If the library is not
+ * initialized, this function has no effect.
+ */
 void mg_close(void);
 
-// NOTE: The following functions are not commands, so they are not automatically synchronized with RSP!
-
-/* Pipelines */
-
+/**
+ * @brief Creates a new pipeline from a shader ucode and vertex layout.
+ * 
+ * A copy of the ucode will be created internally, which is then patched automatically
+ * to work with the specified vertex layout (provided it is compatible).
+ * 
+ * See #mg_pipeline_parms_t and #mg_vertex_layout_t for more details.
+ * Must be freed with #mg_pipeline_free.
+ * 
+ * @param[in]   parms   Pointer to a struct containing parameters for creating a pipeline.
+ * @return              The newly created pipeline.
+ * 
+ * @see #mg_pipeline_parms_t
+ * @see #mg_vertex_layout_t
+ * @see #mg_pipeline_free
+ */
 mg_pipeline_t *mg_pipeline_create(const mg_pipeline_parms_t *parms);
+
+/**
+ * @brief Destructs and frees a pipeline.
+ * 
+ * Must not be called while any drawing operations using this pipeline are still ongoing.
+ * 
+ * @param[in]   pipeline    The pipeline to be freed.
+ */
 void mg_pipeline_free(mg_pipeline_t *pipeline);
+
+/**
+ * @brief Returns a struct describing the uniform with the given binding number.
+ * 
+ * The struct can be used directly to load uniform values using #mg_load_uniform or #mg_inline_uniform
+ * This function crashes if no uniform with the given binding number exists in the pipeline.
+ * Note that binding numbers are not required to be contiguous.
+ * 
+ * @param[in]   pipeline    The pipeline to query the uniform from.
+ * @param[in]   binding     The binding number of the uniform that should be queried.
+ * @return                  The uniform in the pipeline with the specified binding number.
+ * 
+ * @see #mg_load_uniform
+ * @see #mg_inline_uniform
+ */
 const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding);
 
-/* Commands (these will generate rspq commands) */
+/**
+ * @brief Checks if a uniform is compatible with the pipeline.
+ * 
+ * If the uniform has been queried from the pipeline using #mg_pipeline_get_uniform,
+ * it is by definition always compatible.
+ * 
+ * If the uniform has been queried from a different pipeline that was created with the
+ * same shader ucode, it is guaranteed to be compatible.
+ * 
+ * Uniforms from other pipelines that do not share shader ucode may still be compatible
+ * if this pipeline contains a uniform with the same binding number which is located in
+ * the same region of memory.
+ * 
+ * @param[in]   pipeline    The pipeline to be checked for compatibility with the uniform.
+ * @param[in]   uniform     The uniform to be checked for compatibility with the pipeline.
+ * @return                  True if the uniform is compatible with the pipeline, otherwise false.
+ * 
+ * @see #mg_pipeline_get_uniform
+ */
+bool mg_pipeline_is_uniform_compatible(mg_pipeline_t *pipeline, const mg_uniform_t *uniform);
 
-/** @brief Bind the pipeline for subsequent use, uploading the attached shader to IMEM */
+/** 
+ * @brief Bind the pipeline for subsequent use.
+ * 
+ * All following drawing commands will use the newly bound pipeline for transforming vertices.
+ * This function must be called at least once before any drawing commands are issued.
+ * 
+ * Binding a pipeline will invalidate any previously loaded uniforms that are not compatible with the pipeline.
+ * This compatibility can be checked using #mg_pipeline_is_uniform_compatible.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   pipeline    The pipeline to be bound.
+ * 
+ * @see #mg_pipeline_is_uniform_compatible
+ */
 void mg_bind_pipeline(mg_pipeline_t *pipeline);
 
-/** @brief Upload raw data to shader uniforms */
-void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data);
-
+/**
+ * @brief Load data from the given pointer into a uniform.
+ * 
+ * The data will not be read immediately. Instead, this operation is performed asynchronously
+ * in the background. This means that the source data must remain valid until the loading has actually 
+ * been performed. This will generally be the case after the current frame has been fully drawn. 
+ * If you need to load different data to the same uniform every frame, it is advised to keep 
+ * multiple source buffers and alternate between them. A good default for the number of buffers is the
+ * number of frame buffers that was passed to #display_init.
+ * 
+ * The actual loading is performed by a DMA operation. That means you need to ensure that
+ * the source data is either in uncached memory, or has been flushed back to RDRAM before calling this function.
+ * 
+ * This function only has defined behavior if the given uniform descriptor has been queried
+ * from the pipeline that is currently bound (see #mg_bind_pipeline), or is compatible with
+ * the currently bound pipeline. The latter can be checked using #mg_pipeline_is_uniform_compatible.
+ * 
+ * Can be recorded into blocks. Note that only the pointer value itself will be recorded.
+ * Therefore it is still possible to modify the data afterwards and have it correctly loaded.
+ * 
+ * @param[in]   uniform     The uniform that the data should be loaded into.
+ * @param[in]   data        Pointer to the data to be loaded.
+ *                          The number of bytes that will be read is equal to the size of the uniform.
+ * 
+ * @see #mg_bind_pipeline
+ * @see #mg_pipeline_is_uniform_compatible
+ */
 inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data);
 
-/** @brief Set culling flags */
-inline void mg_set_culling(const mg_culling_parms_t *culling);
+/** 
+ * @brief Load data from the given pointer into uniform memory.
+ * 
+ * This function works like #mg_load_uniform but takes the offset and size of the memory region to be loaded into directly.
+ * It should be used with care, since it is possible to corrupt the system's state permanently 
+ * and cause crashes by specifying an invalid region. The region must not exceed the size of the
+ * pipeline's uniform memory, which is defined as the offset plus size of the pipeline's "last" uniform.
+ * Note that the last uniform is that with the largest offset, and not necessarily that with the largest binding number.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   offset      The offset in bytes of the region in uniform memory that data should be loaded to.
+ * @param[in]   size        The size in bytes of the region in uniform memory that data should be loaded to.
+ * @param[in]   data        Pointer to the data to be loaded.
+ * 
+ * @see #mg_load_uniform
+ */
+void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data);
 
-/** @brief Set culling flags */
-inline void mg_set_geometry_flags(mg_geometry_flags_t flags);
-
-/** @brief Set the viewport */
-void mg_set_viewport(const mg_viewport_t *viewport);
-
-/** @brief Set the clipping guard factor */
-inline void mg_set_clip_factor(uint32_t factor);
-
-/** @brief Push a block of data directly to DMEM, embedding the data in the command */
-void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
-
+/**
+ * @brief Load inline data into a uniform.
+ * 
+ * This works just like #mg_load_uniform, except that the data is read immediately
+ * and embedded into the internal stream of commands. This means there is no need
+ * to keep the data around until the asynchronous loading operation is complete.
+ * However, this function comes with more performance overhead compared to #mg_load_uniform.
+ * 
+ * @param[in]   uniform     The uniform that the data should be loaded into.
+ * @param[in]   data        Pointer to the data to be embedded and then loaded.
+ *                          The number of bytes that will be read is equal to the size of the uniform.
+ * 
+ * @see #mg_load_uniform
+ */
 inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data);
 
-/** @brief Bind a vertex buffer to be used by subsequent drawing commands */
-inline void mg_bind_vertex_buffer(const void *buffer, uint32_t offset);
+/**
+ * @brief Load inline data into uniform memory.
+ * 
+ * This works just like #mg_load_uniform_raw, except that the data is read immediately
+ * and embedded into the internal stream of commands. This means there is no need
+ * to keep the data around until the asynchronous loading operation is complete.
+ * However, this function comes with more performance overhead compared to #mg_load_uniform_raw.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   offset      The offset in bytes of the region in uniform memory that data should be loaded to.
+ * @param[in]   size        The size in bytes of the region in uniform memory that data should be loaded to.
+ * @param[in]   data        Pointer to the data to be embedded and then loaded.
+ * 
+ * @see #mg_load_uniform_raw
+ */
+void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
 
-/** @brief Begin a batch of drawing primitives */
+/** 
+ * @brief Set the culling mode for 3D geometry.
+ * 
+ * Use this function to specify whether to cull back faces, front faces or turn off culling.
+ * It is also possible to configure the winding direction of triangles.
+ * See #mg_culling_parms_t for details.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   culling     Pointer to a struct containing the culling configuration.
+ * 
+ * @see #mg_culling_parms_t
+ */ 
+inline void mg_set_culling(const mg_culling_parms_t *culling);
+
+/** 
+ * @brief Set the geometry flags for 3D geometry.
+ * 
+ * The geometry flags specify which attributes should be transmitted to the RDP, the hardware rasterizer.
+ * See #mg_geometry_flags_t for details.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   flags       Geometry flags.
+ * 
+ * @see #mg_geometry_flags_t
+ */
+inline void mg_set_geometry_flags(mg_geometry_flags_t flags);
+
+/** 
+ * @brief Set the viewport, which is the region in screen space that geometry will be drawn to.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   viewport    Pointer to a struct containing the viewport configuration.
+ * 
+ * @see #mg_viewport_t
+ */
+void mg_set_viewport(const mg_viewport_t *viewport);
+
+/** 
+ * @brief Set the clipping guard factor.
+ * 
+ * This factor specifies the size of the clipping guard band in multiples of the viewport size.
+ * The clipping guard band is a screen space region centered around the actual viewport.
+ * Triangles which stick outside the viewport but are still within the guard band will not be clipped
+ * as a performance improvement, since clipping is very costly.
+ * 
+ * A factor of 1 will effectively disable the clipping guard, since it will be exactly as big as the viewport itself.
+ * 
+ * The default value is #MG_DEFAULT_GUARD_BAND.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   factor      The clipping guard size factor.
+ */
+inline void mg_set_clip_factor(uint32_t factor);
+
+/** 
+ * @brief Bind the vertex buffer to be used by subsequent vertex loading commands.
+ * 
+ * All vertex load commands (issued using #mg_load_vertices) issued after this command will
+ * use the specified buffer as their source, until this function is called again with
+ * a different buffer.
+ * 
+ * Vertex loading commands take as parameter an offset into the vertex buffer as opposed to a direct pointer. 
+ * When they are executed, they will load vertices at that offset from the pointer that was given to this function. 
+ * Note that it is therefore possible to swap out the vertex buffer without needing to adjust vertex loading commands, 
+ * for example if they were recorded into a block.
+ * 
+ * Care must be taken that the source data remains valid until all vertex loading commands that use it have been completed.
+ * 
+ * Vertex loading commands use hardware DMAs internally, which means the vertex data must
+ * either be located in uncached memory or flushed back to RDRAM before calling this function.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   buffer      Pointer to the vertex buffer to be used by subsequent vertex loading commands.
+ * 
+ * @see #mg_load_vertices
+ */
+inline void mg_bind_vertex_buffer(const void *buffer);
+
+/** 
+ * @brief Begin a batch of drawing commands.
+ * 
+ * This function must be called before a batch of drawing commands that use the same render modes.
+ * Use #mg_draw_end to end this batch.
+ * 
+ * Render modes are configured using the @ref rdpq library. Magma's fixed function settings such as #mg_set_geometry_flags are
+ * not required to be separated from drawing batches. There are some exceptions in rdpq as well, such as #rdpq_set_prim_color.
+ * 
+ * To ensure proper synchronization of render modes, these rules should be followed:
+ *  * Functions that change render modes must not be called 
+ *    between a pair of calls to #mg_draw_begin and #mg_draw_end in that order.
+ *  * Functions that issue drawing commands must only be called 
+ *    between a pair of calls to #mg_draw_begin and #mg_draw_end in that order.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @see #mg_draw_end
+ */
 void mg_draw_begin(void);
 
-/** @brief End a batch of drawing primitives */
+/** 
+ * @brief End a batch of drawing commands. 
+ * 
+ * This function must be called after a batch of drawing commands that use the same render modes.
+ * See #mg_draw_begin for more details.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @see #mg_draw_begin
+ */
 void mg_draw_end(void);
 
-/** @brief Load vertices from the vertex buffer into the internal cache */
-void mg_load_vertices(uint32_t buffer_offset, uint8_t cache_offset, uint32_t count);
+/** 
+ * @brief Load vertices from the vertex buffer, run the current pipeline's vertex shader on them, and save the result to the vertex cache.
+ * 
+ * The source vertex data will be read starting from the specified index into the vertex buffer.
+ * The transformed vertices will be stored at the specified index into the vertex cache.
+ * 
+ * After the transformed vertices have been stored into the cache, they can be used to draw triangles
+ * by issuing drawing commands (see #mg_draw_triangle).
+ * 
+ * The cache index plus the vertex count must not exceed the maximum number of vertices that can
+ * be held by the vertex cache, which is #MG_VERTEX_CACHE_COUNT.
+ * 
+ * The vertex loading is not carried out immediately after calling this function. Instead, it runs asynchronously 
+ * in the background. This means that the vertex source data must remain valid until it has actually been read. This will 
+ * generally be the case after the current frame has been fully drawn. If you need to change the vertex data every frame
+ * (for example dynamically generated geometry or "morphing" based animation), it is advised to keep multiple 
+ * source buffers and alternate between them. A good default for the number of buffers is the number of 
+ * frame buffers that was passed to #display_init. If you only need to apply some linear transformation to the
+ * entire geometry, you should use matrices instead, since they can be stored in uniforms.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   buffer_index    The offset into the vertex buffer from which to start loading.
+ *                              The actual offset in bytes is this number multiplied by the vertex stride of the currently bound pipeline.
+ * @param[in]   cache_index     The offset into the vertex cache where to store the transformed vertices, 
+ *                              in multiples of the internal vertex size.
+ * @param[in]   count           The number of vertices to load. The total number of bytes read from the 
+ *                              vertex buffer is this number multiplied by the vertex stride of the currently bound pipeline.
+ * 
+ * @see #mg_draw_triangle
+ * @see #MG_VERTEX_CACHE_COUNT
+ */
+void mg_load_vertices(uint32_t buffer_index, uint8_t cache_index, uint32_t count);
 
-/** @brief Draw a triangle with vertices from the internal cache at the specified indices */
-void mg_draw_indices(uint8_t index0, uint8_t index1, uint8_t index2);
+/** 
+ * @brief Draw a triangle with vertices that have previously been stored in the vertex cache.
+ * 
+ * The values of all indices must be less than the maximum number of vertices that can be held by 
+ * the vertex cache, which is #MG_VERTEX_CACHE_COUNT.
+ * 
+ * Use #mg_load_vertices to populate the vertex cache.
+ * 
+ * This is a drawing command and must be placed between a pair of calls to #mg_draw_begin and #mg_draw_end.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   index0      The index into the vertex cache at which the first vertex is stored.
+ * @param[in]   index1      The index into the vertex cache at which the second vertex is stored.
+ * @param[in]   index2      The index into the vertex cache at which the third vertex is stored.
+ * 
+ * @see #mg_load_vertices
+ * @see #MG_VERTEX_CACHE_COUNT
+ * @see #mg_draw_begin
+ * @see #mg_draw_end
+ */
+void mg_draw_triangle(uint8_t index0, uint8_t index1, uint8_t index2);
 
-/** @brief Draw primitives */
+/** 
+ * @brief Draw multiple triangles from consecutive vertices in the vertex buffer.
+ * 
+ * The exact algorithm that is used to construct these triangles is specified by #mg_input_assembly_parms_t.
+ * This function will feed a linear sequence of indices to that algorithm, which starts at the specified first
+ * vertex and has the specified length. In effect this means that triangles are constructed from vertices in
+ * the same order in which they appear in the vertex buffer.
+ * 
+ * The algorithm will translate the list of indices to a sequence of multiple vertex loading and
+ * triangle drawing commands. This translation is optimized for efficient loading, as opposed to run time
+ * of the algorithm itself. Therefore it is advised to record the generated commands into a block whenever possible,
+ * to avoid the translation to be reduntantly computed on every frame, even though the result will always be the same.
+ * 
+ * This is a drawing command and must be placed between a pair of calls to #mg_draw_begin and #mg_draw_end.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   input_assembly_parms    Pointer to a struct containing parameters for input assembly.
+ * @param[in]   vertex_count            The number of vertices to draw triangles with.
+ * @param[in]   first_vertex            The index into the vertex buffer to start loading vertices from.
+ * 
+ * @see #mg_input_assembly_parms_t
+ * @see #mg_draw_begin
+ * @see #mg_draw_end
+ */
 void mg_draw(const mg_input_assembly_parms_t *input_assembly_parms, uint32_t vertex_count, uint32_t first_vertex);
 
-/** @brief Draw indexed primitives */
+/** 
+ * @brief Draw multiple triangles from a list of indices that specify offsets into the vertex buffer.
+ * 
+ * The exact algorithm that is used to construct these triangles is specified by #mg_input_assembly_parms_t.
+ * This function will read the specified number of indices from the list and feed them to the algorithm 
+ * in the order in which they appear in the list. Optionally, a constant offset can be applied to each index.
+ * 
+ * The algorithm will translate the list of indices to a sequence of multiple vertex loading and
+ * triangle drawing commands. This translation is optimized for efficient loading, as opposed to run time
+ * of the algorithm itself. Therefore it is advised to record the generated commands into a block whenever possible,
+ * to avoid the translation to be reduntantly computed on every frame, even though the result will always be the same.
+ * 
+ * This is a drawing command and must be placed between a pair of calls to #mg_draw_begin and #mg_draw_end.
+ * 
+ * Can be recorded into blocks.
+ * 
+ * @param[in]   input_assembly_parms    Pointer to a struct containing parameters for input assembly.
+ * @param[in]   indices                 Pointer to the list of indices.
+ * @param[in]   index_count             The number of indices that should be read.
+ * @param[in]   vertex_offset           A constant offset that will be added to all index values.
+ * 
+ * @see #mg_input_assembly_parms_t
+ * @see #mg_draw_begin
+ * @see #mg_draw_end
+ */
 void mg_draw_indexed(const mg_input_assembly_parms_t *input_assembly_parms, const uint16_t *indices, uint32_t index_count, int32_t vertex_offset);
 
 /// @cond
@@ -280,9 +809,9 @@ inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data)
     mg_inline_uniform_raw(uniform->offset, uniform->size, data);
 }
 
-inline void mg_bind_vertex_buffer(const void *buffer, uint32_t offset)
+inline void mg_bind_vertex_buffer(const void *buffer)
 {
-    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer) + offset);
+    mg_cmd_set_word(offsetof(mg_rsp_state_t, vertex_buffer), PhysicalAddr(buffer));
 }
 /// @endcond
 

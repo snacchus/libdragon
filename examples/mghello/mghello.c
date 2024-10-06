@@ -31,9 +31,9 @@ int main()
     };
     mg_pipeline_t *pipeline = mg_pipeline_create(&(mg_pipeline_parms_t) {
         .vertex_shader_ucode = mgfx_get_shader_ucode(),
-        .vertex_input.attribute_count = sizeof(vertex_attributes)/sizeof(vertex_attributes[0]),
-        .vertex_input.attributes = vertex_attributes,
-        .vertex_input.stride = sizeof(vertex)
+        .vertex_layout.attribute_count = sizeof(vertex_attributes)/sizeof(vertex_attributes[0]),
+        .vertex_layout.attributes = vertex_attributes,
+        .vertex_layout.stride = sizeof(vertex)
     });
 
     // Shader uniforms are not initialized to 0's automatically, so we need to create
@@ -121,7 +121,7 @@ int main()
 
         // Bind the vertex buffer that was created above. All subsequent drawing
         // commands will now read from this buffer.
-        mg_bind_vertex_buffer(vertices, 0);
+        mg_bind_vertex_buffer(vertices);
 
         // All drawing commands (including mg_draw and mg_draw_indexed) must be put 
         // between mg_draw_begin and mg_draw_end, which delimit a drawing "batch". 
@@ -131,7 +131,7 @@ int main()
             // Load all vertices from the buffer into the internal cache
             mg_load_vertices(0, 0, 3);
             // Draw a triangle using those vertices
-            mg_draw_indices(0, 1, 2);
+            mg_draw_triangle(0, 1, 2);
         mg_draw_end();
 
         // End the frame as usual.
