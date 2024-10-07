@@ -9,7 +9,99 @@
  * @brief Interface for transforming and drawing 3D geometry with a focus on performance and customizability.
  * @ingroup display
  * 
- * TODO
+ * Magma is a library that allows users to perform T&L (https://en.wikipedia.org/wiki/Transform,_clipping,_and_lighting)
+ * of 3D geometry in a highly customizable, hardware-accelerated fashion.
+ * 
+ * The key feature of magma that allows for most of its customizability is the support for vertex shaders, 
+ * since they can be written to implement any arbitrary method of transformation and lighting (within the limits of the hardware of course).
+ * Vertex shaders run on the RSP ("Reality Signal Processor") and can therefore make use of its special vector instructions
+ * to speed up many of the necessary matrix and vector calculations.
+ * 
+ * The transformed and shaded triangles that result from the vertex shader are then directly sent to the RDP ("Reality Display Processor") 
+ * for rasterization  without a roundtrip to the CPU. Other than that, magma does not communicate with the RDP. To configure things like 
+ * render modes, textures, etc. the @ref rdpq library should be used.
+ * 
+ * Magma uses the rspq library (see @ref rspq.h) to interface with the RSP internally. In fact, many of magma's functions are just
+ * wrappers around rspq commands and therefore support being recorded into rspq blocks (#rspq_block_t). These functions are marked as
+ * such in their documentation with the sentence "Can be recorded into blocks".
+ * 
+ * ## Overview of magma's architecture
+ * 
+ * This is a list of frequently used terms and their definitions:
+ * 
+ * ### Vertex shader
+ * This is a special type of ucode (#rsp_ucode_t) that implements the magma vertex shader interface. It contains some metadata to describe itself to magma,
+ * and implements the vertex processing loop to perform the T&L. Magma comes with a builtin default shader that is fit for most purposes: @ref mgfx.h
+ * 
+ * ### Vertex input
+ * Every vertex shader defines a set of vertex inputs. A vertex input is some value that a shader expects per vertex, for example its 
+ * position, color, texture coordinates etc. Each vertex input is identified with an "input number", which is unique within the shader. 
+ * The shader may define certain inputs to be optional.
+ * 
+ * ### Vertex layout
+ * While the set of a shader's vertex inputs can be thought of as an interface, a vertex layout is like an implementation of that interface.
+ * It is the physical memory layout of some vertex data that is passed to the vertex shader as input. Shaders may be configured to accept 
+ * a range of different vertex layouts as their input, provided they are compatible. See #mg_vertex_layout_t for details.
+ * 
+ * ### Pipeline
+ * A pipeline is an instance of a vertex shader that has been configured with a certain vertex layout. To actually draw any 3D geometry, 
+ * a pipeline must first be created and then "bound". After a pipeline has been bound, all subsequent drawing commands will use its vertex shader.
+ * A program can create as many pipelines as desired and switch between them at will by binding them. This is useful for both supporting
+ * multiple vertex layouts and achieving different visual effects. See #mg_pipeline_t.
+ * 
+ * ### Uniform
+ * Besides vertex inputs, a vertex shader also defines a set of uniforms. Uniforms are inputs to the shader that don't change per vertex.
+ * Common examples are matrices and lights. Like vertex inputs, they have a unique identifier each, called the "binding number". 
+ * Uniforms can be queried from a pipeline using the binding number. To make the uniform's values accessible to the vertex shader, 
+ * they need to reside in the RSP's DMEM. That means to assign a value to a uniform, it must be loaded first. See #mg_uniform_t for details.
+ * 
+ * ### Vertex buffer
+ * A vertex buffer is the source of vertex data that is to be transformed by a vertex shader. It is just a regular region of memory in RDRAM
+ * and no special functions are required to create it. A vertex buffer must be "bound" to make its contents available to a vertex shader.
+ * See #mg_bind_vertex_buffer for details.
+ * 
+ * ### Vertex cache
+ * This is an internal memory buffer that the results of the vertex shader are stored into. Drawing geometry with magma actually happens in 
+ * two distinct steps: First, vertices are "loaded" into the vertex cache, running them through the vertex shader in the process.
+ * Triangles can then be drawn by referencing the tranformed vertices inside the cache. This way, vertices don't need to be transformed 
+ * redundantly in case they are shared by multiple triangles. See #mg_load_vertices and #mg_draw_triangle for details.
+ * 
+ * ### Drawing command
+ * These are functions that will actually draw geometry to the framebuffer. The most simple example is #mg_draw_triangle, which will draw
+ * a single triangle. There are also more advanced drawing commands which can draw entire meshes at once: #mg_draw and #mg_draw_indexed.
+ * Internally they will just call #mg_load_vertices and #mg_draw_triangle repeatedly until the entire mesh has been drawn.
+ * Translating a list of indices to a sequence of vertex loads and triangle draws is expensive though, so it's best practice to record
+ * them into rspq blocks (#rspq_block_t) if the indices don't change.
+ * 
+ * ### Fixed function states
+ * There are some states that are built into magma. They can be set at any time to configure how geometry is being drawn.
+ * Some of them are related to drawing triangles only, others are accessible to every vertex shader automatically. 
+ * This is the list of functions that set these states. See their respective documentation for more information:
+ *  * #mg_set_viewport
+ *  * #mg_set_geometry_flags
+ *  * #mg_set_culling
+ *  * #mg_set_clip_factor
+ * 
+ * ## How to draw geometry: Quick guide
+ * At initialization:
+ *  1. Initialize magma using #mg_init.
+ *  2. Create a pipeline from a vertex shader (for example mgfx) and a vertex layout that corresponds to your vertex data using #mg_pipeline_create.
+ *  3. Query uniforms from the pipeline with #mg_pipeline_get_uniform.
+ * 
+ * During the rendering loop:
+ *  1. Bind the pipeline using #mg_pipeline_bind.
+ *  2. Load uniforms using e.g. #mg_uniform_load.
+ *  3. Set fixed function states:
+ *      a. The viewport, which is the area that geometry is drawn to (#mg_set_viewport).
+ *      b. Geometry flags, which specify what type of triangles should be sent to the RDP (#mg_set_geometry_flags).
+ *      c. The face culling mode (#mg_set_culling).
+ *  4. Bind a pointer to your vertex data as the vertex buffer with #mg_bind_vertex_buffer.
+ *  5. Draw the geometry by using one of the drawing commands, or by calling a rspq block with recorded drawing commands.
+ * 
+ * The order of steps in the rendering loop is not fixed, with some exceptions. Step 5 should obviously always happen last.
+ * Step 2 should usually happen after step 1, though there are exceptions (see #mg_pipeline_bind).
+ * 
+ * The "mghello" example demonstrates the above steps in a minimal fashion. A more complicated example can be found in "mgdemo".
  */
 
 #ifndef __LIBDRAGON_MAGMA_H
@@ -23,9 +115,10 @@
 #include <debug.h>
 
 /** 
- * @brief An instance of the magma pipeline, with an attached vertex shader and vertex layout.
+ * @brief An instance of a vertex shader that has been configured with a specific vertex layout.
  * 
  * @see #mg_pipeline_create
+ * @see #mg_pipeline_bind
  */
 typedef struct mg_pipeline_s    mg_pipeline_t;
 
@@ -45,7 +138,7 @@ typedef struct
  * 
  * This configuration specifies how the data from a vertex buffer should be fed into the vertex shader.
  * 
- * A shader ucode defines the set of vertex inputs it supports. A vertex input is defined by:
+ * A vertex shader defines the set of vertex inputs it supports. A vertex input is defined by:
  *  * Its "input number", which is a unique identifier
  *  * An alignment requirement
  *  * Whether it is optional or not
@@ -55,7 +148,7 @@ typedef struct
  *  * Its offset relative from the start of a vertex
  *  * An input number, which creates a mapping to some vertex input
  * 
- * To create a valid pipeline, its vertex layout must be compatible with the vertex inputs defined by the shader.
+ * To create a valid pipeline, its vertex layout must be compatible with the vertex inputs defined by the vertex shader.
  * A vertex layout is compatible with a shader if, and only if, all of the following requirements are met:
  *  * All of its vertex attributes have an input number that is present in the shader
  *  * There are no duplicate input numbers among the vertex attributes
@@ -68,7 +161,7 @@ typedef struct
  * 
  * Also note that, besides alignment, there are no further requirements on the offsets of each vertex attribute.
  * This means they don't need to be packed tightly and may even overlap.
- * How many bytes are actually read per vertex input is defined by the shader.
+ * How many bytes are actually read per vertex input is defined by the vertex shader.
  * 
  * @see #mg_pipeline_parms_t
  * @see #mg_pipeline_create
@@ -102,7 +195,7 @@ typedef struct
  * 
  * A uniform is a piece of memory that can contain some input for a vertex shader which does not change per vertex.
  * More specifically, a uniform defines some region of memory that is reserved by a pipeline, which the pipeline's
- * shader can access during its runtime. The combined reserved memory for all uniforms in a pipeline is known as 
+ * vertex shader can access during its runtime. The combined reserved memory for all uniforms in a pipeline is known as 
  * the pipeline's "uniform memory". The uniform memory can be thought of as some virtual address space which starts 
  * at 0 and goes up to however many bytes a pipeline's uniforms take up in total.
  * 
@@ -114,8 +207,8 @@ typedef struct
  * The binding number must only be unique for each uniform within a pipeline. Otherwise, binding numbers can take on arbitrary
  * values and must not even be consecutive or otherwise correlated with a uniform's location in uniform memory.
  * 
- * Uniforms are defined by the shader ucode that is referenced by a pipeline. All pipelines that reference the same
- * shader ucode will contain equivalent sets of uniforms. Uniforms can be queried from a pipeline using #mg_pipeline_get_uniform.
+ * Uniforms are defined by the vertex shader that is referenced by a pipeline. All pipelines that reference the same
+ * shader will contain equivalent sets of uniforms. Uniforms can be queried from a pipeline using #mg_pipeline_get_uniform.
  * 
  * To provide inputs to a vertex shader via uniforms, they must be loaded first using one of the uniform loading functions,
  * for example #mg_uniform_load or #mg_uniform_load_inline. Those functions will load the entirety of a uniform's memory at once.
@@ -299,7 +392,7 @@ void mg_init(void);
 void mg_close(void);
 
 /**
- * @brief Creates a new pipeline from a shader ucode and vertex layout.
+ * @brief Creates a new pipeline from a vertex shader and vertex layout.
  * 
  * A copy of the ucode will be created internally, which is then patched automatically
  * to work with the specified vertex layout (provided it is compatible).
@@ -348,9 +441,9 @@ const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t bi
  * it is by definition always compatible.
  * 
  * If the uniform has been queried from a different pipeline that was created with the
- * same shader ucode, it is guaranteed to be compatible.
+ * same vertex shader, it is guaranteed to be compatible.
  * 
- * Uniforms from other pipelines that do not share shader ucode may still be compatible
+ * Uniforms from other pipelines that do not share vertex shaders may still be compatible
  * if this pipeline contains a uniform with the same binding number which is located in
  * the same region of memory.
  * 
@@ -370,6 +463,8 @@ bool mg_pipeline_is_uniform_compatible(mg_pipeline_t *pipeline, const mg_uniform
  * 
  * Binding a pipeline will invalidate any previously loaded uniforms that are not compatible with the pipeline.
  * This compatibility can be checked using #mg_pipeline_is_uniform_compatible.
+ * Inversely this means that compatible uniforms will not be invalidated and their values will be preserved
+ * after binding the new pipeline.
  * 
  * Can be recorded into blocks.
  * 
