@@ -92,14 +92,25 @@
  *  1. Bind the pipeline using #mg_pipeline_bind.
  *  2. Load uniforms using e.g. #mg_uniform_load.
  *  3. Set fixed function states:
- *      a. The viewport, which is the area that geometry is drawn to (#mg_set_viewport).
- *      b. Geometry flags, which specify what type of triangles should be sent to the RDP (#mg_set_geometry_flags).
- *      c. The face culling mode (#mg_set_culling).
+ *      1. The viewport, which is the area that geometry is drawn to (#mg_set_viewport).
+ *      2. Geometry flags, which specify what type of triangles should be sent to the RDP (#mg_set_geometry_flags).
+ *      3. The face culling mode (#mg_set_culling).
  *  4. Bind a pointer to your vertex data as the vertex buffer with #mg_bind_vertex_buffer.
  *  5. Draw the geometry by using one of the drawing commands, or by calling a rspq block with recorded drawing commands.
  * 
  * The order of steps in the rendering loop is not fixed, with some exceptions. Step 5 should obviously always happen last.
  * Step 2 should usually happen after step 1, though there are exceptions (see #mg_pipeline_bind).
+ * 
+ * If there are different objects in your scene that share some properties, not all of the above steps need to be repeated for each object.
+ * For example: If two objects use the same "material" (same vertex shader, same textures etc.) but only differ in their position, it is sufficient
+ * to, after the first object has been drawn, only load the uniform that corresponds to "position" before drawing the second object. 
+ * Or you could have two objects that share their geometry, but use a different vertex shader. In this case you would have created two pipelines
+ * at initialization. After drawing the first object, you would bind the second pipeline, load its uniforms, and then draw the second object
+ * without re-binding the vertex buffer. 
+ * 
+ * To put the above in more formal terms: Most functions that set some state work orthogonally to each other. The only exception is uniform loading
+ * with respect to pipeline binding, since uniforms may be invalidated after binding a pipeline. With respect to other uniforms and other states, 
+ * uniform loading can still be viewed as orthogonal.
  * 
  * The "mghello" example demonstrates the above steps in a minimal fashion. A more complicated example can be found in "mgdemo".
  */
