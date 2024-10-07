@@ -144,35 +144,35 @@ void mgfx_set_fog_inline(const mg_uniform_t *uniform, const mgfx_fog_parms_t *pa
 {
     mgfx_fog_t fog = {};
     mgfx_get_fog(&fog, parms);
-    mg_inline_uniform(uniform, &fog);
+    mg_uniform_load_inline(uniform, &fog);
 }
 
 void mgfx_set_lighting_inline(const mg_uniform_t *uniform, const mgfx_lighting_parms_t *parms)
 {
     mgfx_lighting_t lighting = {};
     mgfx_get_lighting(&lighting, parms);
-    mg_inline_uniform(uniform, &lighting);
+    mg_uniform_load_inline(uniform, &lighting);
 }
 
 void mgfx_set_texturing_inline(const mg_uniform_t *uniform, const mgfx_texturing_parms_t *parms)
 {
     mgfx_texturing_t texturing = {};
     mgfx_get_texturing(&texturing, parms);
-    mg_inline_uniform(uniform, &texturing);
+    mg_uniform_load_inline(uniform, &texturing);
 }
 
 void mgfx_set_modes_inline(const mg_uniform_t *uniform, const mgfx_modes_parms_t *parms)
 {
     mgfx_modes_t modes = {};
     mgfx_get_modes(&modes, parms);
-    mg_inline_uniform(uniform, &modes);
+    mg_uniform_load_inline(uniform, &modes);
 }
 
 void mgfx_set_matrices_inline(const mg_uniform_t *uniform, const mgfx_matrices_parms_t *parms)
 {
     mgfx_matrices_t matrices = {};
     mgfx_get_matrices(&matrices, parms);
-    mg_inline_uniform(uniform, &matrices);
+    mg_uniform_load_inline(uniform, &matrices);
 }
 
 // TODO: RSP side matrix manipulation.

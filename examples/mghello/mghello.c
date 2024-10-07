@@ -91,7 +91,7 @@ int main()
         rdpq_set_prim_color(color_from_packed32(0xFFFFFFFF));
 
         // Set the vertex pipeline
-        mg_bind_pipeline(pipeline);
+        mg_pipeline_bind(pipeline);
 
         // Set the viewport to the full screen
         mg_set_viewport(&(mg_viewport_t) {
@@ -113,11 +113,11 @@ int main()
         mg_set_geometry_flags(0);
 
         // Load uniforms. This must be done every frame to guarantee that the uniforms have the desired values.
-        mg_load_uniform(fog_uniform, &uniform_data->fog);
-        mg_load_uniform(lighting_uniform, &uniform_data->lighting);
-        mg_load_uniform(texturing_uniform, &uniform_data->texturing);
-        mg_load_uniform(modes_uniform, &uniform_data->modes);
-        mg_load_uniform(matrices_uniform, &uniform_data->matrices);
+        mg_uniform_load(fog_uniform, &uniform_data->fog);
+        mg_uniform_load(lighting_uniform, &uniform_data->lighting);
+        mg_uniform_load(texturing_uniform, &uniform_data->texturing);
+        mg_uniform_load(modes_uniform, &uniform_data->modes);
+        mg_uniform_load(matrices_uniform, &uniform_data->matrices);
 
         // Bind the vertex buffer that was created above. All subsequent drawing
         // commands will now read from this buffer.

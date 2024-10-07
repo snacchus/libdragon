@@ -1,6 +1,6 @@
 /**
  * @file mgfx.h
- * @brief Magma's "fixed function" builtin shader
+ * @brief Interface for magma's "fixed function" builtin shader
  * @ingroup magma
  */
 

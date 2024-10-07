@@ -5,7 +5,7 @@
  */
 
 /**
- * @defgroup magma Magma: High performance 3D graphics API
+ * @defgroup magma Magma: Hardware-accelerated 3D graphics API
  * @brief Interface for transforming and drawing 3D geometry with a focus on performance and customizability.
  * @ingroup display
  * 
@@ -85,8 +85,16 @@ typedef struct
  */
 typedef struct
 {
-    rsp_ucode_t *vertex_shader_ucode;           ///< The ucode from which to create the pipeline.
-    mg_vertex_layout_t vertex_layout;           ///< Vertex layout configuration.
+    /** 
+     * @brief The ucode from which to create the pipeline.
+     * 
+     * This ucode must be compatible with being a magma vertex shader. In other words, it must adhere to a certain
+     * contract that is defined by magma. The exact details of this are too complex to list here. In general,
+     * the ucode should include the file `rsp_magma.inc` at the top and call some special macros to define the shader.
+     * See that file for more details.
+     */
+    rsp_ucode_t *vertex_shader_ucode;
+    mg_vertex_layout_t vertex_layout;   ///< Vertex layout configuration.
 } mg_pipeline_parms_t;
 
 /**
@@ -110,14 +118,14 @@ typedef struct
  * shader ucode will contain equivalent sets of uniforms. Uniforms can be queried from a pipeline using #mg_pipeline_get_uniform.
  * 
  * To provide inputs to a vertex shader via uniforms, they must be loaded first using one of the uniform loading functions,
- * for example #mg_load_uniform or #mg_inline_uniform. Those functions will load the entirety of a uniform's memory at once.
- * It is also possible to load values in a more advanced manner using #mg_load_uniform_raw and #mg_inline_uniform_raw.
+ * for example #mg_uniform_load or #mg_uniform_load_inline. Those functions will load the entirety of a uniform's memory at once.
+ * It is also possible to load values in a more advanced manner using #mg_uniform_load_raw and #mg_uniform_load_inline_raw.
  * 
  * @see #mg_pipeline_get_uniform
- * @see #mg_load_uniform
- * @see #mg_inline_uniform
- * @see #mg_load_uniform_raw
- * @see #mg_inline_uniform_raw
+ * @see #mg_uniform_load
+ * @see #mg_uniform_load_inline
+ * @see #mg_uniform_load_raw
+ * @see #mg_uniform_load_inline_raw
  */
 typedef struct
 {
@@ -320,7 +328,7 @@ void mg_pipeline_free(mg_pipeline_t *pipeline);
 /**
  * @brief Returns a struct describing the uniform with the given binding number.
  * 
- * The struct can be used directly to load uniform values using #mg_load_uniform or #mg_inline_uniform
+ * The struct can be used directly to load uniform values using #mg_uniform_load or #mg_uniform_load_inline
  * This function crashes if no uniform with the given binding number exists in the pipeline.
  * Note that binding numbers are not required to be contiguous.
  * 
@@ -328,8 +336,8 @@ void mg_pipeline_free(mg_pipeline_t *pipeline);
  * @param[in]   binding     The binding number of the uniform that should be queried.
  * @return                  The uniform in the pipeline with the specified binding number.
  * 
- * @see #mg_load_uniform
- * @see #mg_inline_uniform
+ * @see #mg_uniform_load
+ * @see #mg_uniform_load_inline
  */
 const mg_uniform_t *mg_pipeline_get_uniform(mg_pipeline_t *pipeline, uint32_t binding);
 
@@ -369,7 +377,7 @@ bool mg_pipeline_is_uniform_compatible(mg_pipeline_t *pipeline, const mg_uniform
  * 
  * @see #mg_pipeline_is_uniform_compatible
  */
-void mg_bind_pipeline(mg_pipeline_t *pipeline);
+void mg_pipeline_bind(mg_pipeline_t *pipeline);
 
 /**
  * @brief Load data from the given pointer into a uniform.
@@ -385,7 +393,7 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline);
  * the source data is either in uncached memory, or has been flushed back to RDRAM before calling this function.
  * 
  * This function only has defined behavior if the given uniform descriptor has been queried
- * from the pipeline that is currently bound (see #mg_bind_pipeline), or is compatible with
+ * from the pipeline that is currently bound (see #mg_pipeline_bind), or is compatible with
  * the currently bound pipeline. The latter can be checked using #mg_pipeline_is_uniform_compatible.
  * 
  * Can be recorded into blocks. Note that only the pointer value itself will be recorded.
@@ -395,15 +403,15 @@ void mg_bind_pipeline(mg_pipeline_t *pipeline);
  * @param[in]   data        Pointer to the data to be loaded.
  *                          The number of bytes that will be read is equal to the size of the uniform.
  * 
- * @see #mg_bind_pipeline
+ * @see #mg_pipeline_bind
  * @see #mg_pipeline_is_uniform_compatible
  */
-inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data);
+inline void mg_uniform_load(const mg_uniform_t *uniform, const void *data);
 
 /** 
  * @brief Load data from the given pointer into uniform memory.
  * 
- * This function works like #mg_load_uniform but takes the offset and size of the memory region to be loaded into directly.
+ * This function works like #mg_uniform_load but takes the offset and size of the memory region to be loaded into directly.
  * It should be used with care, since it is possible to corrupt the system's state permanently 
  * and cause crashes by specifying an invalid region. The region must not exceed the size of the
  * pipeline's uniform memory, which is defined as the offset plus size of the pipeline's "last" uniform.
@@ -415,33 +423,33 @@ inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data);
  * @param[in]   size        The size in bytes of the region in uniform memory that data should be loaded to.
  * @param[in]   data        Pointer to the data to be loaded.
  * 
- * @see #mg_load_uniform
+ * @see #mg_uniform_load
  */
-void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data);
+void mg_uniform_load_raw(uint32_t offset, uint32_t size, const void *data);
 
 /**
  * @brief Load inline data into a uniform.
  * 
- * This works just like #mg_load_uniform, except that the data is read immediately
+ * This works just like #mg_uniform_load, except that the data is read immediately
  * and embedded into the internal stream of commands. This means there is no need
  * to keep the data around until the asynchronous loading operation is complete.
- * However, this function comes with more performance overhead compared to #mg_load_uniform.
+ * However, this function comes with more performance overhead compared to #mg_uniform_load.
  * 
  * @param[in]   uniform     The uniform that the data should be loaded into.
  * @param[in]   data        Pointer to the data to be embedded and then loaded.
  *                          The number of bytes that will be read is equal to the size of the uniform.
  * 
- * @see #mg_load_uniform
+ * @see #mg_uniform_load
  */
-inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data);
+inline void mg_uniform_load_inline(const mg_uniform_t *uniform, const void *data);
 
 /**
  * @brief Load inline data into uniform memory.
  * 
- * This works just like #mg_load_uniform_raw, except that the data is read immediately
+ * This works just like #mg_uniform_load_raw, except that the data is read immediately
  * and embedded into the internal stream of commands. This means there is no need
  * to keep the data around until the asynchronous loading operation is complete.
- * However, this function comes with more performance overhead compared to #mg_load_uniform_raw.
+ * However, this function comes with more performance overhead compared to #mg_uniform_load_raw.
  * 
  * Can be recorded into blocks.
  * 
@@ -449,9 +457,9 @@ inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data);
  * @param[in]   size        The size in bytes of the region in uniform memory that data should be loaded to.
  * @param[in]   data        Pointer to the data to be embedded and then loaded.
  * 
- * @see #mg_load_uniform_raw
+ * @see #mg_uniform_load_raw
  */
-void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data);
+void mg_uniform_load_inline_raw(uint32_t offset, uint32_t size, const void *data);
 
 /** 
  * @brief Set the culling mode for 3D geometry.
@@ -799,14 +807,14 @@ inline void mg_set_clip_factor(uint32_t factor)
     mg_cmd_set_word(offsetof(mg_rsp_state_t, clip_factors) + sizeof(uint16_t)*2, (factor<<16) | factor);
 }
 
-inline void mg_load_uniform(const mg_uniform_t *uniform, const void *data)
+inline void mg_uniform_load(const mg_uniform_t *uniform, const void *data)
 {
-    mg_load_uniform_raw(uniform->offset, uniform->size, data);
+    mg_uniform_load_raw(uniform->offset, uniform->size, data);
 }
 
-inline void mg_inline_uniform(const mg_uniform_t *uniform, const void *data)
+inline void mg_uniform_load_inline(const mg_uniform_t *uniform, const void *data)
 {
-    mg_inline_uniform_raw(uniform->offset, uniform->size, data);
+    mg_uniform_load_inline_raw(uniform->offset, uniform->size, data);
 }
 
 inline void mg_bind_vertex_buffer(const void *buffer)

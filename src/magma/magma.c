@@ -63,7 +63,7 @@ static bool is_initialized = false;
 
 uint32_t mg_overlay_id;
 
-void mg_load_uniform_raw(uint32_t offset, uint32_t size, const void *data)
+void mg_uniform_load_raw(uint32_t offset, uint32_t size, const void *data)
 {
     assertf(size > 0, "size must be greater than 0");
     mg_cmd_write(MG_CMD_LOAD_UNIFORM, PhysicalAddr(data), ((size-1) << 16) | offset);
@@ -332,7 +332,7 @@ bool mg_pipeline_is_uniform_compatible(mg_pipeline_t *pipeline, const mg_uniform
     return matching_uniform != NULL && matching_uniform->offset == uniform->offset && matching_uniform->size == uniform->size;
 }
 
-void mg_bind_pipeline(mg_pipeline_t *pipeline)
+void mg_pipeline_bind(mg_pipeline_t *pipeline)
 {
     uint32_t code = PhysicalAddr(pipeline->shader_code);
     uint32_t code_size = pipeline->shader_code_size;
@@ -381,7 +381,7 @@ void mg_set_viewport(const mg_viewport_t *viewport)
     mg_cmd_set_quad(offsetof(mg_rsp_state_t, viewport), value0, value1, value2, value3);
 }
 
-void mg_inline_uniform_raw(uint32_t offset, uint32_t size, const void *data)
+void mg_uniform_load_inline_raw(uint32_t offset, uint32_t size, const void *data)
 {
     assertf((offset&7) == 0, "offset must be a multiple of 8");
     assertf((size&3) == 0, "size must be a multiple of 4");

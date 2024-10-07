@@ -686,8 +686,8 @@ void render()
     // In this demo, all our materials use variations of the same pipeline which are compatible with respect to their uniforms.
     // When binding a pipeline, uniforms are not automatically invalidated, which means we can load uniforms that stay constant 
     // for the entire scene here (for example lighting).
-    mg_load_uniform(fog_uniform, &scene_uniform_buffer[fb_index]->fog);
-    mg_load_uniform(lighting_uniform, &scene_uniform_buffer[fb_index]->lighting);
+    mg_uniform_load(fog_uniform, &scene_uniform_buffer[fb_index]->fog);
+    mg_uniform_load(lighting_uniform, &scene_uniform_buffer[fb_index]->lighting);
 
     uint32_t current_pipeline_id = -1;
     uint32_t current_material_id = -1;
@@ -708,7 +708,7 @@ void render()
         // Bind the correct pipeline for the current draw call.
         if (draw_call->pipeline_id != current_pipeline_id) {
             current_pipeline_id = draw_call->pipeline_id;
-            mg_bind_pipeline(pipelines[current_pipeline_id]);
+            mg_pipeline_bind(pipelines[current_pipeline_id]);
         }
 
         // Set the current material uniforms.
@@ -718,8 +718,8 @@ void render()
             rdpq_debug_log_msg("-------> Material");
             current_material_id = draw_call->material_id;
             current_material = &materials[current_material_id];
-            mg_load_uniform(texturing_uniform, &current_material->buffer->texturing);
-            mg_load_uniform(modes_uniform, &current_material->buffer->modes);
+            mg_uniform_load(texturing_uniform, &current_material->buffer->texturing);
+            mg_uniform_load(modes_uniform, &current_material->buffer->modes);
 
             // Also set the geometry flags, which determine the type of triangle to be drawn.
             mg_set_geometry_flags(current_material->geometry_flags);
@@ -750,7 +750,7 @@ void render()
             // Because the matrices are expected to change every frame and for every object, we upload them "inline", which embeds their data within the command stream itself.
             // After the call returns, the matrix data has been consumed entirely and we won't need to worry about keeping it in memory.
             // If we were to use uniform buffers for matrices as well, we would have to manually synchronize updating them on the CPU.
-            // This function uses "mg_inline_uniform" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
+            // This function uses "mg_uniform_load_inline" internally with a predefined offset and size, and automatically converts the data to a RSP-native format.
             mgfx_set_matrices_inline(matrices_uniform, &(mgfx_matrices_parms_t) {
                 .model_view_projection = current_object->mvp_matrix.m[0],
                 .model_view = current_object->mv_matrix.m[0],
