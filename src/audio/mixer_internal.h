@@ -11,7 +11,9 @@
 /** @brief RSPQ overlay ID assigned to the mixer ucode */
 extern uint32_t __mixer_overlay_id;
 
-/** @brief Profile slots for mixer / xm64 / mid64 / vadpcm (see #__mixer_profile_init). */
+/** @brief Profile slots for mixer / xm64 / mid64 / vadpcm (see #__mixer_profile_init).
+ *  Base must match #PROFILE_SLOT_AUDIO in profile.h (kept numeric here so this
+ *  header stays includable from host tools that share wav64_internal.h). */
 enum {
 	PS_MIXER = 0,       ///< mixer_try_play
 	PS_XM_TICK,         ///< xm64 tick callback (sequencing + channel sync)

@@ -23,6 +23,10 @@ DOWNLOAD_PATH="${DOWNLOAD_PATH:-$BUILD_PATH}"
 exec > >(tee "$BUILD_PATH/build-toolchain.log") 2>&1
 echo "Build started at: $(date)"
 
+# Additional directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+
 # Defines the build system variables to allow cross compilation.
 N64_BUILD=${N64_BUILD:-""}
 N64_HOST=${N64_HOST:-""}
@@ -42,7 +46,7 @@ BINUTILS_CONFIGURE_ARGS=()
 GCC_CONFIGURE_ARGS=()
 
 # Dependency source libs (Versions)
-BINUTILS_V=2.47
+BINUTILS_V=2.45
 GCC_V=16.2.0
 NEWLIB_V=4.4.0.20231231
 GMP_V=6.3.0
@@ -66,16 +70,24 @@ command_exists () {
 
 # Download the file URL using wget or curl (depending on which is installed)
 download () {
+    local n_retries=5
+    local retry_delay=30
     local url="$1"
     local file="$DOWNLOAD_PATH/$(basename "$url")"
     local tmpfile="$file.part"
-    if   command_exists wget ; then wget --continue --output-document "$tmpfile" "$url"
-    elif command_exists curl ; then curl --location --output "$tmpfile" "$url"
+    if command_exists wget ; then
+        wget --tries=$n_retries --wait=$retry_delay --continue --output-document "$tmpfile" "$url"
+    elif command_exists curl ; then
+        curl --retry $n_retries --retry-all-errors --retry-delay $retry_delay --location --output "$tmpfile" "$url"
     else
         echo "Install wget or curl to download toolchain sources" 1>&2
         return 1
     fi
     mv "$tmpfile" "$file"
+}
+
+download_gnu () {
+    download "https://mirrors.kernel.org/gnu/$1"
 }
 
 # Compilation on macOS via homebrew
@@ -124,17 +136,17 @@ else
 fi
 
 # Dependency downloads and unpack
-test -f "$DOWNLOAD_PATH/binutils-$BINUTILS_V.tar.gz" || download "https://ftpmirror.gnu.org/gnu/binutils/binutils-$BINUTILS_V.tar.gz"
+test -f "$DOWNLOAD_PATH/binutils-$BINUTILS_V.tar.gz" || download_gnu "binutils/binutils-$BINUTILS_V.tar.gz"
 test -d "$BUILD_PATH/binutils-$BINUTILS_V"           || tar -xzf "$DOWNLOAD_PATH/binutils-$BINUTILS_V.tar.gz" -C "$BUILD_PATH"
 
-test -f "$DOWNLOAD_PATH/gcc-$GCC_V.tar.gz"           || download "https://ftpmirror.gnu.org/gnu/gcc/gcc-$GCC_V/gcc-$GCC_V.tar.gz"
+test -f "$DOWNLOAD_PATH/gcc-$GCC_V.tar.gz"           || download_gnu "gcc/gcc-$GCC_V/gcc-$GCC_V.tar.gz"
 test -d "$BUILD_PATH/gcc-$GCC_V"                     || tar -xzf "$DOWNLOAD_PATH/gcc-$GCC_V.tar.gz" -C "$BUILD_PATH"
 
 test -f "$DOWNLOAD_PATH/newlib-$NEWLIB_V.tar.gz"     || download "https://sourceware.org/pub/newlib/newlib-$NEWLIB_V.tar.gz"
 test -d "$BUILD_PATH/newlib-$NEWLIB_V"               || tar -xzf "$DOWNLOAD_PATH/newlib-$NEWLIB_V.tar.gz" -C "$BUILD_PATH"
 
 if [ "$GMP_V" != "" ]; then
-    test -f "$DOWNLOAD_PATH/gmp-$GMP_V.tar.bz2"      || download "https://ftpmirror.gnu.org/gnu/gmp/gmp-$GMP_V.tar.bz2"
+    test -f "$DOWNLOAD_PATH/gmp-$GMP_V.tar.bz2"      || download_gnu "gmp/gmp-$GMP_V.tar.bz2"
     test -d "$BUILD_PATH/gmp-$GMP_V"                 || tar -xf "$DOWNLOAD_PATH/gmp-$GMP_V.tar.bz2" -C "$BUILD_PATH" # note: no .gz download file currently available
     pushd "$BUILD_PATH/gcc-$GCC_V"
     ln -sf ../"gmp-$GMP_V" "gmp"
@@ -142,7 +154,7 @@ if [ "$GMP_V" != "" ]; then
 fi
 
 if [ "$MPC_V" != "" ]; then
-    test -f "$DOWNLOAD_PATH/mpc-$MPC_V.tar.gz"       || download "https://ftpmirror.gnu.org/gnu/mpc/mpc-$MPC_V.tar.gz"
+    test -f "$DOWNLOAD_PATH/mpc-$MPC_V.tar.gz"       || download_gnu "mpc/mpc-$MPC_V.tar.gz"
     test -d "$BUILD_PATH/mpc-$MPC_V"                 || tar -xzf "$DOWNLOAD_PATH/mpc-$MPC_V.tar.gz" -C "$BUILD_PATH"
     pushd "$BUILD_PATH/gcc-$GCC_V"
     ln -sf ../"mpc-$MPC_V" "mpc"
@@ -150,7 +162,7 @@ if [ "$MPC_V" != "" ]; then
 fi
 
 if [ "$MPFR_V" != "" ]; then
-    test -f "$DOWNLOAD_PATH/mpfr-$MPFR_V.tar.gz"     || download "https://ftpmirror.gnu.org/gnu/mpfr/mpfr-$MPFR_V.tar.gz"
+    test -f "$DOWNLOAD_PATH/mpfr-$MPFR_V.tar.gz"     || download_gnu "mpfr/mpfr-$MPFR_V.tar.gz"
     test -d "$BUILD_PATH/mpfr-$MPFR_V"               || tar -xzf "$DOWNLOAD_PATH/mpfr-$MPFR_V.tar.gz" -C "$BUILD_PATH"
     pushd "$BUILD_PATH/gcc-$GCC_V"
     ln -sf ../"mpfr-$MPFR_V" "mpfr"
@@ -158,7 +170,7 @@ if [ "$MPFR_V" != "" ]; then
 fi
 
 if [ "$MAKE_V" != "" ]; then
-    test -f "$DOWNLOAD_PATH/make-$MAKE_V.tar.gz"     || download "https://ftpmirror.gnu.org/gnu/make/make-$MAKE_V.tar.gz"
+    test -f "$DOWNLOAD_PATH/make-$MAKE_V.tar.gz"     || download_gnu "make/make-$MAKE_V.tar.gz"
     test -d "$BUILD_PATH/make-$MAKE_V"               || tar -xzf "$DOWNLOAD_PATH/make-$MAKE_V.tar.gz" -C "$BUILD_PATH"
 fi
 
@@ -212,6 +224,18 @@ else
         fi
     fi
 fi
+
+# Patch GCC to build a relevant multilib environment for the N64
+pushd "gcc-$GCC_V"
+cp gcc/config.gcc.orig gcc/config.gcc || true
+cp gcc/config.gcc gcc/config.gcc.orig
+rm -f gcc/config/mips/t-n64 gcc/config/mips/n64.h
+awk -v start=": <<'__GCC_ABI_PATCH_BLOCK__'" -v end="__GCC_ABI_PATCH_BLOCK__" '
+    $0 == start {capture=1; next}
+    $0 == end {exit}
+    capture {print}
+' "$SCRIPT_PATH" | patch -p1 -i -
+popd
 
 # Build zlib. This is only required on mingw, as all other systems do have
 # zlib installed by default. So we only implement build process for mingw.
@@ -267,6 +291,7 @@ pushd binutils_compile_target
     --prefix="$CROSS_PREFIX" \
     --target="$N64_TARGET" \
     --with-cpu=mips64vr4300 \
+    --enable-targets=mips64-sgi-irix6 \
     --disable-werror
 make -j "$JOBS"
 make install-strip || sudo make install-strip || su -c "make install-strip"
@@ -336,6 +361,7 @@ else
         --build="$N64_BUILD" \
         --host="$N64_HOST" \
         --target="$N64_TARGET" \
+        --enable-targets=mips64-sgi-irix6 \
         --disable-werror \
         --without-msgpack
     make -j "$JOBS"
@@ -429,3 +455,58 @@ echo "Libdragon toolchain correctly built and installed"
 echo "Installation directory: \"${N64_INST}\""
 echo "Build directory: \"${BUILD_PATH}\" (can be removed now)"
 echo "If you would like to install GDB in your toolchain, run build-gdb.sh"
+
+
+: <<'__GCC_ABI_PATCH_BLOCK__'
+diff --git a/gcc/config.gcc b/gcc/config.gcc
+index 743421768ea..d29e891f0f3 100644
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -2884,8 +2884,8 @@ mips64r5900-*-elf* | mips64r5900el-*-elf*)
+ 	tm_defines="${tm_defines} MIPS_ISA_DEFAULT=MIPS_ISA_MIPS3 MIPS_ABI_DEFAULT=ABI_N32"
+ 	;;
+ mips64-*-elf* | mips64el-*-elf*)
+-	tm_file="elfos.h newlib-stdint.h ${tm_file} mips/elf.h"
+-	tmake_file="mips/t-elf"
++	tm_file="elfos.h newlib-stdint.h ${tm_file} mips/n64.h mips/elf.h"
++	tmake_file="mips/t-n64"
+ 	tm_defines="${tm_defines} MIPS_ISA_DEFAULT=MIPS_ISA_MIPS3 MIPS_ABI_DEFAULT=ABI_O64"
+ 	;;
+ mips64vr-*-elf* | mips64vrel-*-elf*)
+diff --git a/gcc/config/mips/n64.h b/gcc/config/mips/n64.h
+new file mode 100644
+index 00000000000..92fab2d41cd
+--- /dev/null
++++ b/gcc/config/mips/n64.h
+@@ -0,0 +1,10 @@
++#undef DRIVER_SELF_SPECS
++#define DRIVER_SELF_SPECS \
++	/* Make -mabi=eabi imply 32-bit longs */			\
++	"%{mabi=eabi:%{!mlong*:-mlong32}}"                              \
++									\
++	/* Infer the default float setting from -march.  */		\
++	MIPS_ARCH_FLOAT_SPEC,						\
++									\
++	/* Configuration-independent MIPS rules.  */			\
++	BASE_DRIVER_SELF_SPECS
+diff --git a/gcc/config/mips/t-n64 b/gcc/config/mips/t-n64
+new file mode 100644
+index 00000000000..a3f7df4c808
+--- /dev/null
++++ b/gcc/config/mips/t-n64
+@@ -0,0 +1,14 @@
++MULTILIB_OPTIONS = \
++    mabi=32/mabi=o64/mabi=n32/mabi=eabi \
++    mgp32
++
++MULTILIB_DIRNAMES = \
++    o32 o64 n32 eabi \
++    gp32
++
++MULTILIB_REQUIRED = \
++    mabi=32 \
++    mabi=o64 \
++    mabi=n32 \
++    mabi=eabi \
++    mabi=eabi/mgp32
+__GCC_ABI_PATCH_BLOCK__

@@ -323,8 +323,6 @@ int main(int argc, char **argv) {
 				fatal("Invalid profile: %s", cfg.profile.c_str());
 		} else if (arg == "-Q" || arg == "--quick") {
 			cfg.quick = true;
-		} else if (arg == "--debug-weightp") {
-			cfg.debug_weightp = true;
 		} else if (arg == "--seek") {
 			if (++i >= argc) fatal("Missing argument for %s (expected seconds or file path)", arg.c_str());
 			const char *param = argv[i];
@@ -391,6 +389,17 @@ int main(int argc, char **argv) {
 
 	const CodecInfo *ci = codec_info_from_name(cfg.codec);
 	if (!ci) fatal("Internal error: codec missing");
+
+	// Validate -o early so missing/non-dir paths don't surface as opaque ffmpeg failures.
+	if (!cfg.output_dir.empty()) {
+		std::error_code ec;
+		if (std::filesystem::exists(cfg.output_dir, ec)) {
+			if (!std::filesystem::is_directory(cfg.output_dir, ec))
+				fatal("Output path is not a directory: %s", cfg.output_dir.c_str());
+		} else {
+			fatal("Output directory does not exist: %s", cfg.output_dir.c_str());
+		}
+	}
 
 	// Ensure tools exist and can run before proceeding any further.
 	check_tool_available(cfg.ffmpeg_path, "ffmpeg");

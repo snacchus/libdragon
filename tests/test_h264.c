@@ -34,17 +34,18 @@
 #define INTERPOLATE_CHROMA 0
 #define INTERPOLATE_LUMA   1
 
-#define INTRAPRED_LUMA_4X4   0
-#define INTRAPRED_LUMA_16X16 1
-#define INTRAPRED_CHROMA_8X8 2
-#define INTRAPRED_PROCESS_LUMA4 3
-#define INTRAPRED_PROCESS_LUMA16 4
+#define INTRAPRED_CHROMA_8X8 0
+#define INTRAPRED_PROCESS_LUMA4 1
+#define INTRAPRED_PROCESS_LUMA16 2
 
 #define OMX_LUMA_4x4       0
 #define OMX_CHROMADC_2x2   1
-#define OMX_LUMADC_4x4     2
 #define PROCESS_LUMA_16x16 3
 #define PROCESS_CHROMA_8x8x2 4
+// Same as PROCESS_CHROMA_8x8x2, but with the intra overlay loaded: the command
+// is assembled into both overlays and the CPU sends it to whichever one is
+// current, so both instantiations need to be checked.
+#define PROCESS_CHROMA_8x8x2_INTRA 5
 
 typedef struct {
     uint8_t *pSrc1, *pSrc2;  // source buffers 
@@ -67,6 +68,8 @@ typedef struct {
     int x1, y1, x2, y2;      // position in source/destination
     int w, h;                // macroblock size
     int dx, dy;              // fractional offset
+    int wp;                  // apply H.264 weightp after prediction
+    int wp_weight, wp_offset, wp_denom;
 } InterpolationTest;
 
 typedef struct {
@@ -102,6 +105,35 @@ static uint32_t my_rand() {
 	TICKS_DISTANCE(start, stop); \
 })
 
+// H.264 explicit weighted prediction (P-slice list0), matching ApplyWeightPart.
+static void apply_weight(uint8_t *dst, int pitch, int w, int h,
+    int weight, int offset, int denom)
+{
+    int round = denom ? (1 << (denom - 1)) : 0;
+    for (int y = 0; y < h; y++) {
+        uint8_t *row = dst + y * pitch;
+        for (int x = 0; x < w; x++) {
+            int weighted = ((weight * row[x] + round) >> denom) + offset;
+            row[x] = CLIP1(weighted);
+        }
+    }
+}
+
+// Configure the RSP with the weightp coefficients of the plane that the task
+// under test will write. Standalone chroma tasks always use the Cb entry.
+static void queue_test_weights(InterpolationTest *test) {
+    uint32_t w = test->wp ?
+        rsph264_weight_pack(test->wp_weight, test->wp_offset, test->wp_denom) :
+        RSPH264_WEIGHT_IDENTITY;
+
+    if (test->func == INTERPOLATE_LUMA)
+        rsph264_queue_set_weights_if_changed(w,
+            RSPH264_WEIGHT_IDENTITY, RSPH264_WEIGHT_IDENTITY);
+    else
+        rsph264_queue_set_weights_if_changed(RSPH264_WEIGHT_IDENTITY,
+            w, RSPH264_WEIGHT_IDENTITY);
+}
+
 bool interpolation_test(InterpolationTest* test, int verbose) {
     uint8_t *src1 = test->buf.pSrc1+test->y1*SRC_PITCH+test->x1;
     uint8_t *src2 = test->buf.pSrc2+test->y1*SRC_PITCH+test->x1;
@@ -113,6 +145,7 @@ bool interpolation_test(InterpolationTest* test, int verbose) {
     int frame_height = SRC_SIZE;
 
     uint32_t rsp_time = 0, ref_time = 0;
+    queue_test_weights(test);
     switch (test->func) {
     case INTERPOLATE_LUMA:
         rsph264_queue_debug_random_status();
@@ -141,6 +174,9 @@ bool interpolation_test(InterpolationTest* test, int verbose) {
             armVCM4P10_Interpolate_Luma(
                 src2, SRC_PITCH, dst2, DST_SIZE,
                 test->w, test->h, test->dx, test->dy);
+            if (test->wp)
+                apply_weight(dst2, DST_SIZE, test->w, test->h,
+                    test->wp_weight, test->wp_offset, test->wp_denom);
         });
         break;
 
@@ -171,6 +207,9 @@ bool interpolation_test(InterpolationTest* test, int verbose) {
             armVCM4P10_Interpolate_Chroma(
                 src2, SRC_PITCH, dst2, DST_SIZE,
                 test->w, test->h, test->dx, test->dy);
+            if (test->wp)
+                apply_weight(dst2, DST_SIZE, test->w, test->h,
+                    test->wp_weight, test->wp_offset, test->wp_denom);
         });
         break;
 
@@ -186,7 +225,9 @@ bool interpolation_test(InterpolationTest* test, int verbose) {
             if (cdst[j*DST_SIZE+i] != dst2[j*DST_SIZE+i]) {
                 if (verbose >= 1) {   
                     printf("FAILED\n");
-                    printf("FAILED: sz:%d,%d d:%d,%d\n", test->w, test->h, test->dx, test->dy);
+                    printf("FAILED: sz:%d,%d d:%d,%d wp:%d,%d,%d\n",
+                        test->w, test->h, test->dx, test->dy,
+                        test->wp_weight, test->wp_offset, test->wp_denom);
                     printf("FAILED: difference at (%d,%d)\n", i, j);
                     printf("FAILED: src:(%d,%d) dst:(%d,%d)\n", test->x1, test->y1, test->x2, test->y2);
                     printf("FAILED: RSP=%02x    REF=%02x\n", cdst[j*DST_SIZE+i], dst2[j*DST_SIZE+i]);
@@ -297,48 +338,6 @@ bool intrapred_test(IntraPredictionTest *test, int verbose) {
     uint32_t rsp_time = 0, ref_time = 0;
 
     switch (test->func) {
-    case INTRAPRED_LUMA_4X4:
-        rsph264_queue_debug_random_status();
-        rsph264_sync();
-
-        rsp_time = TIME_STATEMENT({
-            rsph264_queue_intrapred_luma_4x4(0,
-                src1-1, src1-SRC_PITCH, src1-SRC_PITCH-1,
-                dst1, SRC_PITCH, DST_SIZE,
-                test->mode[0], test->avail[0]);
-            rsph264_sync();
-        });
-
-        ref_time = TIME_STATEMENT({
-            int res = omxVCM4P10_PredictIntra_4x4(
-                src2-1, src2-SRC_PITCH, src2-SRC_PITCH-1,
-                dst2, SRC_PITCH, DST_SIZE,
-                test->mode[0], test->avail[0]);
-            assert(res == 0);
-        });
-        break;
-
-    case INTRAPRED_LUMA_16X16:
-        rsph264_queue_debug_random_status();
-        rsph264_sync();
-
-        rsp_time = TIME_STATEMENT({
-            rsph264_queue_intrapred_luma_16x16(0,
-                src1-1, src1-SRC_PITCH, src1-SRC_PITCH-1,
-                dst1, SRC_PITCH, DST_SIZE,
-                test->mode[0], test->avail[0]);
-            rsph264_sync();
-        });
-
-        ref_time = TIME_STATEMENT({
-            int res = omxVCM4P10_PredictIntra_16x16(
-                src2-1, src2-SRC_PITCH, src2-SRC_PITCH-1,
-                dst2, SRC_PITCH, DST_SIZE,
-                test->mode[0], test->avail[0]);
-            assert(res == 0);
-        });
-        break;
-
     case INTRAPRED_CHROMA_8X8:
         rsph264_queue_debug_random_status();
         rsph264_sync();
@@ -466,9 +465,7 @@ void exhaustive_intrapred_test(IntraPredictionTest *test, int repetitions, int v
     int numblocks = 0;
 
     switch (test->func) {
-    // The first 3 functions are single-block intraprediction.
-    case INTRAPRED_LUMA_4X4:   nummodes = 9; numblocks = 1; break;
-    case INTRAPRED_LUMA_16X16: nummodes = 4; numblocks = 1; break;
+    // Single-block intraprediction.
     case INTRAPRED_CHROMA_8X8: nummodes = 4; numblocks = 1; break;
     // This function covers the whole macroblock (with 16 4x4 blocks)
     case INTRAPRED_PROCESS_LUMA4: nummodes = 9; numblocks = 16; break;
@@ -542,23 +539,7 @@ void exhaustive_intrapred_test(IntraPredictionTest *test, int repetitions, int v
                         test->avail[b] |= OMX_VC_UPPER_RIGHT;
                 }
 
-                if (test->func == INTRAPRED_LUMA_4X4) {
-                    test->x1 &= ~3; test->x2 &= ~3;
-                    if (test->mode[b] == 2) { // OMX_VC_4X4_DC
-                        if (my_rand()%2 == 0)
-                            test->avail[b] &= ~OMX_VC_UPPER;
-                        if (my_rand()%2 == 0)
-                            test->avail[b] &= ~OMX_VC_LEFT;
-                    }                
-                } else if (test->func == INTRAPRED_LUMA_16X16) {
-                    test->x1 &= ~15; test->x2 &= ~15;
-                    if (test->mode[b] == 2) { // OMX_VC_16X16_DC
-                        if (my_rand()%2 == 0)
-                            test->avail[b] &= ~OMX_VC_UPPER;
-                        if (my_rand()%2 == 0)
-                            test->avail[b] &= ~OMX_VC_LEFT;
-                    }                
-                } else if (test->func == INTRAPRED_CHROMA_8X8) {
+                if (test->func == INTRAPRED_CHROMA_8X8) {
                     test->x1 &= ~7; test->x2 &= ~7;
                     if (test->mode[b] == 0) { // OMX_VC_CHROMA_DC
                         if (my_rand()%2 == 0)
@@ -653,6 +634,201 @@ void overfill_interpolation_test(InterpolationTest *test, int verbose) {
     }
 }
 
+void weightp_interpolation_test(InterpolationTest *test, int verbose) {
+    static const int luma_sizes[][2] = {
+        {4,4}, {8,8}, {16,16}, {8,4}, {4,8}, {16,8}, {8,16},
+    };
+    static const int chroma_sizes[][2] = {
+        {2,2}, {4,4}, {8,8}, {4,2}, {2,4}, {8,4}, {4,8},
+    };
+    static const int params[][3] = {
+        {   1,    0, 0 },   // identity, denom 0
+        {  64,    0, 6 },   // identity, denom 6
+        { 128,    0, 7 },   // identity, denom 7 (default weight of a stream)
+        {  64,   10, 6 },
+        {  80,  -16, 6 },
+        {   2,  -32, 1 },
+        {  -1,    0, 7 },
+        {   0,   50, 0 },
+        {-128,    0, 0 },
+        { 127,    0, 0 },
+        { 127,  127, 0 },   // clip high
+        {-128, -128, 0 },   // clip low
+        { 127,  127, 7 },
+    };
+    const int (*sizes)[2] = (test->func == INTERPOLATE_LUMA) ? luma_sizes : chroma_sizes;
+
+    test->wp = 1;
+    test->x1 = 40;
+    test->y1 = 40;
+    test->x2 = 32;
+    test->y2 = 32;
+
+    int max_dxy = (test->func == INTERPOLATE_LUMA) ? 4 : 8;
+
+    for (int s = 0; s < 7; s++) {
+        test->w = sizes[s][0];
+        test->h = sizes[s][1];
+
+        // All the weight combinations, on a plain copy and on an interpolation
+        for (unsigned p = 0; p < sizeof(params)/sizeof(params[0]); p++) {
+            test->wp_weight = params[p][0];
+            test->wp_offset = params[p][1];
+            test->wp_denom = params[p][2];
+
+            test->dx = 0;
+            test->dy = 0;
+            if (!interpolation_test(test, verbose))
+                abort();
+
+            test->dx = max_dxy/2;
+            test->dy = max_dxy/4;
+            if (!interpolation_test(test, verbose))
+                abort();
+        }
+
+        // All the interpolation paths, with a single weight combination:
+        // the weights are applied after interpolation, so the two are
+        // independent, but each path writes the output buffer differently.
+        test->wp_weight = 80;
+        test->wp_offset = -16;
+        test->wp_denom = 6;
+        for (test->dy = 0; test->dy < max_dxy; test->dy++) {
+            for (test->dx = 0; test->dx < max_dxy; test->dx++) {
+                if (!interpolation_test(test, verbose))
+                    abort();
+            }
+        }
+    }
+    test->wp = 0;
+}
+
+static bool weightp_rect_equal(uint8_t *rsp, uint8_t *ref, int pitch, int w, int h, int verbose) {
+    for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+            if (rsp[j*pitch + i] != ref[j*pitch + i]) {
+                if (verbose >= 1) {
+                    printf("FAILED: difference at (%d,%d) RSP=%02x REF=%02x\n",
+                        i, j, rsp[j*pitch + i], ref[j*pitch + i]);
+                }
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Weights of the three planes for one all-overfill test case. A denominator
+// is shared by the two chroma planes, as in a slice header.
+typedef struct {
+    int luma_w, luma_o, luma_d;
+    int cb_w, cb_o, cr_w, cr_o, chroma_d;
+    int dx, dy;              // fractional part of the luma motion vector
+} WeightpCase;
+
+static void weightp_all_overfill_case(InterpolationTest *test,
+    const WeightpCase *wc, int verbose)
+{
+    const int w = 16, h = 16;
+    const int x1 = 40, y1 = 40;
+    const int x2 = 32, y2 = 32;
+    const int luma_w = wc->luma_w, luma_o = wc->luma_o, luma_d = wc->luma_d;
+    const int cb_w = wc->cb_w, cb_o = wc->cb_o;
+    const int cr_w = wc->cr_w, cr_o = wc->cr_o, chroma_d = wc->chroma_d;
+
+    // The RSP finds the chroma planes right after the luma one, that is at
+    // frame_width*frame_height. This frame size is much smaller than the
+    // source buffer, and is chosen so that the chroma planes fall within the
+    // area where the two source buffers are identical: only pSrc2 has been
+    // pre-overfilled (the RSP does the overfilling by itself).
+    int frame_width = 192;
+    int frame_height = 72;
+    int16_t mvx = ((int16_t)(x1 - x2) << 2) | wc->dx;
+    int16_t mvy = ((int16_t)(y1 - y2) << 2) | wc->dy;
+
+    // The chroma planes see the same motion vector with one more fractional
+    // bit, because of subsampling.
+    int chroma_dx = mvx & 7, chroma_dy = mvy & 7;
+
+    uint8_t *src_luma_ref = test->buf.pSrc2 + y1*SRC_PITCH + x1;
+    uint8_t *src_cb_ref = test->buf.pSrc2 + frame_width*frame_height + (y1/2)*(SRC_PITCH/2) + (x1/2);
+    uint8_t *src_cr_ref = src_cb_ref + (frame_width/2)*(frame_height/2);
+
+    uint8_t *dst_luma_rsp = test->buf.pDst1 + y2*DST_SIZE + x2;
+    uint8_t *dst_luma_ref = test->buf.pDst2 + y2*DST_SIZE + x2;
+    uint8_t *dst_cb_rsp = test->buf.pDst1 + 200*DST_SIZE + x2;
+    uint8_t *dst_cb_ref = test->buf.pDst2 + 200*DST_SIZE + x2;
+    uint8_t *dst_cr_rsp = test->buf.pDst1 + 220*DST_SIZE + x2;
+    uint8_t *dst_cr_ref = test->buf.pDst2 + 220*DST_SIZE + x2;
+
+    // Fill the chroma destinations with a known pattern, so that pixels left
+    // untouched by the RSP are easy to spot.
+    memset(test->buf.pDst1 + 200*DST_SIZE, 0xAA, 24*DST_SIZE);
+    memset(test->buf.pDst2 + 200*DST_SIZE, 0xAA, 24*DST_SIZE);
+
+    rsph264_queue_set_weights_if_changed(
+        rsph264_weight_pack(luma_w, luma_o, luma_d),
+        rsph264_weight_pack(cb_w, cb_o, chroma_d),
+        rsph264_weight_pack(cr_w, cr_o, chroma_d));
+
+    rsph264_queue_interpolate_all_overfill(RSPH264_CACHE_SKIP_ALL,
+        test->buf.pSrc1, SRC_PITCH,
+        dst_luma_rsp, dst_cb_rsp, dst_cr_rsp, DST_SIZE,
+        (frame_width << 16) | frame_height,
+        (w << 16) | h,
+        ((uint32_t)mvx << 16) | ((uint32_t)(mvy & 0xFFFF)),
+        ((uint32_t)x2 << 16) | ((uint32_t)y2));
+    rsph264_sync();
+
+    armVCM4P10_Interpolate_Luma(src_luma_ref, SRC_PITCH, dst_luma_ref, DST_SIZE,
+        w, h, wc->dx, wc->dy);
+    apply_weight(dst_luma_ref, DST_SIZE, w, h, luma_w, luma_o, luma_d);
+    armVCM4P10_Interpolate_Chroma(src_cb_ref, SRC_PITCH/2, dst_cb_ref, DST_SIZE/2,
+        w/2, h/2, chroma_dx, chroma_dy);
+    apply_weight(dst_cb_ref, DST_SIZE/2, w/2, h/2, cb_w, cb_o, chroma_d);
+    armVCM4P10_Interpolate_Chroma(src_cr_ref, SRC_PITCH/2, dst_cr_ref, DST_SIZE/2,
+        w/2, h/2, chroma_dx, chroma_dy);
+    apply_weight(dst_cr_ref, DST_SIZE/2, w/2, h/2, cr_w, cr_o, chroma_d);
+
+    const char *plane = NULL;
+    if (!weightp_rect_equal(dst_luma_rsp, dst_luma_ref, DST_SIZE, w, h, verbose))
+        plane = "luma";
+    else if (!weightp_rect_equal(dst_cb_rsp, dst_cb_ref, DST_SIZE/2, w/2, h/2, verbose))
+        plane = "cb";
+    else if (!weightp_rect_equal(dst_cr_rsp, dst_cr_ref, DST_SIZE/2, w/2, h/2, verbose))
+        plane = "cr";
+    if (plane) {
+        printf("FAILED: weightp all-overfill %s\n", plane);
+        printf("FAILED: d:%d,%d luma:%d,%d,%d cb:%d,%d cr:%d,%d,%d\n",
+            wc->dx, wc->dy, luma_w, luma_o, luma_d,
+            cb_w, cb_o, cr_w, cr_o, chroma_d);
+        abort();
+    }
+}
+
+void weightp_all_overfill_test(InterpolationTest *test, int verbose) {
+    static const WeightpCase cases[] = {
+        // No weighting at all: verifies the reference of the test itself
+        {  1,   0, 0,     1, 0,   1, 0,  0,   0, 0 },
+        // Only one plane at a time, to check that the RSP does not mix up
+        // the coefficients of the three planes.
+        { 80, -16, 6,     1, 0,   1, 0,  0,   0, 0 },
+        {  1,   0, 0,    32, 8,   1, 0,  5,   0, 0 },
+        {  1,   0, 0,     1, 0, -40, 12, 5,   0, 0 },
+        // All planes, integer and fractional motion vectors
+        { 80, -16, 6,    32, 8, -40, 12, 5,   0, 0 },
+        { 80, -16, 6,    32, 8, -40, 12, 5,   2, 1 },
+        { 80, -16, 6,    32, 8, -40, 12, 5,   3, 3 },
+        { 127, 127, 0,  127, 127, -128, -128, 0,  1, 2 },
+    };
+
+    for (int i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++)
+        weightp_all_overfill_case(test, &cases[i], verbose);
+
+    rsph264_queue_set_weights_if_changed(RSPH264_WEIGHT_IDENTITY,
+        RSPH264_WEIGHT_IDENTITY, RSPH264_WEIGHT_IDENTITY);
+}
+
 bool dequant_test(DequantTest *test, int verbose) {
     #define MAX_DEQUANT_CHECK_SIZE 64
     int check_size = MAX_DEQUANT_CHECK_SIZE;
@@ -710,7 +886,10 @@ bool dequant_test(DequantTest *test, int verbose) {
         break;
 
     case PROCESS_CHROMA_8x8x2:
+    case PROCESS_CHROMA_8x8x2_INTRA:
         rsph264_queue_debug_random_status();
+        rsph264_queue_debug_load_overlay(
+            test->func == PROCESS_CHROMA_8x8x2_INTRA ? "intra" : "inter");
         rsph264_sync();
 
         rsp_time = TIME_STATEMENT({
@@ -798,23 +977,6 @@ bool dequant_dc_test(DequantTest *test, int verbose) {
 
         break;
 
-    case OMX_LUMADC_4x4:
-        rsp_time = TIME_STATEMENT({
-            rsph264_queue_set_packed_delta_buffer(0,
-                test->src);
-            rsph264_queue_transform_dequant_lumadc(0,
-                (int16_t*)dc1, test->qp);
-            rsph264_sync();
-        });
-
-        ref_time = TIME_STATEMENT({
-            OMXResult err = omxVCM4P10_TransformDequantLumaDCFromPair(
-                &csrc2,
-                (int16_t*)dc2, test->qp);
-            assert(err == OMX_Sts_NoErr);
-        });
-        break;
-
     default:
         assert(0);
     }
@@ -852,7 +1014,8 @@ bool exhaustive_dequant_test(BufferTest *buf, int func, int numtests, int verbos
         my_srand(i+1024);
         test.x2 = (my_rand() % (DST_SIZE-MAX_DEQUANT_CHECK_SIZE)) + MAX_DEQUANT_CHECK_SIZE/2;
         test.y2 = (my_rand() % (DST_SIZE-MAX_DEQUANT_CHECK_SIZE)) + MAX_DEQUANT_CHECK_SIZE/2;
-        if (func == PROCESS_LUMA_16x16 || func == PROCESS_CHROMA_8x8x2)
+        if (func == PROCESS_LUMA_16x16 || func == PROCESS_CHROMA_8x8x2 ||
+            func == PROCESS_CHROMA_8x8x2_INTRA)
             test.x2 &= ~7;
         else
             test.x2 &= ~3;
@@ -889,10 +1052,6 @@ bool exhaustive_dequant_test(BufferTest *buf, int func, int numtests, int verbos
             cidx += gen_coeff_delta(coeffs+cidx, cmask, 4);
             break;
 
-        case OMX_LUMADC_4x4:
-            cidx += gen_coeff_delta(coeffs+cidx, cmask, 16);
-            break;
-
         case OMX_LUMA_4x4:
             cidx += gen_coeff_delta(coeffs+cidx, cmask, 16);
             break;
@@ -903,6 +1062,7 @@ bool exhaustive_dequant_test(BufferTest *buf, int func, int numtests, int verbos
             break;
 
         case PROCESS_CHROMA_8x8x2:
+        case PROCESS_CHROMA_8x8x2_INTRA:
             if (test.ac[25])
                 cidx += gen_coeff_delta(coeffs+cidx, cmask, 4);                
             if (test.ac[26])
@@ -916,7 +1076,7 @@ bool exhaustive_dequant_test(BufferTest *buf, int func, int numtests, int verbos
         data_cache_hit_writeback(coeffs, 1024);
         test.src = &coeffs[src_offset];
 
-        if (func == OMX_CHROMADC_2x2 || func == OMX_LUMADC_4x4) {
+        if (func == OMX_CHROMADC_2x2) {
             if (!dequant_dc_test(&test, verbose)) {
                 printf("FAILED TEST: #%d\n", i);
                 abort();
@@ -931,353 +1091,107 @@ bool exhaustive_dequant_test(BufferTest *buf, int func, int numtests, int verbos
     return true;
 }
 
-// Regression test for the TransformDequantLumaDC s16-overflow bug.
+// TransformDequantLumaDC, exercised through Task_ProcessLumaIntra16x16Residual
+// with large DC coefficients.
 //
-// exhaustive_dequant_test masks OMX_LUMADC_4x4 coefficients to ±256, so
-// the post-IHT operand T stays well inside ±s16/Scale and never crosses
-// the boundary where the old vmudn-based code truncated T*Scale to its
-// low 16 bits and flipped the sign. This test pokes that boundary
-// directly: a 1-coefficient packed delta places value T at position 0,
-// the inverse Hadamard fans it to all 16 lanes, and the RSP output is
-// compared against the OMX C reference for each (qp%6, qp/6).
+// exhaustive_intrapred_test masks residual coefficients to ±256, so it never
+// reaches the values where the dequantization overflows an s16 intermediate.
+// This test drives them directly: a 1-coefficient packed delta places value T
+// at position 0 of the LumaDC block and no AC coefficient anywhere, so the
+// inverse Hadamard fans T to all 16 blocks and the DC term is the only thing
+// the residual contributes.
+//
+// The neighbours are flat mid-gray, so DC prediction is exactly 128 and the
+// residual is the only thing that moves the output: a DC that comes out with
+// the wrong sign moves every pixel of the macroblock to the opposite side of
+// 128, which clamping cannot hide.
 static const uint8_t LumaDC_VMatrix[6] = { 10, 11, 13, 14, 16, 18 };
 
-static bool lumadc_overflow_one(int16_t T, int qp, int verbose) {
-    static uint8_t  delta_buf[16] __attribute__((aligned(8)));
-    static int16_t  dc_rsp[16]    __attribute__((aligned(8)));
-    static int16_t  dc_ref[16]    __attribute__((aligned(8)));
+static bool lumadc_overflow_one(BufferTest *buf, int16_t T, int qp, int verbose) {
+    static uint8_t delta_buf[16] __attribute__((aligned(8)));
 
     memset(delta_buf, 0, sizeof(delta_buf));
     delta_buf[0] = 0x10 | 0x20;            // 16-bit | last | position 0
     delta_buf[1] = (uint8_t)(T & 0xFF);
     delta_buf[2] = (uint8_t)((T >> 8) & 0xFF);
-
-    for (int i = 0; i < 16; i++)
-        dc_rsp[i] = dc_ref[i] = (int16_t)0xDEAD;
-
     data_cache_hit_writeback_invalidate(delta_buf, sizeof(delta_buf));
 
+    // Both offsets must keep the 16-byte alignment that the command requires.
+    enum { X = 32, Y = 32 };
+    uint8_t *src1 = buf->pSrc1 + Y*SRC_PITCH + X;
+    uint8_t *src2 = buf->pSrc2 + Y*SRC_PITCH + X;
+    uint8_t *dst1 = buf->pDst1 + Y*DST_SIZE  + X;
+    uint8_t *dst2 = buf->pDst2 + Y*DST_SIZE  + X;
+
+    for (int y = -1; y < 16; y++)
+        for (int x = -1; x < 16; x++)
+            src1[y*SRC_PITCH+x] = src2[y*SRC_PITCH+x] = 128;
+
+    uint8_t ac[27] = {0};
+    ac[24] = 1;                            // LumaDC present, no AC blocks
+
+    const uint32_t mode = 2;               // OMX_VC_16X16_DC
+    const uint32_t avail = OMX_VC_UPPER | OMX_VC_LEFT | OMX_VC_UPPER_LEFT;
+
     rsph264_queue_set_packed_delta_buffer(0, delta_buf);
-    rsph264_queue_transform_dequant_lumadc(0, dc_rsp, qp);
+    rsph264_queue_process_luma_intra16_residual(0,
+        src1, dst1, SRC_PITCH, DST_SIZE,
+        mode, avail, qp, h264bsdTotalCoeffMask(ac));
     rsph264_sync();
 
     const uint8_t *p = delta_buf;
-    OMXResult err = omxVCM4P10_TransformDequantLumaDCFromPair(&p, dc_ref, qp);
+    OMXResult err = HIGHFUNC_ProcessLumaIntra16x16Residual(
+        src2, dst2, SRC_PITCH, DST_SIZE, &p, ac, mode, avail, qp);
     assert(err == OMX_Sts_NoErr);
 
-    for (int i = 0; i < 16; i++) {
-        if (dc_rsp[i] != dc_ref[i]) {
-            if (verbose >= 1) {
-                printf("FAILED qp=%d T=%d lane=%d: rsp=%d ref=%d\n",
-                    qp, T, i, (int)dc_rsp[i], (int)dc_ref[i]);
+    for (int y = 0; y < 16; y++) {
+        for (int x = 0; x < 16; x++) {
+            if (dst1[y*DST_SIZE+x] != dst2[y*DST_SIZE+x]) {
+                if (verbose >= 1) {
+                    printf("FAILED qp=%d T=%d at (%d,%d): rsp=%d ref=%d\n",
+                        qp, T, x, y,
+                        dst1[y*DST_SIZE+x], dst2[y*DST_SIZE+x]);
+                }
+                return false;
             }
-            return false;
         }
     }
     return true;
 }
 
-bool lumadc_overflow_test(int verbose) {
-    // Right-shift paths (qp/6 ∈ {0,1}): only paths where the old
-    // vmudn-based code's s16 truncation flipped T*Scale's sign. One
-    // value past the boundary per qp triggers the bug — that's the
-    // exact failure the symptom report describes (qp=5, Scale=18 →
-    // T=-1821 saturates I_16x16 MBs to luma 0xFF).
-    for (int qp = 0; qp < 12; qp++) {
+bool lumadc_overflow_test(BufferTest *buf, int verbose) {
+    // qp < 6 dequantizes as (T*Scale + 2) >> 2, so a T just past 32767/Scale
+    // overflows the s16 intermediate while leaving the DC at ±8192, well
+    // within the ±16384 that the residual IDCT accepts (it pre-shifts the
+    // coefficients by 1 to use vmulf). Truncating T*Scale to its low 16 bits
+    // flips the sign of the DC, which is the failure the symptom report
+    // describes: qp=5, Scale=18, T=-1821 saturated I_16x16 macroblocks to
+    // luma 0xFF. Both signs, as the truncation is not symmetric.
+    for (int qp = 0; qp < 6; qp++) {
         int Scale = LumaDC_VMatrix[qp % 6];
-        int16_t T = -(32767 / Scale) - 1;
-        if (!lumadc_overflow_one(T, qp, verbose)) {
+        int16_t T = 32767 / Scale + 1;
+        if (!lumadc_overflow_one(buf, -T, qp, verbose) ||
+            !lumadc_overflow_one(buf,  T, qp, verbose)) {
             printf("FAILED LumaDC overflow case: qp=%d T=%d\n", qp, T);
             return false;
         }
     }
 
-    // Shift-left paths (qp/6 ≥ 2): unaffected by the bug, but the
-    // common.inc rewrite churned surrounding code — one sanity case
-    // per bucket guards against future regressions. T=128 keeps
-    // T*Scale << shift inside s16 for every Scale and shift up to 3.
-    if (!lumadc_overflow_one(128, 12, verbose)) return false; // shift 0
-    if (!lumadc_overflow_one(128, 30, verbose)) return false; // shift 3
-
-    return true;
-}
-
-uint8_t* coeff_buf_decode(uint8_t *src, int16_t *dst) {
-    uint8_t flg;
-    do {
-        flg = *src;
-        if (flg & 0x10) {
-            dst[flg & 0xF] = ((int16_t)src[2]<<8) | (int16_t)src[1];
-            src += 3;
-        } else {
-            dst[flg & 0xF] = (int16_t)(int8_t)src[1];
-            src += 2;
-        }
-    } while ((flg & 0x20) == 0);
-    return src;
-}
-
-bool exhaustive_cavlc_test(int numtests, int verbose) {
-    uint8_t in_buf[256];
-    uint8_t out_buf1[sizeof(in_buf)];
-    uint8_t out_buf2[sizeof(in_buf)];
-
-    int16_t coeff1[16];
-    int16_t coeff2[16];
-
-    for (int nt=0;nt<numtests;nt++) {
-        my_srand(2048+nt);
-
-        for (int i=0;i<sizeof(in_buf);i++) {
-            in_buf[i] = my_rand();
-            out_buf1[i] = 0xFF;
-            out_buf2[i] = 0xFF;
-        }
-        int bitOff1 = my_rand()%8;
-        int bitOff2 = bitOff1;
-
-        int maxNumCoeff;
-        switch (my_rand()%3) {
-        case 0: maxNumCoeff = 15; break;
-        case 1: maxNumCoeff = 16; break;
-        case 2: maxNumCoeff = 4; break;
-        default: assert(0);
-        }
-
-        int nc = my_rand() % 16;
-
-        const uint8_t *in1 = in_buf;
-        const uint8_t *in2 = in_buf;
-        uint8_t *out1 = out_buf1;
-        uint8_t *out2 = out_buf2;
-        uint8_t numCoeff1, numCoeff2;
-        uint8_t totalZeroes1, totalZeroes2;
-        int ok1, ok2;
-
-        uint32_t ref_time = TIME_STATEMENT({
-            extern uint8_t DEBUG_armVCM4P10_DecodeCoeffsToPair_LastTotalZeros;
-            OMXResult err;
-            if (maxNumCoeff == 4) {
-                err = omxVCM4P10_DecodeChromaDcCoeffsToPairCAVLC(
-                    &in1, &bitOff1, &numCoeff1, &out1
-                );
-            } else {            
-                err = omxVCM4P10_DecodeCoeffsToPairCAVLC(
-                    &in1, &bitOff1,
-                    &numCoeff1, // output
-                    &out1, nc, maxNumCoeff);
-            }
-            totalZeroes1 = DEBUG_armVCM4P10_DecodeCoeffsToPair_LastTotalZeros;
-            ok1 = (err == OMX_Sts_NoErr);
-        });
-
-        rsph264_queue_debug_random_status();
-        rsph264_queue_set_cavlc_buffer(0, in2, bitOff2);
-        rsph264_queue_reset_packed_delta_buffer();
-        rsph264_sync();
-        uint32_t rsp_time = TIME_STATEMENT({
-            int outlen;
-            if (maxNumCoeff == 4) 
-                rsph264_queue_decode_chromadc_coeffs_pair_cavlc(0);
-            else
-                rsph264_queue_decode_coeffs_pair_cavlc(0, nc, maxNumCoeff);
-            ok2 = rsph264_DEBUG_cavlc(out2, &outlen, &numCoeff2, &totalZeroes2);
-            out2 += outlen;
-        });
-
-        if (!ok1) {
-            if (ok2) {
-                printf("REF: error, RSP: ok\n");
-                printf("FAILED TEST: #%d (maxCoeff: %d)\n", nt, maxNumCoeff);
-                abort();
-                return false;
-            }
-            continue;
-        }
-        if (!ok2) {
-            if (ok1) {
-                printf("REF: OK, RSP: error\n");
-                printf("FAILED TEST: #%d\n", nt);
-                abort();
-                return false;                
-            }
-        }
-
-        memset(coeff1, 0, sizeof(coeff1));
-        memset(coeff2, 0, sizeof(coeff2));
-        coeff_buf_decode(out_buf1, coeff1);
-        coeff_buf_decode(out_buf2, coeff2);
-
-        if (memcmp(coeff1, coeff2, sizeof(coeff1)) != 0) {
-            printf("\n");
-            printf("nt:%d Time: REF:%ld RSP:%ld\n", nt, ref_time, rsp_time);
-            printf("nc: %d, max:%d\n", nc, maxNumCoeff);
-            printf("TotalCoeffs: ref:%d, rsp: %d\n", numCoeff1, numCoeff2);
-            printf("TotalZeroes: REF:%d RSP:%d\n", totalZeroes1, totalZeroes2);
-            printf("CLen: ref:%d, rsp: %d\n", out1-out_buf1, out2-out_buf2);
-
-            printf("ref:");
-            for (int i=0;i<out1-out_buf1;i++)
-                printf(" %02x", out_buf1[i]);
-            printf("\n");
-            printf("rsp:");
-            for (int i=0;i<out2-out_buf2;i++)
-                printf(" %02x", out_buf2[i]);
-            printf("\n");
-
-            printf("FAILED TEST: #%d\n", nt);
-            abort();
+    // The higher qp buckets scale the DC up instead of down, so a T that
+    // overflows the s16 intermediate also produces a DC past what the IDCT
+    // accepts, and the two failures cannot be told apart through the pixels.
+    // Sweep them with the largest T that keeps the DC in range instead, which
+    // still covers the dequantization factors of every qp.
+    for (int qp = 6; qp < 52; qp++) {
+        int Scale = LumaDC_VMatrix[qp % 6];
+        int16_t T = 60000 / (Scale << (qp / 6));
+        if (!lumadc_overflow_one(buf, -T, qp, verbose) ||
+            !lumadc_overflow_one(buf,  T, qp, verbose)) {
+            printf("FAILED LumaDC dequant case: qp=%d T=%d\n", qp, T);
             return false;
         }
-
-    }
-    return true;
-}
-
-bool exhaustive_decoderesidual_test(int numtests, int verbose) {
-    static uint8_t in_buf[768];
-    static uint8_t out_buf1[768];
-    static uint8_t out_buf2[768];
-    uint8_t tcup[24];
-    uint8_t tcleft[24];
-    uint64_t total_rsp_time = 0, total_ref_time = 0;
-
-    for (int nt=0;nt<numtests;nt++) {
-        my_srand(2000+nt);
-
-        for (int i=0;i<sizeof(in_buf);i++) {
-            in_buf[i] = my_rand();
-            out_buf1[i] = 0;
-            out_buf2[i] = 0;
-        }
-        int bytePos = my_rand()%8;
-        int bitPos = my_rand()%8;
-
-        uint8_t *left = 0, *up = 0;
-        if (my_rand()%2) {
-            for (int i=0;i<24;i++)
-                tcup[i] = my_rand()%16;
-            up = tcup;
-        }
-        if (my_rand()%2) {
-            for (int i=0;i<24;i++)
-                tcleft[i] = my_rand()%16;
-            left = tcleft;
-        }
-
-        uint8_t is16x16 = (my_rand()%4)==0 ? 1 : 0;
-        uint8_t codedBlockPattern = my_rand() & 0x3F;
-
-        const uint8_t *src1 = in_buf+bytePos;
-        const uint8_t *src2 = in_buf+bytePos;
-        int src1bit = bitPos;
-        int src2bit = bitPos;
-        uint8_t *dst1 = out_buf1;
-        uint8_t totalCoeff1[32];
-        uint8_t totalCoeff2[32];
-        for (int i=0;i<32;i++) {
-            totalCoeff1[i] = totalCoeff2[i] = 0xAB;
-        }
-
-        OMXResult err1;
-        uint32_t ref_time = TIME_STATEMENT({            
-            err1 = HIGHFUNC_DecodeResidual(
-                &src1, &src1bit, &dst1, totalCoeff1,
-                left, up, codedBlockPattern, is16x16
-            );
-        });
-
-        if (err1 != OMX_Sts_NoErr) {
-            continue;
-        }
-
-        rsph264_queue_debug_random_status();
-        rsph264_sync();
-        uint32_t rsp_time = TIME_STATEMENT({
-            rsph264_queue_set_cavlc_buffer(0, src2, bitPos);
-            rsph264_queue_reset_packed_delta_buffer();
-            rsph264_queue_decode_residual(0, out_buf2, totalCoeff2,
-                left, up, codedBlockPattern, is16x16);
-            rsph264_sync();
-            rsph264_cur_cavlc_buffer(&src2, &src2bit);
-        });
-
-        if (memcmp(totalCoeff1, totalCoeff2, 27) != 0) {
-            if (verbose >= 1) {            
-                printf("FAILED: %d: coded:%x 16x16:%d lu:%d%d\n", nt, codedBlockPattern, is16x16, left!=0, up!=0);
-                printf("tc1: %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x\n",
-                    totalCoeff1[0],totalCoeff1[1],totalCoeff1[2],totalCoeff1[3],
-                    totalCoeff1[4],totalCoeff1[5],totalCoeff1[6],totalCoeff1[7],
-                    totalCoeff1[8],totalCoeff1[9],totalCoeff1[10],totalCoeff1[11],
-                    totalCoeff1[12],totalCoeff1[13],totalCoeff1[14],totalCoeff1[15],
-                    totalCoeff1[16],totalCoeff1[17],totalCoeff1[18],totalCoeff1[19],
-                    totalCoeff1[20],totalCoeff1[21],totalCoeff1[22],totalCoeff1[23],
-                    totalCoeff1[24],totalCoeff1[25],totalCoeff1[26]);
-                printf("tc2: %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x%x %x%x%x\n",
-                    totalCoeff2[0],totalCoeff2[1],totalCoeff2[2],totalCoeff2[3],
-                    totalCoeff2[4],totalCoeff2[5],totalCoeff2[6],totalCoeff2[7],
-                    totalCoeff2[8],totalCoeff2[9],totalCoeff2[10],totalCoeff2[11],
-                    totalCoeff2[12],totalCoeff2[13],totalCoeff2[14],totalCoeff2[15],
-                    totalCoeff2[16],totalCoeff2[17],totalCoeff2[18],totalCoeff2[19],
-                    totalCoeff2[20],totalCoeff2[21],totalCoeff2[22],totalCoeff2[23],
-                    totalCoeff2[24],totalCoeff2[25],totalCoeff2[26]);
-                return false;
-            }
-        }
-
-        // Compare all coefficients
-        int16_t coeff1[16];
-        int16_t coeff2[16];
-        uint8_t *cbuf1 = out_buf1, *cbuf2 = out_buf2;
-
-        for (int i=0;i<27;i++) {
-            if (totalCoeff1[i] != 0) {
-                memset(coeff1, 0, 16*2);
-                memset(coeff2, 0, 16*2);
-                uint8_t *new1 = coeff_buf_decode(cbuf1, coeff1);
-                uint8_t *new2 = coeff_buf_decode(cbuf2, coeff2);
-
-                if (memcmp(coeff1, coeff2, sizeof(coeff1)) != 0) {
-                    if (verbose >= 1) {                    
-                        printf("FAILED: %d: tc match, but coeffs differ\n", nt);
-                        printf("ref:");
-                        for (int i=0;i<new1-cbuf1;i++)
-                            printf(" %02x", cbuf1[i]);
-                        printf("\n");
-                        printf("rsp:");
-                        for (int i=0;i<new2-cbuf2;i++)
-                            printf(" %02x", cbuf2[i]);
-                        printf("\n");
-                    }
-                    return false;
-                }
-
-                cbuf1 = new1;
-                cbuf2 = new2;
-            }
-        }
-
-        if (src1 != src2 || src1bit != src2bit) {
-            if (verbose >= 1) {            
-                printf("FAILED: %d: different bitstream position:\n", nt);
-                printf("REF: %08lx[%d]\n", (uint32_t)src1, src1bit);
-                printf("RSP: %08lx[%d]\n", (uint32_t)src2, src2bit);
-                while(1);
-            }
-            return false;
-        }
-
-        total_ref_time += (uint64_t)ref_time;
-        total_rsp_time += (uint64_t)rsp_time;
-
-        if (verbose >= 3) {
-            debugf("%d: coded:%x is16x16:%d lu:%d%d (%ld/%ld)\n", nt, codedBlockPattern, is16x16, left!=0, up!=0, ref_time, rsp_time);            
-        }
     }
 
-    if (verbose >= 2) {
-        debugf("\nRSP: %lld, REF: %lld\n", total_rsp_time >> 16, total_ref_time >> 16);
-    }
     return true;
 }
 
@@ -1348,31 +1262,15 @@ int main(void)
     buftest.pDst2 = pDst2;
 
     printf("OpenMAX VCM4P10:\n");
-#if 0
-    printf("OMX_DecodeCoeffsToPairCAVLC... "); fflush(stdout);
-    exhaustive_cavlc_test(16*1024, verbose);
-    printf("OK\n");
-#endif
     printf("OMX_DequantTransformResidual... "); fflush(stdout);
     exhaustive_dequant_test(&buftest, OMX_LUMA_4x4, 4*1024, verbose);
-    printf("OK\n");
-
-    printf("OMX_TransformDequantLumaDC... "); fflush(stdout);
-    exhaustive_dequant_test(&buftest, OMX_LUMADC_4x4, 4*1024, verbose);
-    printf("OK\n");
-
-    printf("OMX_TransformDequantLumaDC overflow boundary... "); fflush(stdout);
-    if (!lumadc_overflow_test(verbose)) {
-        printf("FAILED\n");
-        abort();
-    }
     printf("OK\n");
 
     printf("OMX_TransformDequantChromaDC... "); fflush(stdout);
     exhaustive_dequant_test(&buftest, OMX_CHROMADC_2x2, 4*1024, verbose);
     printf("OK\n");
 
-    InterpolationTest inttest;
+    InterpolationTest inttest = {0};
     inttest.buf = buftest;
 
     printf("OMX_InterpolateLuma... "); fflush(stdout);
@@ -1390,28 +1288,27 @@ int main(void)
     IntraPredictionTest intratest;
     intratest.buf = buftest;
 
-    printf("OMX_IntraPredictLuma4x4... "); fflush(stdout);
-    intratest.func = INTRAPRED_LUMA_4X4;
-    exhaustive_intrapred_test(&intratest, 1*1024, verbose);
-    printf("OK\n");
-
-    printf("OMX_IntraPredictLuma16x16... "); fflush(stdout);
-    intratest.func = INTRAPRED_LUMA_16X16;
-    exhaustive_intrapred_test(&intratest, 2*1024, verbose);
-    printf("OK\n");
-
     printf("OMX_IntraPredictChroma8x8... "); fflush(stdout);
     intratest.func = INTRAPRED_CHROMA_8X8;
     exhaustive_intrapred_test(&intratest, 2*1024, verbose);
     printf("OK\n");
 
-    printf("\nHigh-level:\n");
-
-#if 0
-    printf("DecodeResidual..."); fflush(stdout);
-    exhaustive_decoderesidual_test(16*1024, verbose);
+    printf("\nWeightP:\n");
+    printf("InterpolateLuma+WeightP... "); fflush(stdout);
+    inttest.func = INTERPOLATE_LUMA;
+    weightp_interpolation_test(&inttest, verbose);
     printf("OK\n");
-#endif
+
+    printf("InterpolateChroma+WeightP... "); fflush(stdout);
+    inttest.func = INTERPOLATE_CHROMA;
+    weightp_interpolation_test(&inttest, verbose);
+    printf("OK\n");
+
+    printf("InterpolateAll+WeightP... "); fflush(stdout);
+    weightp_all_overfill_test(&inttest, verbose);
+    printf("OK\n");
+
+    printf("\nHigh-level:\n");
 
     printf("ProcessLumaInterResidual... "); fflush(stdout);
     exhaustive_dequant_test(&buftest, PROCESS_LUMA_16x16, 2048, verbose);
@@ -1419,6 +1316,10 @@ int main(void)
 
     printf("ProcessChromaResidual... "); fflush(stdout);
     exhaustive_dequant_test(&buftest, PROCESS_CHROMA_8x8x2, 2048, verbose);
+    printf("OK\n");
+
+    printf("ProcessChromaResidual (intra ovl). "); fflush(stdout);
+    exhaustive_dequant_test(&buftest, PROCESS_CHROMA_8x8x2_INTRA, 2048, verbose);
     printf("OK\n");
 
     printf("ProcessLumaIntra4x4Residual... "); fflush(stdout);
@@ -1429,6 +1330,13 @@ int main(void)
     printf("ProcessLumaIntra16x16Residual.. "); fflush(stdout);
     intratest.func = INTRAPRED_PROCESS_LUMA16;
     exhaustive_intrapred_test(&intratest, 512, verbose);
+    printf("OK\n");
+
+    printf("TransformDequantLumaDC........ "); fflush(stdout);
+    if (!lumadc_overflow_test(&buftest, verbose)) {
+        printf("FAILED\n");
+        abort();
+    }
     printf("OK\n");
 
     printf("\nALL TESTS PASSED\n");

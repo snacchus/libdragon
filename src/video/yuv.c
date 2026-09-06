@@ -388,6 +388,12 @@ yuv_blitter_t yuv_blitter_new_fmv(int video_width, int video_height,
     static const yuv_fmv_parms_t default_parms = {0};
     if (!parms) parms = &default_parms;
 
+    // A fully-zero background color is the default value of the structure, so
+    // interpret it as opaque black.
+    color_t bkg_color = parms->bkg_color;
+    if (color_to_packed32(bkg_color) == 0)
+        bkg_color = RGBA32(0, 0, 0, 255);
+
     int final_width, final_height;
     if (parms->zoom == YUV_ZOOM_NONE) {
         final_width = video_width;
@@ -411,7 +417,7 @@ yuv_blitter_t yuv_blitter_new_fmv(int video_width, int video_height,
 
     float scalew = final_width / (float)video_width;
     float scaleh = final_height / (float)video_height;
-    bool filtering = final_width != screen_width || final_height != screen_height;
+    bool filtering = final_width != video_width || final_height != video_height;
 
     int x0 = 0, y0 = 0;
     if (screen_width) {
@@ -437,7 +443,7 @@ yuv_blitter_t yuv_blitter_new_fmv(int video_width, int video_height,
         // of the image that we will draw (if any).
         int fw = (int)final_width, fh = (int)final_height;
         if (screen_height > fh || screen_width > fw) {
-            rdpq_set_mode_fill(parms->bkg_color);
+            rdpq_set_mode_fill(bkg_color);
             if (y0 > 0)
                 rdpq_fill_rectangle(0, 0, screen_width, y0);
             if (y0 + fh < screen_height)

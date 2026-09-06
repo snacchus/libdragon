@@ -15,7 +15,7 @@
         RSPQ_DefineCommand Task_ProcessChromaResidual,           28
         RSPQ_DefineCommand OMX_Interpolate_Luma_Overfill,        44
         RSPQ_DefineCommand OMX_Interpolate_Chroma_Overfill,      44
-        RSPQ_DefineCommand RSPQ_Loop,                             4
+        RSPQ_DefineCommand Task_SetWeights,                      16
         RSPQ_DefineCommand RSPQ_Loop,                             4
         RSPQ_DefineCommand RSPQ_Loop,                             4
         RSPQ_DefineCommand RSPQ_Loop,                             4
@@ -115,6 +115,12 @@ MB_OUTPUT:  .dcb.b 16*16
     # Scratch memory for intermediate computations
     .align 8   # 4 is sufficient, but 8 visually helps debugging
 MB_SCRATCH: .dcb.w 16*21
+
+    # Address of the WEIGHT_TAB entry of the chroma plane being processed.
+    # The two chroma components are interpolated by the same code, which
+    # is re-entered after the first one, so the plane must be tracked here.
+    .align 2
+WEIGHT_CUR: .dcb.w 1
 
 
     .text
@@ -563,6 +569,134 @@ Interpolate_ChromaLuma_DMADest:
     .endfunc
 
 
+####################################################################
+# ApplyWeight
+#
+# Apply explicit weighted prediction (weightp) in place to the
+# predicted macroblock in MB_OUTPUT, just before it is transferred
+# back to RDRAM.
+#
+# For each predicted pixel P, the standard requires:
+#
+#    CLIP1( ((W*P + (D ? 1<<(D-1) : 0)) >> D) + O )
+#
+# where W is the weight, O the offset and D the log2 denominator. All
+# three are constant over a slice for a given reference index, so the
+# CPU pre-folds D into the two coefficients we read from WEIGHT_TAB
+# (see rsph264_weight_pack):
+#
+#    KW = W << (8-D)          KO = O << 7
+#
+# Pixels are loaded with luv, so a pixel is P<<7 within its lane, and
+# vmulu accumulates (VS*VT + 0x4000)>>15, that is:
+#
+#    ((P<<7) * (W << (8-D)) + (1<<14)) >> 15   =   (P*W + (1<<(D-1))) >> D
+#
+# so the rounding built into vmulu is exactly the rounding required by
+# the standard (for D=0 the rounding term falls below the precision of
+# the result, as required). The offset is then accumulated as
+# KO * 256 * 2 = O<<16, that is +O at the precision of the result.
+#
+# The offset must be accumulated *before* reading the accumulator,
+# because the unsigned read clamps to zero: the standard clamps after
+# adding the offset, not before. The read also takes care of clamping
+# at the lower bound, while the upper bound (255) is applied by vcl.
+#
+# vcl only modifies VCCH, so the partition width mask that the
+# bootstrap left in VCCL survives and can be used to merge back the
+# pixels which are outside of the partition.
+#
+####################################################################
+# ARGS:
+#   s2: address of the WEIGHT_TAB entry of the plane being processed
+
+    .func ApplyWeight
+ApplyWeight:
+    lw t0, 0(s2)
+    li t1, LUMA_FIR_COEFFS
+    lui t2, 0x0100                   # identity transform (W=1, O=0, D=0)
+    beq t0, t2, ApplyWeightEnd       # nothing to do
+    lqv $v28,0, 0,t1                 # $v28[e15] = 255 (for clamping)
+
+    llv $v26,0, 0,s2                 # $v26[e8] = KW, $v26[e9] = KO
+    vxor $v27, $v27, $v27,0
+    addi s0, dst_unalign, %lo(MB_OUTPUT)
+    addi t3, width, -8               # t3 > 0 if a second 8-pixel column is needed
+
+    # vmacu reads the offset lane-wise, so broadcast it to all lanes.
+    vor $v27, $v27, $v26,9
+
+    # vcl expects no pending carries. All interpolation loops end with
+    # a vmrg, which clears them, but do not depend on that.
+    ctc2 zero, COP2_CTRL_VCO
+
+ApplyWeightLoopCol:
+    move t0, height
+    move s1, s0
+
+    ############################################################################
+    #  VU OPCODES                                   SU OPCODES                 #
+    ############################################################################
+
+    .align 3
+ApplyWeightLoop:
+                                                    luv $v00,0, 0,s1
+                                                    add s3, s1, dst_dma_width
+                                                    luv $v01,0, 0,s3
+    vmulu $v10, $v00, $v26,8;                       addi t0, -2
+    vmacu $v10, $v27, vshift8,15
+    vmulu $v11, $v01, $v26,8
+    vmacu $v11, $v27, vshift8,15
+
+    # Clamp at 255 (clamping at 0 was performed by the reads above)
+    vcl $v10, $v10, $v28,15
+    vcl $v11, $v11, $v28,15
+
+    # Back to the <<7 precision expected by suv, then merge with the
+    # original pixels to preserve those outside of the partition.
+    vsll $v10, $v10, 7
+    vsll $v11, $v11, 7
+    vmrg $v10, $v00, $v10,0
+    vmrg $v11, $v01, $v11,0
+                                                    suv $v10,0, 0,s1
+                                                    add s1, s3, dst_dma_width
+                                                    bgtz t0, ApplyWeightLoop
+                                                    suv $v11,0, 0,s3
+
+    # Next column (if any)
+    addi s0, 8
+    bgtz t3, ApplyWeightLoopCol
+    addi t3, -8
+
+ApplyWeightEnd:
+    jr ra
+    nop
+    .endfunc
+
+
+####################################################################
+# Task_SetWeights
+#
+# Configure the weightp coefficients used by ApplyWeight for the three
+# planes. They are packed by the CPU (see rsph264_weight_pack) and are
+# valid until the next call, so this command is normally issued once
+# per frame.
+####################################################################
+# ARGS:
+#   0: unused
+#   1: LUMA: packed luma coefficients
+#   2: CB: packed Cb coefficients
+#   3: CR: packed Cr coefficients
+
+    .func Task_SetWeights
+Task_SetWeights:
+    sw a1, %lo(WEIGHT_TAB)+0
+    sw a2, %lo(WEIGHT_TAB)+4
+    j RSPQ_Loop
+    sw a3, %lo(WEIGHT_TAB)+8
+    .endfunc
+
+
 ############################################################
 # Interpolate_CopyMacroblock
 #
@@ -633,6 +767,8 @@ Interpolate_CopyLoop:
 
     .func OMX_Interpolate_Chroma_Overfill
 OMX_Interpolate_Chroma_Overfill:
+    li t1, %lo(WEIGHT_TAB)+4         # first component is Cb
+    sw t1, %lo(WEIGHT_CUR)
     jal Interpolate_Bootstrap
     li t0, %lo(InterChromaMVConst)
 
@@ -640,6 +776,9 @@ ChromaPostBootstrap:
     addi s0, src_unalign, %lo(MB_INPUT)
     jal Interpolate_Chroma
     addi s4, dst_unalign, %lo(MB_OUTPUT)
+
+    jal ApplyWeight
+    lw s2, %lo(WEIGHT_CUR)
 
     jal Interpolate_ChromaLuma_DMADest
     li t2, DMA_OUT_ASYNC   # Direction: DMEM->RDRAM, background
@@ -657,6 +796,9 @@ ChromaPostBootstrap:
     lw t0, CMD_ADDR(40, 44)
     sub t1, dst, t1
     add dst, t0, t1
+
+    li t2, %lo(WEIGHT_TAB)+8         # second component is Cr
+    sw t2, %lo(WEIGHT_CUR)
 
     # Run only the phase 2 of bootstrap (dma input buffer + overfill), then
     # jump back to the beginning of this function.
@@ -935,6 +1077,9 @@ LumaCopy:
     jal_and_j Interpolate_CopyMacroblock, LumaEnd
 
 LumaEnd:
+    jal ApplyWeight
+    li s2, %lo(WEIGHT_TAB)
+
     jal Interpolate_ChromaLuma_DMADest
     li t2, DMA_OUT_ASYNC   # Direction: DMEM->RDRAM
 
@@ -1311,41 +1456,11 @@ LumaDiagLoop2:
     #define npart s5
     #define dst_dma_width v1
 
-    # Fetch the destination buffer, and load arguments
-    # INPUT:
-    #   t0: WxH length in DMA register format (eg: 0xF00F for 16x16) 
-    #   dst_pitch: must be pre-loaded with the RDRAM pitch
-    .func ResidualBootstrap
-ResidualBootstrap:
-    lw qp, CMD_ADDR(16, 28)
-    lw ac, CMD_ADDR(20, 28)
-    li t2, DMA_IN # DMA direction: RDRAM->DMEM
-    # fallthrough!
-    .endfunc
-
-    .func ResidualDma
-ResidualDma:
-    # We need to fetch the destination buffer. It is guaranteed
-    # to be 4-byte aligned, but we need 8-byte alignment for DMA.
-    # The width has been already augmented to include possible unalignment.
-    move s0, dst
-    li s4, %lo(MB_OUTPUT)
-    j DMAExec
-    move t1, dst_pitch
-    .endfunc
-
-    # Move back the destination buffer into RDRAM
-    # INPUT:
-    #   t0: WxH length in DMA register format (eg: 0xF00F for 16x16) 
-    #   dst_pitch: must be pre-loaded with the RDRAM pitch
-    .func ResidualEnd
-ResidualEnd:
-    jal ResidualDma
-    li t2, DMA_OUT # DMA direction: DMEM->RDRAM
-
-    jal_and_j UpdateDeltaBlockPointer, RSPQ_Loop
-    .endfunc
-
+    # NOTE: ResidualBootstrap, ResidualDma, ResidualEnd,
+    # TransformResidual4x4CheckDC, Task_ProcessChromaResidual and
+    # TransformDequantChromaDC live in rsph264_common.inc, because the intra
+    # overlay needs them too. They use the register names defined just above,
+    # which are kept in sync there.
 
 ####################################################################
 # OMX_DequantTransformResidual
@@ -1492,181 +1607,6 @@ LumaDequantSkip:
     j ResidualEnd
     li t0, DMA_SIZE(16,16)
 
-    .endfunc
-
-####################################################################
-# Task_ProcessChromaResidual
-#
-# Process the residual pixels for two 8x8 chroma blocks (Cr/Cb).
-####################################################################
-    .func Task_ProcessChromaResidual
-Task_ProcessChromaResidual:
-    li dst_dma_width, 8
-    jal ResidualBootstrap
-    li t0, DMA_SIZE(8,8)   # first chroma buffer
-
-    # Now load second chroma buffer, consecutive to the first one
-    lw s0, CMD_ADDR(24, 28)
-    jal DMAIn
-    li s4, %lo(MB_OUTPUT+64)
-
-    move tcmask, ac
-
-    jal CalcDequantFactors
-    move t0, qp
-
-    #vxor $v00, $v00, $v00,0
-    li s4, %lo(CHROMA_DC_0)
-    sqv $v00,0, 0,s4
-
-ChromaDC0:
-    # Check if there are quantized/transformed DC factors for the
-    # first chroma block. If so, dequantize/transform them.
-    srl t0, tcmask, 25
-    andi t0, 1
-    beqz t0, ChromaDC1
-    nop
-    jal UnpackNextDeltaBlock
-    nop
-    jal TransformDequantChromaDC
-    li s4, %lo(CHROMA_DC_0)
-
-ChromaDC1:
-    # Check if there are quantized/transformed DC factors for the
-    # second chroma block. If so, dequantize/transform them.
-    srl t0, tcmask, 26
-    andi t0, 1
-    beqz t0, ChromaResidualLoopStart
-    nop
-    jal UnpackNextDeltaBlock
-    nop
-    jal TransformDequantChromaDC
-    li s4, %lo(CHROMA_DC_1)
-
-ChromaResidualLoopStart:
-    # Main Chroma residual loop: go through each 4x4 partition
-    # (in a specific order, mandated by CHROMA_DEQUANT_INDEX),
-    # and dequantize/transform them. Use the previously-transformed
-    # DC coefficients if existing.
-    li s6, %lo(CHROMA_DC_0)
-    li npart, 0
-ChromaResidualLoop:
-    vxor $v00, $v00, $v00,0
-    lhu dc, 0(s6)
-    vxor $v01, $v01, $v01,0
-    addi s6, 2
-
-    # AC=0 DC=0   => do nothing
-    # AC=1 DC=0   => unpack, dequant, transform
-    # AC=0 DC=1   => transform
-    # AC=1 DC=1   => unpack, dequant, transform
-
-    addi t1, npart, 16
-    srlv t0, tcmask, t1
-    andi ac, t0, 1
-    beqz ac, ChromaResidualTransform
-    nop
-
-    jal UnpackNextDeltaBlock
-    nop
-    jal Dequant4x4
-    nop
-
-ChromaResidualTransform:
-    or t0, dc, ac
-    beqz t0, ChromaResidualSkip
-    lbu t0, %lo(CHROMA_DEQUANT_INDEX)(npart)
-
-    jal TransformResidual4x4CheckDC
-    addi s4, t0, %lo(MB_OUTPUT)
-
-ChromaResidualSkip:
-    bne npart, 7, ChromaResidualLoop
-    addi npart, 1
-
-    # DMA back second chroma buffer
-    lw s0, CMD_ADDR(24, 28)
-    li t0, DMA_SIZE(8,8)
-    li s4, %lo(MB_OUTPUT+64)
-    move t1, dst_pitch
-    jal_and_j DMAOut, ResidualEnd
-
-    .endfunc
-
-
-####################################################################
-# TransformDequantChromaDC
-#
-# Reconstruct a 2x2 Chroma DC block from a packed block of coefficients. 
-# Do a 2x2 inverse Hadamard transformation, followed by a quantization
-# step.
-#
-# This is exposed as OMX_TransformDequantChromaDC, and used internally
-# by Task_ProcessChromaResidual.
-####################################################################
-#
-# ARGS:
-#  v00: unpacked coefficients (as generated by UnpackNextDeltaBlock).
-#       Notice that only the first 4 lanes are used (2x2 block).
-#   s4: output buffer where the 4 coefficients should be written to.
-
-    .func TransformDequantChromaDC
-TransformDequantChromaDC:
-    vsll $v00, $v00, 1
-
-    li t0, %lo(IHT_DC_COEFF)
-    lpv $v04,0, 0*8,t0
-    lpv $v05,0, 1*8,t0
-    lpv $v06,0, 2*8,t0
-    lpv $v07,0, 3*8,t0
-    lqv $v08,0, 3*16,t0
-    vmulf $v02, $v04, $v00,8
-    vmacf $v02, $v05, $v00,9
-    vmacf $v02, $v06, $v00,10
-    vmacf $v00, $v07, $v00,11
-
-    # Dequantize using single multiplication factor
-    vmudn $v00, $v00, $v27,8
-
-    # Use shift factor, reduced by 1 (so just shift right afterwards)
-    vmudn $v00, $v00, $v29,8
-    vsra $v00, $v00, 1
-
-    # Mask out lanes 4-7. When this function is called for the
-    # first 2x2 block, we want to write 0 in the space for the
-    # second block (because the second block might not exist,
-    # and zero is the default).
-    # When called on the second block, only 4 lanes are written
-    # because the address is unaligned, so the value of those lanes
-    # doesn't really matter.
-    vand $v00, $v00, $v08,0
-    jr ra
-    sqv $v00,0, 0,s4
-    .endfunc
-
-
-####################################################################
-# TransformResidual4x4CheckDC
-#
-# Calls TransformResidual4x4IDCT, but before processes DC in case
-# it was set by the caller.
-#
-####################################################################
-# ARGS:
-#       s4:  address of predicted pixel buffer in DMEM
-#  v00/v01:  unpacked delta coefficients: 4x4 block of 16-bit values
-#            (calculated by UnpackNextDeltaBlock)
-
-    .func TransformResidual4x4CheckDC
-TransformResidual4x4CheckDC:
-    # If there's no fixed DC factor, just jump to the actual IDCT transformation.
-    bltz dc, TransformResidual4x4IDCT
-    move t4, dst_dma_width    # buffer width is expected in t4
-
-    # Overwrite the first delta coefficient (v00[e8]) with DC, and then
-    # execute the transform.
-    j TransformResidual4x4IDCT
-    mtc2 dc, $v00,0
     .endfunc
 
 ####################################################################

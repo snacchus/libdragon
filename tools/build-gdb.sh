@@ -55,11 +55,15 @@ command_exists () {
 
 # Download the file URL using wget or curl (depending on which is installed)
 download () {
+    local n_retries=5
+    local retry_delay=30
     local url="$1"
     local file="$DOWNLOAD_PATH/$(basename "$url")"
     local tmpfile="$file.part"
-    if   command_exists wget ; then wget --continue --output-document "$tmpfile" "$url"
-    elif command_exists curl ; then curl --location --output "$tmpfile" "$url"
+    if command_exists wget ; then
+        wget --tries=$n_retries --wait=$retry_delay --continue --output-document "$tmpfile" "$url"
+    elif command_exists curl ; then
+        curl --retry $n_retries --retry-all-errors --retry-delay $retry_delay --location --output "$tmpfile" "$url"
     else
         echo "Install wget or curl to download toolchain sources" 1>&2
         return 1
@@ -67,8 +71,12 @@ download () {
     mv "$tmpfile" "$file"
 }
 
+download_gnu () {
+    download "https://mirrors.kernel.org/gnu/$1"
+}
+
 # Dependency downloads and unpack
-test -f "$DOWNLOAD_PATH/gdb-$GDB_V.tar.gz" || download "https://ftpmirror.gnu.org/gnu/gdb/gdb-$GDB_V.tar.gz"
+test -f "$DOWNLOAD_PATH/gdb-$GDB_V.tar.gz" || download_gnu "gdb/gdb-$GDB_V.tar.gz"
 test -d "$BUILD_PATH/gdb-$GDB_V"           || tar -xzf "$DOWNLOAD_PATH/gdb-$GDB_V.tar.gz" -C "$BUILD_PATH"
 
 # Resolve dependencies on macOS via homebrew
