@@ -94,6 +94,9 @@ void glCallList(GLuint n)
     // During display list recording, we cannot anticipate whether it will be called within a glBegin/glEnd pair or not.
     assertf(!state->begin_end_active, "glCallList between glBegin/glEnd is not supported!");
 
+    // 0 can never be a valid list, so just ignore it
+    if (n == 0) return;
+
     rspq_block_t *block = hashtable_lookup(&state->lists, n);
     // Silently ignore NULL and EMPTY_LIST
     if (is_non_empty_list(block)) {
