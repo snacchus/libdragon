@@ -612,7 +612,7 @@ static void gl_rsp_draw_arrays(GLenum mode, uint32_t first, uint32_t count)
 
     mg_draw_begin();
     mg_input_assembly_parms_t input_assembly_parms = array_object_get_input_assembly_parms(state->array_object, mode, range);
-    mg_ex_draw(&input_assembly_parms, count, first, mode);
+    mg_ex_draw(&input_assembly_parms, count, 0, mode);
     mg_draw_end();
 }
 
