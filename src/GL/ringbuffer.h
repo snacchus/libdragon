@@ -14,18 +14,18 @@ typedef struct {
     uint32_t entry_size;
     uint32_t entry_count;
     uint32_t current_index;
-} ringbuffer;
+} ringbuffer_t;
 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void ringbuffer_init(ringbuffer *buf, uint32_t entry_size, uint32_t entry_count);
-void ringbuffer_free(ringbuffer *buf);
-void *ringbuffer_alloc_next(ringbuffer *buf);
-void ringbuffer_release_current(ringbuffer *buf);
-void *ringbuffer_get_current(ringbuffer *buf);
+void ringbuffer_init(ringbuffer_t *buf, uint32_t entry_size, uint32_t entry_count);
+void ringbuffer_free(ringbuffer_t *buf);
+void *ringbuffer_alloc_next(ringbuffer_t *buf);
+void ringbuffer_release_current(ringbuffer_t *buf);
+void *ringbuffer_get_current(ringbuffer_t *buf);
 
 #ifdef __cplusplus
 }
