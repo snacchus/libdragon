@@ -1,6 +1,6 @@
 #include "ringbuffer.h"
 
-void ringbuffer_init(ringbuffer *buf, uint32_t entry_size, uint32_t entry_count)
+void ringbuffer_init(ringbuffer_t *buf, uint32_t entry_size, uint32_t entry_count)
 {
     buf->entry_size = entry_size;
     buf->entry_count = entry_count;
@@ -9,13 +9,13 @@ void ringbuffer_init(ringbuffer *buf, uint32_t entry_size, uint32_t entry_count)
     buf->syncpoints = calloc(entry_count, sizeof(rspq_syncpoint_t));
 }
 
-void ringbuffer_free(ringbuffer *buf)
+void ringbuffer_free(ringbuffer_t *buf)
 {
     free(buf->syncpoints);
     free_uncached(buf->buffer);
 }
 
-void *ringbuffer_alloc_next(ringbuffer *buf)
+void *ringbuffer_alloc_next(ringbuffer_t *buf)
 {
     uint32_t next_index = (buf->current_index + 1) % buf->entry_count;
     rspq_syncpoint_wait(buf->syncpoints[next_index]);
@@ -24,12 +24,12 @@ void *ringbuffer_alloc_next(ringbuffer *buf)
     return ringbuffer_get_current(buf);
 }
 
-void ringbuffer_release_current(ringbuffer *buf)
+void ringbuffer_release_current(ringbuffer_t *buf)
 {
     buf->syncpoints[buf->current_index] = rspq_syncpoint_new();
 }
 
-void *ringbuffer_get_current(ringbuffer *buf)
+void *ringbuffer_get_current(ringbuffer_t *buf)
 {
     return buf->buffer + (buf->entry_size * buf->current_index);
 }

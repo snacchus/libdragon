@@ -390,7 +390,7 @@ typedef struct {
     bool begin_end_active;
     native_vertex_t current_attribs;
     native_vertex_t begin_end_saved_vtx;
-    ringbuffer begin_end_buffer;
+    ringbuffer_t begin_end_buffer;
     native_vertex_t *begin_end_current_buffer;
     uint32_t begin_end_index;
     uint32_t begin_end_load_index;
