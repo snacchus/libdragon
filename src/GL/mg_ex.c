@@ -17,7 +17,7 @@ static void mg_ex_draw_quads(const mg_input_assembly_parms_t *input_assembly_par
             for (uint32_t j = 0; j < 4; j++) 
                 batch_indices[i*5 + j] = first + (prim_index+i)*4 + j;
             
-            batch_indices[i*5 + 4] = -1;
+            batch_indices[i*5 + 4] = MG_PRIM_RESTART;
         }
 
         mg_draw_indexed(input_assembly_parms, batch_indices, prims_in_batch_count*5, 0);
@@ -55,7 +55,7 @@ static void mg_ex_draw_quads_indexed(const mg_input_assembly_parms_t *input_asse
         for (uint32_t i = 0; i < prims_in_batch_count; i++)
         {
             memcpy(batch_indices + i*5, indices + (prim_index+i)*4, sizeof(uint16_t)*4);
-            batch_indices[i*5 + 4] = -1;
+            batch_indices[i*5 + 4] = MG_PRIM_RESTART;
         }
 
         mg_draw_indexed(input_assembly_parms, batch_indices, prims_in_batch_count*5, offset);
