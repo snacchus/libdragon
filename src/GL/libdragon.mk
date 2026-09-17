@@ -1,4 +1,5 @@
 LIBDRAGON_OBJS += \
+	$(BUILD_DIR)/GL/array.o \
 	$(BUILD_DIR)/GL/array_convert.o \
 	$(BUILD_DIR)/GL/array_module.o \
 	$(BUILD_DIR)/GL/array_object.o \
@@ -7,6 +8,7 @@ LIBDRAGON_OBJS += \
 	$(BUILD_DIR)/GL/data_cache.o \
 	$(BUILD_DIR)/GL/data_source.o \
 	$(BUILD_DIR)/GL/draw_call_cache.o \
+	$(BUILD_DIR)/GL/fnv1a.o \
 	$(BUILD_DIR)/GL/gl.o \
 	$(BUILD_DIR)/GL/glu.o \
 	$(BUILD_DIR)/GL/indices.o \

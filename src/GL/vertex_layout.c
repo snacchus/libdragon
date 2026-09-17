@@ -10,6 +10,7 @@ void vertex_layout_init(vertex_layout_t *vl)
 
 void vertex_layout_add(vertex_layout_t *vl, uint32_t input, uint32_t offset, uint32_t size)
 {
+    assertf(vl->vertex_layout.attribute_count < MAX_VERTEX_ATTRIBUTE_COUNT, "Vertex layout already contains the maximum number of attributes (%d)!", MAX_VERTEX_ATTRIBUTE_COUNT);
     mg_vertex_attribute_t *attr = &vl->attributes[vl->vertex_layout.attribute_count++];
     attr->input = input;
     attr->offset = offset;
@@ -32,3 +33,7 @@ void vertex_layout_finalize(vertex_layout_t *vl)
 {
     vl->hash = get_hash(&vl->vertex_layout);
 }
+
+extern inline void vertex_layout_append(vertex_layout_t *vl, uint32_t input, uint32_t size);
+extern inline void vertex_layout_set_stride(vertex_layout_t *vl, uint32_t stride);
+extern inline uint32_t vertex_layout_get_hash(const vertex_layout_t *vl);

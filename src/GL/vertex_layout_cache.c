@@ -47,3 +47,5 @@ void vertex_layout_cache_update(vertex_layout_cache_t *cache, const array_t *arr
 
     cache->dirty = false;
 }
+
+extern inline const vertex_layout_t *vertex_layout_cache_get_layout(const vertex_layout_cache_t *cache);
