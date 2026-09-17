@@ -13,6 +13,7 @@ static void free_buffer(data_cache_t *cache)
 {
     if (cache->buffer != NULL) {
         rspq_call_deferred(free_uncached, cache->buffer);
+        cache->buffer = NULL;
     }
 }
 

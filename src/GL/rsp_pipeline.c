@@ -53,7 +53,7 @@ static phys_addr_t magma_rsp_state;
         for (uint32_t i = count; i < max_size; i++) dst[i] = default[i]; \
     }
 
-#define GLP_NRM(x, y, z) MGFX_NRM(x, y, z);
+#define GLP_NRM(x, y, z) MGFX_NRM(x, y, z)
 
 #define DEFINE_NORMAL_FLT_READ_FUNC(name, src_type) \
     static void name(int16_t *dst, const src_type *src, uint32_t count) \
@@ -91,7 +91,7 @@ DEFINE_NORMAL_INT_READ_FUNC(nrm_read_i32, int32u_t,  27)
 DEFINE_NORMAL_FLT_READ_FUNC(nrm_read_f32, floatu)
 DEFINE_NORMAL_FLT_READ_FUNC(nrm_read_f64, doubleu)
 
-static void nrm_read_packed565(int16_t *dst, const int16_t *src, uint32_t count)
+static void nrm_read_packed565(int16_t *dst, const int16u_t *src, uint32_t count)
 {
     *dst = *src;
 }

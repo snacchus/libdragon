@@ -4,8 +4,6 @@
 #include "fnv1a.h"
 #include "mg_ex.h"
 
-#define MAX_CACHED_DRAW_CALL_COUNT  8
-
 extern gl_state_t *state;
 
 draw_call_cache_t *draw_call_cache_create()
