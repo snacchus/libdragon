@@ -7,8 +7,6 @@
 #include "hashtable_internal.h"
 #include "indices.h"
 
-#define MAX_CACHED_DRAW_CALLS   8
-
 typedef struct draw_call_parms_s {
     uint32_t offset;
     uint32_t count;

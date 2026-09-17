@@ -20,6 +20,7 @@ static rsp_ucode_t *pipeline_ucodes[] = {
 
 static rsp_ucode_t *get_pipeline_ucode(uint32_t features)
 {
+    assert(features < PIPELINE_COUNT);
     return pipeline_ucodes[features];
 }
 
