@@ -502,34 +502,39 @@ static void gl_rsp_mtx_index(const uint8_t *mtx_index)
     }
 }
 
+static bool is_array_enabled(array_type_t type)
+{
+    return state->array_object->arrays[type].enabled;
+}
+
 static void get_array_element_convert_parms(array_convert_parms_t *parms, uint32_t index)
 {
-    static const data_layout_t layout = {
-        .offsets = {
+    static const uint32_t offsets[] = {
             offsetof(native_vertex_t, position),
             offsetof(native_vertex_t, normal),
             offsetof(native_vertex_t, color),
             offsetof(native_vertex_t, texcoord),
             offsetof(native_vertex_t, mtx_index),
-        },
+    };
+    data_layout_t layout = {
         .stride = sizeof(native_vertex_t)
     };
 
-    for (array_type_t i = 0; i < ARRAY_COUNT; i++)
-    {
-        parms->arrays[i] = &state->array_object->arrays[i];
+    parms->array_count = 0;
+
+    for (array_type_t i = 0; i < ARRAY_COUNT; i++) {
+        if (!is_array_enabled(i))
+            continue;
+
+        layout.offsets[parms->array_count] = offsets[i];
+        parms->arrays[parms->array_count] = &state->array_object->arrays[i];
+        parms->array_count++;
     }
 
-    parms->array_count = ARRAY_COUNT;
     parms->out_layout = &layout;
     parms->out_buffer = &state->current_attribs;
     parms->range.first = index;
     parms->range.count = 1;
-}
-
-static bool is_array_enabled(array_type_t type)
-{
-    return state->array_object->arrays[type].enabled;
 }
 
 static bool is_vertex_array_enabled()
