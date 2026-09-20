@@ -1,3 +1,7 @@
+/**
+ * @file indices.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __INDICES_H
 #define __INDICES_H
 

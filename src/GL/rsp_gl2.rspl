@@ -1,3 +1,9 @@
+/**
+ * @file rsp_gl2.rspl
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ * @brief GL <-> Magma glue ucode
+ */
+
 #include "../../include/magma_constants.h"
 #include "gl_constants.h"
 #include "../../include/GL/gl_enums.h"

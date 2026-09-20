@@ -1,3 +1,7 @@
+/**
+ * @file data_cache.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __DATA_CACHE_H
 #define __DATA_CACHE_H
 

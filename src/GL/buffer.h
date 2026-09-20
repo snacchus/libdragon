@@ -1,3 +1,7 @@
+/**
+ * @file buffer.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __BUFFER_H
 #define __BUFFER_H
 

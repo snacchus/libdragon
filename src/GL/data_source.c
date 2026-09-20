@@ -1,3 +1,7 @@
+/**
+ * @file data_source.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "data_source.h"
 #include "gl_internal.h"
 #include "array.h"

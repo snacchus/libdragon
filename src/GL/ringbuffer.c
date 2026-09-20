@@ -1,3 +1,7 @@
+/**
+ * @file ringbuffer.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "ringbuffer.h"
 
 void ringbuffer_init(ringbuffer_t *buf, uint32_t entry_size, uint32_t entry_count)

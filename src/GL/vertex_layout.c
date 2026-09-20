@@ -1,3 +1,7 @@
+/**
+ * @file vertex_layout.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "vertex_layout.h"
 #include "fnv1a.h"
 

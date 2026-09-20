@@ -1,3 +1,7 @@
+/**
+ * @file fnv1a.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __FNV1A_H
 #define __FNV1A_H
 

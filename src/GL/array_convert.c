@@ -1,3 +1,7 @@
+/**
+ * @file array_convert.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "array_convert.h"
 
 void array_convert(array_convert_parms_t *parms)

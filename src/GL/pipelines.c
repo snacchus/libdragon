@@ -1,3 +1,7 @@
+/**
+ * @file pipelines.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "pipelines.h"
 #include "gl_constants.h"
 #include "gl_internal.h"

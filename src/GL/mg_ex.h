@@ -1,3 +1,7 @@
+/**
+ * @file mg_ex.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __MG_EX_H
 #define __MG_EX_H
 

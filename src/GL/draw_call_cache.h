@@ -1,3 +1,7 @@
+/**
+ * @file draw_call_cache.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __DRAW_CALL_CACHE_H
 #define __DRAW_CALL_CACHE_H
 

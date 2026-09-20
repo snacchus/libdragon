@@ -1,6 +1,6 @@
 /**
  * @file gl_constants.h
- * @author Dennis Heinze <dennisjp.heinze@gmail.com>
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
  */
 #ifndef __GL_CONSTANTS
 #define __GL_CONSTANTS

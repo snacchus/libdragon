@@ -1,3 +1,7 @@
+/**
+ * @file data_source.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __DATA_SOURCE_H
 #define __DATA_SOURCE_H
 

@@ -1,3 +1,7 @@
+/**
+ * @file data_cache.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "data_cache.h"
 #include "data_source.h"
 #include "rspq.h"

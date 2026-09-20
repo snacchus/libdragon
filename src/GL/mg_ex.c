@@ -1,3 +1,7 @@
+/**
+ * @file mg_ex.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "mg_ex.h"
 #include "magma_constants.h"
 
