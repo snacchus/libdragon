@@ -1,7 +1,18 @@
 /**
  * @file rsp_gl_pipeline.rspl
  * @author Dennis Heinze <dennis.heinze@mailbox.org>
- * @brief Magma compatible ucode that implements the GL pipeline.
+ * @brief Magma shader ucode that implements the GL pipeline.
+ * 
+ * This ucode is used by GL to implement its RSP pipeline (see rsp_pipeline.c), by creating (magma) pipelines from it.
+ *
+ * It is compiled in multiple variants, which correspond to features that may be enabled/disabled in GL.
+ * Currently, there are 4 variants that correspond to the combinations of enabling/disabling these features:
+ *  * Environment mapping
+ *  * Normalization (of vertex normals)
+ * 
+ * This is done because these features each require a substantial amount of extra RSP cycles, which can be saved if they are disabled.
+ * 
+ * See rsp_gl2.rspl for the glue code which provides the uniform values and magma state for this ucode.
  */
 
 include "rsp_magma.inc"
