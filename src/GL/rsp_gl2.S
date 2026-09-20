@@ -1,3 +1,10 @@
+############################################################
+# rsp_gl2.S
+#
+# Authors: Dennis Heinze <dennis.heinze@mailbox.org>
+#
+############################################################
+
 #include <rsp_queue.inc>
 #include <rdpq_macros.h>
 #include "gl_constants.h"

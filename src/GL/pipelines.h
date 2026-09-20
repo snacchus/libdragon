@@ -1,3 +1,7 @@
+/**
+ * @file pipelines.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __PIPELINES_H
 #define __PIPELINES_H
 

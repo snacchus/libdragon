@@ -1,3 +1,7 @@
+/**
+ * @file array_module.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __ARRAY_MODULE_H
 #define __ARRAY_MODULE_H
 

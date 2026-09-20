@@ -1,3 +1,7 @@
+/**
+ * @file vertex_layout_cache.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "vertex_layout_cache.h"
 #include "gl_constants.h"
 

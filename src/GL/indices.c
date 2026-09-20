@@ -1,3 +1,7 @@
+/**
+ * @file indices.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "indices.h"
 #include "debug.h"
 

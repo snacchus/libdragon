@@ -1,6 +1,6 @@
 /**
  * @file cpu_pipeline.c
- * @author Dennis Heinze <dennisjp.heinze@gmail.com>
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
  * @brief OpenGL CPU-based rendering pipeline implementation.
  */
 #include "gl_internal.h"

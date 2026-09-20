@@ -1,6 +1,6 @@
 /**
  * @file buffer.c
- * @author Dennis Heinze <dennisjp.heinze@gmail.com>
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
  * @brief OpenGL buffer object management and data transfer.
  */
 #include "buffer.h"

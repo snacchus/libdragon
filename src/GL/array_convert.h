@@ -1,3 +1,7 @@
+/**
+ * @file array_convert.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __ARRAY_CONVERT_H
 #define __ARRAY_CONVERT_H
 

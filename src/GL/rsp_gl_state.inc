@@ -1,3 +1,10 @@
+############################################################
+# rsp_gl_state.inc
+#
+# Authors: Giovanni Bajo <giovannibajo@gmail.com>
+#          Dennis Heinze <dennis.heinze@mailbox.org>
+#
+############################################################
 GL_STATE:
     GL_MATRICES:
         GL_MATRIX_MODELVIEW:    .ds.b   MATRIX_SIZE

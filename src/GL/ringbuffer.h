@@ -1,6 +1,6 @@
 /**
  * @file ringbuffer.h
- * @author Dennis Heinze <dennisjp.heinze@gmail.com>
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
  */
 #ifndef __GL_RINGBUFFER
 #define __GL_RINGBUFFER

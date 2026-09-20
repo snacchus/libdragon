@@ -1,3 +1,7 @@
+/**
+ * @file array_object.c
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #include "array_object.h"
 #include <stdbool.h>
 #include "gl_internal.h"

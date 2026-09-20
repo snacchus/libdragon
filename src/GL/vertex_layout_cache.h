@@ -1,3 +1,7 @@
+/**
+ * @file vertex_layout_cache.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __VERTEX_LAYOUT_CACHE_H
 #define __VERTEX_LAYOUT_CACHE_H
 

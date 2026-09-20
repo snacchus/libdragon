@@ -1,6 +1,6 @@
 /**
  * @file vertex_layout.h
- * @author Dennis Heinze <dennisjp.heinze@gmail.com>
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
  */
 #ifndef __GL_VERTEX_LAYOUT
 #define __GL_VERTEX_LAYOUT

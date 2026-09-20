@@ -1,3 +1,9 @@
+/**
+ * @file rsp_gl_pipeline.rspl
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ * @brief Magma compatible ucode that implements the GL pipeline.
+ */
+
 include "rsp_magma.inc"
 #include "../../include/magma_constants.h"
 #include "gl_constants.h"
@@ -423,6 +429,7 @@ shader gl_pipeline()
                 #endif
             }
             
+            // TODO: clamp is incorrect, atten is incorrect
             vlpos *= vnorm:sfract;
             VTEMP = vlambient * vambient;
             VTEMP = vlcol:sfract +* vlpos:sfract.xxxxXXXX;

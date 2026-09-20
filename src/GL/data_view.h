@@ -1,3 +1,7 @@
+/**
+ * @file data_view.h
+ * @author Dennis Heinze <dennis.heinze@mailbox.org>
+ */
 #ifndef __DATA_VIEW_H
 #define __DATA_VIEW_H
 
