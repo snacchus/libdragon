@@ -3,9 +3,10 @@
 
 #include <stdint.h>
 
+/** @brief Vertex data view. */
 typedef struct data_view_s {
-    void *pointer;
-    uint32_t stride;
+    void *pointer;      ///< Pointer to the vertex data.
+    uint32_t stride;    ///< Vertex stride.
 } data_view_t;
 
 #endif
