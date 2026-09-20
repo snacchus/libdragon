@@ -2,6 +2,13 @@
  * @file rsp_gl2.rspl
  * @author Dennis Heinze <dennis.heinze@mailbox.org>
  * @brief GL <-> Magma glue ucode
+ * 
+ * This file mainly contains the command GLCmd_PreInitMagma that is part of the rsp_gl2 overlay.
+ * This command is called during every GL draw call that uses the RSP pipeline, just before rendering geometry.
+ * It is responsible for translating the GL state in DMEM to magma (common state and uniforms).
+ * 
+ * Since GL mostly cannot use magma's C API directly (to make display lists work),
+ * it needs to instead implement the corresponding state changes here on the RSP.
  */
 
 #include "../../include/magma_constants.h"
