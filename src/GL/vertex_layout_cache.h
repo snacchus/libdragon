@@ -4,6 +4,7 @@
 #include "vertex_layout.h"
 #include "array.h"
 
+/** @brief Caches the vertex layout that has been computed from GL arrays. */
 typedef struct vertex_layout_cache_s {
     vertex_layout_t layout;
     bool dirty;

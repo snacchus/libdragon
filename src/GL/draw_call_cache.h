@@ -7,17 +7,33 @@
 #include "hashtable_internal.h"
 #include "indices.h"
 
+/** @brief Represents the parameters of glDrawElements to describe a cachable draw call */
 typedef struct draw_call_parms_s {
-    uint32_t offset;
-    uint32_t count;
-    GLenum mode;
+    uint32_t offset;    ///< The byte offset into the VBO bound to #GL_ELEMENT_ARRAY_BUFFER_ARB
+    uint32_t count;     ///< The index count
+    GLenum mode;        ///< The primitive mode
 } draw_call_parms_t;
 
+/** @brief Cached data of a draw call (glDrawElements) */
 typedef struct cached_draw_call_s {
+    /** 
+     * @brief The range of indices that occur in this draw call.
+     * 
+     * This information is also being cached because the indices need to be linearly scanned to determine it.
+     * The range is used to pre-warm the vertex data for the draw call.
+     */
     index_bounds_t index_range;
-    rspq_block_t *block;
+    rspq_block_t *block; ///< The draw call recorded into a block.
 } cached_draw_call_t;
 
+/** 
+ * @brief Caches draw calls so they can be quickly re-issued across frames.
+ * 
+ * Draw calls are keyed by the hash of their parameters (see #draw_call_parms_t).
+ * The cache can hold multiple entries to allow for multiple draw calls from the same index buffer.
+ * The entire cache is automatically invalidated when the index buffer data changes.
+ * Note that matrix indices are also recorded into draw calls and therefore changes to them also invalidate the cache.
+ */
 typedef struct draw_call_cache_s {
     hashtable_t cached_draw_calls;
 } draw_call_cache_t;
