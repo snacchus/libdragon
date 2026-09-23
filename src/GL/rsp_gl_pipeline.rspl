@@ -427,6 +427,7 @@ shader gl_pipeline()
                     vatten.X = invert_half(vatten).X;
                     
                     vlcol *= vatten.xxxxXXXX;
+                    vambient *= vatten.xxxxXXXX;
                 }
 
                 vec32<$v01> vmvp0;
@@ -440,15 +441,18 @@ shader gl_pipeline()
                 #endif
             }
             
-            // TODO: clamp is incorrect, atten is incorrect
+
             vlpos *= vnorm:sfract;
-            VTEMP = vlambient * vambient;
-            VTEMP = vlcol:sfract +* vlpos:sfract.xxxxXXXX;
+            VTEMP = vlcol:sfract * vlpos:sfract.xxxxXXXX;
             VTEMP = vlcol:sfract +* vlpos:sfract.yyyyYYYY;
             vlcol = vlcol:sfract +* vlpos:sfract.zzzzZZZZ;
             vlcol = max(vlcol, VZERO);
+
+            vlambient = vlambient:sfract * vambient:sfract;
             
-            vrgba:sint += vlcol; // Cast to sint to force saturated addition
+            VTEMP = vrgba:sint * 1;
+            VTEMP = vlambient:sint +* 1;
+            vrgba = vlcol:sint +* 1;
             
             light_ptr += GLP_LIGHT_SIZE;
             light_count -= 1;
